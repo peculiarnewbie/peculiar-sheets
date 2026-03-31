@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "build:lib": "pnpm --filter @peculiarnewbie/spreadsheets build",
+    "build:www": "pnpm --filter @peculiarnewbie/www build",
+    "publish:lib": "pnpm --filter @peculiarnewbie/spreadsheets run publish:npm"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

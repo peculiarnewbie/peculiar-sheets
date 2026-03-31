@@ -1,0 +1,54 @@
+{
+	"name": "@peculiarnewbie/spreadsheets",
+	"version": "0.1.0",
+	"description": "A high-performance spreadsheet engine for SolidJS powered by HyperFormula",
+	"license": "GPL-3.0-only",
+	"author": "peculiarnewbie",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/peculiarnewbie/spreadsheets"
+	},
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./styles": "./dist/sheet.css"
+	},
+	"files": [
+		"dist",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"prepublishOnly": "tsdown",
+		"publish:npm": "tsdown && npm publish --access public"
+	},
+	"keywords": [
+		"spreadsheet",
+		"solidjs",
+		"sheet",
+		"grid",
+		"datagrid",
+		"formula",
+		"hyperformula",
+		"excel",
+		"cells"
+	],
+	"peerDependencies": {
+		"solid-js": "^1.9.0"
+	},
+	"dependencies": {
+		"@tanstack/solid-virtual": "^3.13.6",
+		"hyperformula": "^2.0.0"
+	},
+	"devDependencies": {
+		"@rolldown-plugin/solid": "^0.0.2",
+		"tsdown": "^0.12.0",
+		"typescript": "^5.8.0"
+	}
+}
