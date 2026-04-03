@@ -5,7 +5,16 @@
     "dev": "pnpm -r --parallel dev",
     "build:lib": "pnpm --filter @peculiarnewbie/spreadsheets build",
     "build:www": "pnpm --filter @peculiarnewbie/www build",
-    "publish:lib": "pnpm --filter @peculiarnewbie/spreadsheets run publish:npm"
+    "publish:lib": "pnpm --filter @peculiarnewbie/spreadsheets run publish:npm",
+    "e2e": "bun test tests/e2e/",
+    "e2e:dev": "pnpm --filter @peculiarnewbie/e2e dev"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "devDependencies": {
+    "@browserbasehq/stagehand": "^3.2.0"
+  }
 }
