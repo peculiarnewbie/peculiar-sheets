@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
 	getStagehand,
-	closeStagehand,
 	navigateTo,
 	getCellValue,
 	getMutations,
@@ -9,6 +8,9 @@ import {
 	clickCell,
 	shiftClickCell,
 	dragFillHandle,
+	startFillHandleDrag,
+	press,
+	getPage,
 } from "./setup";
 import type { Stagehand } from "@browserbasehq/stagehand";
 
@@ -32,10 +34,6 @@ describe("autofill", () => {
 
 	beforeAll(async () => {
 		sh = await getStagehand();
-	});
-
-	afterAll(async () => {
-		await closeStagehand();
 	});
 
 	describe("linear series", () => {
@@ -163,32 +161,15 @@ describe("autofill", () => {
 			await clickCell(sh, 0, 0);
 			await shiftClickCell(sh, 2, 0);
 
-			// Start the drag but press Escape instead of releasing
-			const page = sh.page;
-			const handle = page.locator(".se-fill-handle");
-			const handleBox = await handle.boundingBox();
-			if (!handleBox) throw new Error("Fill handle not visible");
+			// Start the drag manually so we can cancel mid-way
+			const drag = await startFillHandleDrag();
 
-			await page.mouse.move(
-				handleBox.x + handleBox.width / 2,
-				handleBox.y + handleBox.height / 2,
-			);
-			await page.mouse.down();
-
-			// Move down a bit
-			const target = page.locator(
-				'[role="row"][aria-rowindex="6"] [role="gridcell"][aria-colindex="1"]',
-			);
-			const targetBox = await target.boundingBox();
-			if (!targetBox) throw new Error("Target cell not visible");
-			await page.mouse.move(
-				targetBox.x + targetBox.width / 2,
-				targetBox.y + targetBox.height / 2,
-			);
+			// Move to row 5
+			await drag.moveTo(5, 0);
 
 			// Escape cancels the fill
-			await page.keyboard.press("Escape");
-			await page.mouse.up();
+			await press(sh, "Escape");
+			await drag.release(5, 0);
 
 			const mutations = await getMutations(sh);
 			expect(mutations).toHaveLength(0);

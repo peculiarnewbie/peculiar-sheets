@@ -4,9 +4,6 @@ interface GridCellProps {
 	displayValue: CellValue;
 	width: number;
 	height: number;
-	selected: boolean;
-	rangeSelected: boolean;
-	isFocus: boolean;
 	colIndex: number;
 	readOnly?: boolean;
 	pinnedLeft?: number;
@@ -32,9 +29,6 @@ export default function GridCell(props: GridCellProps) {
 		<div
 			class={`se-cell${props.customClass ? ` ${props.customClass}` : ""}`}
 			classList={{
-				"se-cell--selected": props.selected,
-				"se-cell--range": props.rangeSelected,
-				"se-cell--focus": props.isFocus,
 				"se-cell--pinned": isPinned(),
 				"se-cell--pinned-last": !!props.isLastPinned,
 				"se-cell--search-match": !!props.searchMatch,
@@ -42,7 +36,6 @@ export default function GridCell(props: GridCellProps) {
 			}}
 			role="gridcell"
 			aria-colindex={props.colIndex + 1}
-			aria-selected={props.selected || props.rangeSelected}
 			aria-readonly={props.readOnly || undefined}
 			title={text() || undefined}
 			style={{

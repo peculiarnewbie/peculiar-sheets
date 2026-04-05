@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onMount } from "solid-js";
+import { onMount } from "solid-js";
 import { Sheet, type CellMutation, type CellValue, type ColumnDef, type FormulaEngineConfig, type SheetController } from "@peculiarnewbie/spreadsheets";
 import "@peculiarnewbie/spreadsheets/styles";
 
@@ -19,35 +19,25 @@ export interface HarnessProps {
  * - `window.__SHEET_CONTROLLER__` — imperative controller handle
  */
 export default function Harness(props: HarnessProps) {
-	const [data, setData] = createSignal<CellValue[][]>(
-		structuredClone(props.initialData),
-	);
-
-	let controller: SheetController | null = null;
+	const sheetData = structuredClone(props.initialData);
 
 	// ── Expose state on window ────────────────────────────────────────────
 
 	onMount(() => {
+		window.__SHEET_DATA__ = sheetData;
 		window.__MUTATIONS__ = [];
 		window.__SHEET_CONTROLLER__ = null;
-	});
-
-	createEffect(() => {
-		window.__SHEET_DATA__ = data();
 	});
 
 	// ── Mutation handlers ─────────────────────────────────────────────────
 
 	function applyMutation(mutation: CellMutation) {
-		setData((prev) => {
-			const next = prev.map((row) => [...row]);
-			const { row, col } = mutation.address;
-			// Grow rows/cols if needed
-			while (next.length <= row) next.push([]);
-			while (next[row]!.length <= col) next[row]!.push(null);
-			next[row]![col] = mutation.newValue;
-			return next;
-		});
+		const { row, col } = mutation.address;
+		// Grow rows/cols if needed while preserving the same top-level reference.
+		while (sheetData.length <= row) sheetData.push([]);
+		while (sheetData[row]!.length <= col) sheetData[row]!.push(null);
+		sheetData[row]![col] = mutation.newValue;
+		window.__SHEET_DATA__ = sheetData;
 	}
 
 	function handleCellEdit(mutation: CellMutation) {
@@ -61,7 +51,6 @@ export default function Harness(props: HarnessProps) {
 	}
 
 	function handleRef(ctrl: SheetController) {
-		controller = ctrl;
 		window.__SHEET_CONTROLLER__ = ctrl;
 	}
 
@@ -70,7 +59,7 @@ export default function Harness(props: HarnessProps) {
 	return (
 		<div style={{ width: "100vw", height: "100vh" }} data-testid="harness">
 			<Sheet
-				data={data()}
+				data={sheetData}
 				columns={props.columns}
 				readOnly={props.readOnly}
 				formulaEngine={props.formulaEngine}

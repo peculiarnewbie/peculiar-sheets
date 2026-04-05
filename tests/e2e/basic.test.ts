@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
 	getStagehand,
-	closeStagehand,
 	navigateTo,
 	getSheetData,
 	getCellValue,
@@ -11,6 +10,7 @@ import {
 	doubleClickCell,
 	typeIntoCell,
 	press,
+	getPage,
 } from "./setup";
 import type { Stagehand } from "@browserbasehq/stagehand";
 
@@ -26,16 +26,12 @@ describe("basic", () => {
 		await clearMutations(sh);
 	});
 
-	afterAll(async () => {
-		await closeStagehand();
-	});
-
 	// ── Selection ─────────────────────────────────────────────────────
 
 	it("selects a cell on click", async () => {
 		await clickCell(sh, 0, 0);
-		const selection = await sh.page.evaluate(
-			() => window.__SHEET_CONTROLLER__?.getSelection(),
+		const selection = await getPage().evaluate(
+			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
 		expect(selection?.anchor).toEqual({ row: 0, col: 0 });
 	});
@@ -45,8 +41,8 @@ describe("basic", () => {
 		await press(sh, "ArrowRight");
 		await press(sh, "ArrowDown");
 
-		const selection = await sh.page.evaluate(
-			() => window.__SHEET_CONTROLLER__?.getSelection(),
+		const selection = await getPage().evaluate(
+			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
 		expect(selection?.anchor).toEqual({ row: 1, col: 1 });
 	});
@@ -55,8 +51,8 @@ describe("basic", () => {
 		await clickCell(sh, 0, 0);
 		await press(sh, "Tab");
 
-		const selection = await sh.page.evaluate(
-			() => window.__SHEET_CONTROLLER__?.getSelection(),
+		const selection = await getPage().evaluate(
+			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
 		expect(selection?.anchor).toEqual({ row: 0, col: 1 });
 	});
@@ -88,7 +84,7 @@ describe("basic", () => {
 	it("cancels editing with Escape", async () => {
 		const before = await getCellValue(sh, 2, 0);
 		await doubleClickCell(sh, 2, 0);
-		await sh.page.keyboard.type("NOPE");
+		await getPage().type("NOPE");
 		await press(sh, "Escape");
 
 		const after = await getCellValue(sh, 2, 0);
@@ -120,14 +116,14 @@ describe("basic", () => {
 		await clickCell(sh, 1, 0);
 		await press(sh, "Enter");
 
-		let sel = await sh.page.evaluate(
-			() => window.__SHEET_CONTROLLER__?.getSelection(),
+		let sel = await getPage().evaluate(
+			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
 		expect(sel?.anchor.row).toBe(2);
 
 		await press(sh, "Shift+Enter");
-		sel = await sh.page.evaluate(
-			() => window.__SHEET_CONTROLLER__?.getSelection(),
+		sel = await getPage().evaluate(
+			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
 		expect(sel?.anchor.row).toBe(1);
 	});

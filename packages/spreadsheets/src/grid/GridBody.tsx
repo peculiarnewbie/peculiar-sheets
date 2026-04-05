@@ -1,6 +1,5 @@
 import { For, Show } from "solid-js";
-import type { CellAddress, CellRange, CellValue, ColumnDef, Selection } from "../types";
-import { addressEquals, selectionContains } from "../core/selection";
+import type { CellAddress, CellValue, ColumnDef } from "../types";
 import { useSheetCustomization } from "../customization";
 import GridCell from "./GridCell";
 
@@ -13,8 +12,6 @@ interface GridBodyProps {
 	columns: ColumnDef[];
 	columnWidths: Map<string, number>;
 	rowHeight: number;
-	selection: Selection;
-	clipboardRange: CellRange | null;
 	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
 	/** Indices of visible rows from the virtualizer. */
@@ -82,17 +79,12 @@ export default function GridBody(props: GridBodyProps) {
 							<For each={props.columns}>
 								{(col, colIdx) => {
 									const addr = (): CellAddress => ({ row: rowIdx, col: colIdx() });
-									const isSelected = () => selectionContains(props.selection, addr());
-									const isAnchor = () => addressEquals(props.selection.anchor, addr());
 
 									return (
 										<GridCell
 											displayValue={props.getDisplayValue(rowIdx, colIdx())}
 											width={getColWidth(col)}
 											height={props.rowHeight}
-											selected={isAnchor()}
-											rangeSelected={isSelected() && !isAnchor()}
-											isFocus={isAnchor()}
 											colIndex={colIdx()}
 											readOnly={props.readOnly ?? false}
 											pinnedLeft={props.pinnedLeftOffsets?.[colIdx()] ?? -1}

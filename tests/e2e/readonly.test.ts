@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
 	getStagehand,
-	closeStagehand,
 	navigateTo,
 	getCellValue,
 	getMutations,
@@ -10,6 +9,7 @@ import {
 	doubleClickCell,
 	typeIntoCell,
 	press,
+	getPage,
 } from "./setup";
 import type { Stagehand } from "@browserbasehq/stagehand";
 
@@ -25,15 +25,11 @@ describe("readonly", () => {
 		await clearMutations(sh);
 	});
 
-	afterAll(async () => {
-		await closeStagehand();
-	});
-
 	it("prevents editing on non-editable columns", async () => {
 		const original = await getCellValue(sh, 0, 0);
 
 		await doubleClickCell(sh, 0, 0);
-		await sh.page.keyboard.type("hacked");
+		await getPage().type("hacked");
 		await press(sh, "Enter");
 
 		const after = await getCellValue(sh, 0, 0);

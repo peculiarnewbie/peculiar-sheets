@@ -1,7 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
 	getStagehand,
-	closeStagehand,
 	navigateTo,
 	getCellValue,
 	clearMutations,
@@ -9,6 +8,7 @@ import {
 	doubleClickCell,
 	typeIntoCell,
 	press,
+	focusGrid,
 } from "./setup";
 import type { Stagehand } from "@browserbasehq/stagehand";
 
@@ -24,10 +24,6 @@ describe("history", () => {
 		await clearMutations(sh);
 	});
 
-	afterAll(async () => {
-		await closeStagehand();
-	});
-
 	it("undoes a cell edit with Ctrl+Z", async () => {
 		const original = await getCellValue(sh, 0, 0);
 
@@ -35,6 +31,9 @@ describe("history", () => {
 		await typeIntoCell(sh, "changed");
 		expect(await getCellValue(sh, 0, 0)).toBe("changed");
 
+		// After editing, the grid loses focus (CellEditor input is removed from DOM).
+		// Refocus so the keydown handler receives Ctrl+Z.
+		await focusGrid();
 		await press(sh, "Control+z");
 		expect(await getCellValue(sh, 0, 0)).toBe(original);
 	});
@@ -43,11 +42,12 @@ describe("history", () => {
 		await doubleClickCell(sh, 0, 1);
 		await typeIntoCell(sh, "999");
 
+		await focusGrid();
 		await press(sh, "Control+z");
 		expect(await getCellValue(sh, 0, 1)).toBe(100);
 
 		await press(sh, "Control+y");
-		expect(await getCellValue(sh, 0, 1)).toBe("999");
+		expect(await getCellValue(sh, 0, 1)).toBe(999);
 	});
 
 	it("supports multiple undo steps", async () => {
@@ -65,6 +65,7 @@ describe("history", () => {
 
 		expect(await getCellValue(sh, 1, 0)).toBe("step3");
 
+		await focusGrid();
 		await press(sh, "Control+z");
 		expect(await getCellValue(sh, 1, 0)).toBe("step2");
 

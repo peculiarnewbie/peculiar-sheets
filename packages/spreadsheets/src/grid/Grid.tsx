@@ -198,7 +198,7 @@ export default function Grid(props: GridProps) {
 		},
 		getScrollElement: () => viewportRef ?? null,
 		estimateSize: () => props.rowHeight,
-		overscan: 10,
+		overscan: 3,
 	});
 
 	const visibleRows = createMemo(() =>
@@ -260,7 +260,7 @@ export default function Grid(props: GridProps) {
 			for (let c = 0; c < addr.col; c++) {
 				left += untrack(columnWidths)[c] ?? DEFAULT_COL_WIDTH;
 			}
-			viewportRef.scrollTo({ top, left, behavior: "smooth" });
+			viewportRef.scrollTo({ top, left });
 		}),
 	);
 
@@ -716,14 +716,6 @@ export default function Grid(props: GridProps) {
 		setReferenceDragAnchor(null);
 	}
 
-	function handleWheel(event: WheelEvent) {
-		if (event.shiftKey && viewportRef) {
-			event.preventDefault();
-			const horizontalDelta = event.deltaX !== 0 ? event.deltaX : event.deltaY;
-			viewportRef.scrollLeft += horizontalDelta;
-		}
-	}
-
 	function handleContextMenu(event: MouseEvent) {
 		event.preventDefault();
 		setContextMenu({ x: event.clientX, y: event.clientY });
@@ -1004,11 +996,19 @@ export default function Grid(props: GridProps) {
 		});
 	}
 
-	onMount(() => {
+	createEffect(() => {
+		if (!isDraggingSelection() && !isReferenceDragging() && !fillDragState()) return;
+
 		document.addEventListener("mousemove", handleMouseMove);
 		document.addEventListener("mouseup", handleMouseUp);
-		viewportRef?.addEventListener("wheel", handleWheel, { passive: false });
 
+		onCleanup(() => {
+			document.removeEventListener("mousemove", handleMouseMove);
+			document.removeEventListener("mouseup", handleMouseUp);
+		});
+	});
+
+	onMount(() => {
 		if (props.controllerRef) {
 			const controller: SheetController = {
 				getSelection: () => props.store.selection(),
@@ -1034,7 +1034,7 @@ export default function Grid(props: GridProps) {
 					for (let c = 0; c < col; c++) {
 						left += columnWidths()[c] ?? DEFAULT_COL_WIDTH;
 					}
-					viewportRef.scrollTo({ top, left, behavior: "smooth" });
+					viewportRef.scrollTo({ top, left });
 				},
 				startEditing: (row, col) => startEditing({ row, col }),
 				stopEditing: (commit = true) => {
@@ -1107,7 +1107,6 @@ export default function Grid(props: GridProps) {
 	onCleanup(() => {
 		document.removeEventListener("mousemove", handleMouseMove);
 		document.removeEventListener("mouseup", handleMouseUp);
-		viewportRef?.removeEventListener("wheel", handleWheel);
 	});
 
 	return (
@@ -1189,8 +1188,6 @@ export default function Grid(props: GridProps) {
 							columns={props.columns}
 							columnWidths={props.store.columnWidths()}
 							rowHeight={props.rowHeight}
-							selection={props.store.selection()}
-							clipboardRange={clipboardRange()}
 							rowGutterWidth={rowGutterWidth()}
 							showReferenceHeaders={props.showReferenceHeaders}
 							visibleRows={visibleRows()}
