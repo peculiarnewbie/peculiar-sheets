@@ -1,6 +1,6 @@
 import { onMount } from "solid-js";
-import { Sheet, type CellMutation, type CellValue, type ColumnDef, type FormulaEngineConfig, type SheetController } from "@peculiarnewbie/spreadsheets";
-import "@peculiarnewbie/spreadsheets/styles";
+import { Sheet, type CellMutation, type CellValue, type ColumnDef, type FormulaEngineConfig, type SheetController } from "peculiar-sheets";
+import "peculiar-sheets/styles";
 
 export interface HarnessProps {
 	initialData: CellValue[][];

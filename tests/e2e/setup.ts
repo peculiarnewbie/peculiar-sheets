@@ -1,5 +1,5 @@
 import { Stagehand } from "@browserbasehq/stagehand";
-import type { CellMutation, CellValue } from "@peculiarnewbie/spreadsheets";
+import type { CellMutation, CellValue } from "peculiar-sheets";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3141";
 

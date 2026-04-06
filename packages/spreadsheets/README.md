@@ -1,4 +1,4 @@
-# @peculiarnewbie/spreadsheets
+# peculiar-sheets
 
 A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/) powered by [HyperFormula](https://hyperformula.handsontable.com/).
 
@@ -20,9 +20,9 @@ A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/)
 ## Installation
 
 ```bash
-npm install @peculiarnewbie/spreadsheets
+npm install peculiar-sheets
 # or
-bun add @peculiarnewbie/spreadsheets
+bun add peculiar-sheets
 ```
 
 HyperFormula is included as a dependency -- no extra install needed.
@@ -31,8 +31,8 @@ HyperFormula is included as a dependency -- no extra install needed.
 
 ```tsx
 import HyperFormula from "hyperformula";
-import { Sheet } from "@peculiarnewbie/spreadsheets";
-import "@peculiarnewbie/spreadsheets/styles";
+import { Sheet } from "peculiar-sheets";
+import "peculiar-sheets/styles";
 
 const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
 const sheetName = hf.addSheet("Sheet1");
@@ -160,7 +160,7 @@ import type {
 	SheetController,
 	SheetCustomization,
 	SheetProps,
-} from "@peculiarnewbie/spreadsheets";
+} from "peculiar-sheets";
 ```
 
 Utility functions are also exported:
@@ -171,7 +171,7 @@ import {
 	rangeToA1,
 	isFormulaValue,
 	shiftFormulaByDelta,
-} from "@peculiarnewbie/spreadsheets";
+} from "peculiar-sheets";
 ```
 
 ## License

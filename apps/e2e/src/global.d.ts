@@ -1,4 +1,4 @@
-import type { CellMutation, CellValue, SheetController } from "@peculiarnewbie/spreadsheets";
+import type { CellMutation, CellValue, SheetController } from "peculiar-sheets";
 
 declare global {
 	interface Window {

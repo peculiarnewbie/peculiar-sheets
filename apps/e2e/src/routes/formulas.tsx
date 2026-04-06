@@ -1,5 +1,5 @@
 import HyperFormula from "hyperformula";
-import type { ColumnDef, CellValue } from "@peculiarnewbie/spreadsheets";
+import type { ColumnDef, CellValue } from "peculiar-sheets";
 import Harness from "../harness";
 
 const columns: ColumnDef[] = [

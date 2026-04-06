@@ -3,9 +3,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm -r --parallel dev",
-    "build:lib": "pnpm --filter @peculiarnewbie/spreadsheets build",
-    "build:www": "pnpm --filter @peculiarnewbie/www build",
-    "publish:lib": "pnpm --filter @peculiarnewbie/spreadsheets run publish:npm",
+    "build:lib": "pnpm --filter peculiar-sheets build",
+    "build:www": "pnpm --filter solid-sheet-www build",
+    "publish:lib": "pnpm --filter peculiar-sheets run publish:npm",
     "e2e": "bun run tests/e2e/run.ts",
     "e2e:dev": "pnpm --filter @peculiarnewbie/e2e dev"
   },

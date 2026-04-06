@@ -1,6 +1,6 @@
 {
-	"name": "@peculiarnewbie/spreadsheets",
-	"version": "0.1.0",
+	"name": "peculiar-sheets",
+	"version": "0.2.0",
 	"description": "A high-performance spreadsheet engine for SolidJS powered by HyperFormula",
 	"license": "GPL-3.0-only",
 	"author": "peculiarnewbie",
@@ -8,6 +8,7 @@
 		"type": "git",
 		"url": "https://github.com/peculiarnewbie/spreadsheets"
 	},
+	"homepage": "https://sheets.peculiarnewbie.com",
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
