@@ -12,6 +12,7 @@ import AutofillPage from "./routes/autofill";
 import HistoryPage from "./routes/history";
 import ReadonlyPage from "./routes/readonly";
 import LargePage from "./routes/large";
+import RowsPage from "./routes/rows";
 
 const rootRoute = createRootRoute({
 	component: () => <Outlet />,
@@ -78,6 +79,12 @@ const largeRoute = createRoute({
 	component: LargePage,
 });
 
+const rowsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/rows",
+	component: RowsPage,
+});
+
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	basicRoute,
@@ -87,6 +94,7 @@ const routeTree = rootRoute.addChildren([
 	historyRoute,
 	readonlyRoute,
 	largeRoute,
+	rowsRoute,
 ]);
 
 const router = createRouter({ routeTree });

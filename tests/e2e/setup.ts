@@ -167,6 +167,53 @@ export async function focusGrid(): Promise<void> {
 	});
 }
 
+/** Get the current row count from the harness data. */
+export async function getRowCount(_sh: Stagehand): Promise<number> {
+	return getPage().evaluate(() => (window as any).__SHEET_DATA__.length);
+}
+
+/**
+ * Right-click a cell to open the context menu.
+ * Uses CDP to dispatch a right-button click since Stagehand's Locator
+ * doesn't natively support right-click.
+ */
+export async function rightClickCell(
+	_sh: Stagehand,
+	row: number,
+	col: number,
+) {
+	const page = getPage();
+	const { x, y } = await cellLocator(row, col).centroid();
+
+	await page.sendCDP("Input.dispatchMouseEvent", {
+		type: "mouseMoved", x, y, button: "none",
+	});
+	await page.sendCDP("Input.dispatchMouseEvent", {
+		type: "mousePressed", x, y, button: "right", clickCount: 1,
+	});
+	await page.sendCDP("Input.dispatchMouseEvent", {
+		type: "mouseReleased", x, y, button: "right", clickCount: 1,
+	});
+
+	// Wait for the context menu to appear
+	await page.waitForSelector(".se-context-menu");
+}
+
+/**
+ * Click a context menu item by its label text.
+ * Must call rightClickCell() first to open the menu.
+ */
+export async function clickContextMenuItem(
+	_sh: Stagehand,
+	label: string,
+) {
+	const page = getPage();
+	const item = page.locator(`.se-context-menu__item >> text="${label}"`);
+	await item.click();
+	// Wait for the menu to close
+	await page.waitForTimeout(100);
+}
+
 /**
  * Shift-click a cell to extend the current selection.
  * Dispatches the full mouse sequence via CDP with the Shift modifier flag

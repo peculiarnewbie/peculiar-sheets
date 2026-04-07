@@ -50,6 +50,28 @@ export default function Harness(props: HarnessProps) {
 		for (const m of mutations) applyMutation(m);
 	}
 
+	function handleRowInsert(atIndex: number, count: number) {
+		const emptyRows = Array.from({ length: count }, () =>
+			new Array(props.columns.length).fill(null),
+		);
+		sheetData.splice(atIndex, 0, ...emptyRows);
+		// Sync back from controller — during undo of deleteRows the store
+		// restores the original cell values, so read them back.
+		if (window.__SHEET_CONTROLLER__) {
+			for (let r = atIndex; r < atIndex + count; r++) {
+				for (let c = 0; c < props.columns.length; c++) {
+					sheetData[r]![c] = window.__SHEET_CONTROLLER__.getCellValue(r, c);
+				}
+			}
+		}
+		window.__SHEET_DATA__ = sheetData;
+	}
+
+	function handleRowDelete(atIndex: number, count: number) {
+		sheetData.splice(atIndex, count);
+		window.__SHEET_DATA__ = sheetData;
+	}
+
 	function handleRef(ctrl: SheetController) {
 		window.__SHEET_CONTROLLER__ = ctrl;
 	}
@@ -67,6 +89,8 @@ export default function Harness(props: HarnessProps) {
 				showReferenceHeaders={props.showReferenceHeaders}
 				onCellEdit={handleCellEdit}
 				onBatchEdit={handleBatchEdit}
+				onRowInsert={handleRowInsert}
+				onRowDelete={handleRowDelete}
 				ref={handleRef}
 			/>
 		</div>

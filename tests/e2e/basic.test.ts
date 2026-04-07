@@ -112,19 +112,22 @@ describe("basic", () => {
 
 	// ── Keyboard navigation ───────────────────────────────────────────
 
-	it("navigates with Enter (move down) and Shift+Enter (move up)", async () => {
+	it("starts editing on Enter, commits and moves down on second Enter", async () => {
 		await clickCell(sh, 1, 0);
+		// First Enter starts editing
 		await press(sh, "Enter");
 
+		// Still on same row (now in edit mode)
 		let sel = await getPage().evaluate(
 			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
-		expect(sel?.anchor.row).toBe(2);
+		expect(sel?.anchor.row).toBe(1);
 
-		await press(sh, "Shift+Enter");
+		// Second Enter commits edit and moves down
+		await press(sh, "Enter");
 		sel = await getPage().evaluate(
 			() => (window as any).__SHEET_CONTROLLER__?.getSelection(),
 		);
-		expect(sel?.anchor.row).toBe(1);
+		expect(sel?.anchor.row).toBe(2);
 	});
 });
