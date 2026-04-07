@@ -1,4 +1,4 @@
-import { createEffect, onCleanup } from "solid-js";
+import { onCleanup, onMount } from "solid-js";
 import type { SheetProps } from "./types";
 import { DEFAULT_ROW_HEIGHT } from "./types";
 import { createReconciler, createSheetStore } from "./core/state";
@@ -24,9 +24,13 @@ export function Sheet(props: SheetProps) {
 		store,
 		() => props.data,
 		() => props.columns,
+		() => {
+			formulaBridge?.ensureSheet();
+			formulaBridge?.syncAll(props.data);
+		},
 	);
 
-	createEffect(() => {
+	onMount(() => {
 		formulaBridge?.ensureSheet();
 		formulaBridge?.syncAll(props.data);
 	});
@@ -49,14 +53,19 @@ export function Sheet(props: SheetProps) {
 				onClipboard={props.onClipboard}
 				onColumnResize={props.onColumnResize}
 				onSort={props.onSort}
+				onSortChange={props.onSortChange}
 				onRowInsert={props.onRowInsert}
 				onRowDelete={props.onRowDelete}
+				onRowReorder={props.onRowReorder}
 				onCellPointerDown={props.onCellPointerDown}
 				onCellPointerMove={props.onCellPointerMove}
 				controllerRef={props.ref}
 				formulaBridge={formulaBridge}
 				showFormulaBar={showFormulaBar()}
 				showReferenceHeaders={showReferenceHeaders()}
+				sortBehavior={props.sortBehavior ?? "view"}
+				sortState={props.sortState}
+				defaultSortState={props.defaultSortState ?? null}
 			/>
 		</SheetCustomizationContext.Provider>
 	);

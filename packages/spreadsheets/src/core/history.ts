@@ -1,4 +1,4 @@
-import type { CellMutation, CellValue, Selection } from "../types";
+import type { CellMutation, CellValue, RowReorderMutation, Selection } from "../types";
 
 // ── Row Operation Types ─────────────────────────────────────────────────────
 
@@ -6,16 +6,35 @@ export type RowOperation =
 	| { type: "insertRows"; atIndex: number; count: number }
 	| { type: "deleteRows"; atIndex: number; count: number; removedData: CellValue[][] };
 
+interface StoredRowReorder {
+	columnId: string;
+	direction: RowReorderMutation["direction"];
+	oldOrder: number[];
+	newOrder: number[];
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export interface HistoryEntry {
-	forward: CellMutation[];
-	inverse: CellMutation[];
-	selectionBefore: Selection;
-	selectionAfter: Selection;
-	/** Optional structural row operation recorded with this entry. */
-	rowOp?: RowOperation;
-}
+export type HistoryEntry =
+	| {
+		type: "cell-mutations";
+		forward: CellMutation[];
+		inverse: CellMutation[];
+		selectionBefore: Selection;
+		selectionAfter: Selection;
+	}
+	| {
+		type: "row-operation";
+		rowOp: RowOperation;
+		selectionBefore: Selection;
+		selectionAfter: Selection;
+	}
+	| {
+		type: "row-reorder";
+		rowReorder: StoredRowReorder;
+		selectionBefore: Selection;
+		selectionAfter: Selection;
+	};
 
 export interface HistoryStack {
 	undoStack: HistoryEntry[];
@@ -34,31 +53,69 @@ export function createHistory(): HistoryStack {
 
 // ── Push ─────────────────────────────────────────────────────────────────────
 
-/**
- * Record a batch of mutations into the history stack.
- * Returns a new HistoryStack (immutable).
- */
-export function pushHistory(
+function pushEntry(history: HistoryStack, entry: HistoryEntry): HistoryStack {
+	const undoStack = [...history.undoStack, entry].slice(-MAX_HISTORY);
+	return { undoStack, redoStack: [] };
+}
+
+export function pushMutationHistory(
 	history: HistoryStack,
 	forward: CellMutation[],
 	selectionBefore: Selection,
 	selectionAfter: Selection,
-	rowOp?: RowOperation,
 ): HistoryStack {
-	if (forward.length === 0 && !rowOp) return history;
+	if (forward.length === 0) return history;
 
 	const inverse = forward.map<CellMutation>((m) => ({
 		address: m.address,
+		viewAddress: m.viewAddress,
+		rowId: m.rowId,
 		columnId: m.columnId,
 		oldValue: m.newValue,
 		newValue: m.oldValue,
 		source: m.source,
 	}));
 
-	const entry: HistoryEntry = { forward, inverse, selectionBefore, selectionAfter, rowOp };
+	return pushEntry(history, {
+		type: "cell-mutations",
+		forward,
+		inverse,
+		selectionBefore,
+		selectionAfter,
+	});
+}
 
-	const undoStack = [...history.undoStack, entry].slice(-MAX_HISTORY);
-	return { undoStack, redoStack: [] };
+export function pushRowOperationHistory(
+	history: HistoryStack,
+	rowOp: RowOperation,
+	selectionBefore: Selection,
+	selectionAfter: Selection,
+): HistoryStack {
+	return pushEntry(history, {
+		type: "row-operation",
+		rowOp,
+		selectionBefore,
+		selectionAfter,
+	});
+}
+
+export function pushRowReorderHistory(
+	history: HistoryStack,
+	rowReorder: Omit<RowReorderMutation, "indexOrder" | "source">,
+	selectionBefore: Selection,
+	selectionAfter: Selection,
+): HistoryStack {
+	return pushEntry(history, {
+		type: "row-reorder",
+		rowReorder: {
+			columnId: rowReorder.columnId,
+			direction: rowReorder.direction,
+			oldOrder: [...rowReorder.oldOrder],
+			newOrder: [...rowReorder.newOrder],
+		},
+		selectionBefore,
+		selectionAfter,
+	});
 }
 
 // ── Undo / Redo ──────────────────────────────────────────────────────────────
@@ -74,10 +131,32 @@ export interface UndoResult {
 	history: HistoryStack;
 	mutations: CellMutation[];
 	selection: Selection;
-	/** Describes the inverse row operation that should be applied. */
 	rowOp?: RowOperation;
-	/** Summarises the structural change for external callbacks. */
 	rowChange?: UndoRedoRowChange;
+	rowReorder?: RowReorderMutation;
+}
+
+function buildIndexOrder(oldOrder: number[], newOrder: number[]): number[] {
+	const nextIndexByRowId = new Map<number, number>();
+	for (let i = 0; i < newOrder.length; i++) {
+		nextIndexByRowId.set(newOrder[i]!, i);
+	}
+
+	return oldOrder.map((rowId) => nextIndexByRowId.get(rowId) ?? -1);
+}
+
+function materializeRowReorder(
+	rowReorder: StoredRowReorder,
+	source: RowReorderMutation["source"],
+): RowReorderMutation {
+	return {
+		columnId: rowReorder.columnId,
+		direction: rowReorder.direction,
+		oldOrder: [...rowReorder.oldOrder],
+		newOrder: [...rowReorder.newOrder],
+		indexOrder: buildIndexOrder(rowReorder.oldOrder, rowReorder.newOrder),
+		source,
+	};
 }
 
 export function undo(history: HistoryStack): UndoResult | null {
@@ -85,40 +164,72 @@ export function undo(history: HistoryStack): UndoResult | null {
 
 	const entry = history.undoStack[history.undoStack.length - 1]!;
 
-	// Compute the inverse row operation and the external-facing change description
-	let inverseRowOp: RowOperation | undefined;
-	let rowChange: UndoRedoRowChange | undefined;
-	if (entry.rowOp) {
-		if (entry.rowOp.type === "insertRows") {
-			// Undo insert → delete those rows
-			inverseRowOp = {
-				type: "deleteRows",
-				atIndex: entry.rowOp.atIndex,
-				count: entry.rowOp.count,
-				removedData: [], // rows were empty when inserted
-			};
-			rowChange = { type: "deleteRows", atIndex: entry.rowOp.atIndex, count: entry.rowOp.count };
-		} else {
-			// Undo delete → re-insert the rows (with data)
-			inverseRowOp = {
-				type: "insertRows",
-				atIndex: entry.rowOp.atIndex,
-				count: entry.rowOp.count,
-			};
-			rowChange = { type: "insertRows", atIndex: entry.rowOp.atIndex, count: entry.rowOp.count };
-		}
-	}
-
-	return {
-		history: {
-			undoStack: history.undoStack.slice(0, -1),
-			redoStack: [...history.redoStack, entry],
-		},
-		mutations: entry.inverse,
-		selection: entry.selectionBefore,
-		rowOp: inverseRowOp,
-		rowChange,
+	const nextHistory: HistoryStack = {
+		undoStack: history.undoStack.slice(0, -1),
+		redoStack: [...history.redoStack, entry],
 	};
+
+	switch (entry.type) {
+		case "cell-mutations":
+			return {
+				history: nextHistory,
+				mutations: entry.inverse,
+				selection: entry.selectionBefore,
+			};
+
+		case "row-operation": {
+			let inverseRowOp: RowOperation | undefined;
+			let rowChange: UndoRedoRowChange | undefined;
+			if (entry.rowOp.type === "insertRows") {
+				inverseRowOp = {
+					type: "deleteRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+					removedData: [],
+				};
+				rowChange = {
+					type: "deleteRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+				};
+			} else {
+				inverseRowOp = {
+					type: "insertRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+				};
+				rowChange = {
+					type: "insertRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+				};
+			}
+
+			return {
+				history: nextHistory,
+				mutations: [],
+				selection: entry.selectionBefore,
+				rowOp: inverseRowOp,
+				rowChange,
+			};
+		}
+
+		case "row-reorder":
+			return {
+				history: nextHistory,
+				mutations: [],
+				selection: entry.selectionBefore,
+				rowReorder: materializeRowReorder(
+					{
+						columnId: entry.rowReorder.columnId,
+						direction: entry.rowReorder.direction,
+						oldOrder: entry.rowReorder.newOrder,
+						newOrder: entry.rowReorder.oldOrder,
+					},
+					"undo",
+				),
+			};
+	}
 }
 
 export function redo(history: HistoryStack): UndoResult | null {
@@ -126,26 +237,52 @@ export function redo(history: HistoryStack): UndoResult | null {
 
 	const entry = history.redoStack[history.redoStack.length - 1]!;
 
-	// The forward row operation and its external-facing change description
-	let rowChange: UndoRedoRowChange | undefined;
-	if (entry.rowOp) {
-		if (entry.rowOp.type === "insertRows") {
-			rowChange = { type: "insertRows", atIndex: entry.rowOp.atIndex, count: entry.rowOp.count };
-		} else {
-			rowChange = { type: "deleteRows", atIndex: entry.rowOp.atIndex, count: entry.rowOp.count };
-		}
-	}
-
-	return {
-		history: {
-			undoStack: [...history.undoStack, entry],
-			redoStack: history.redoStack.slice(0, -1),
-		},
-		mutations: entry.forward,
-		selection: entry.selectionAfter,
-		rowOp: entry.rowOp,
-		rowChange,
+	const nextHistory: HistoryStack = {
+		undoStack: [...history.undoStack, entry],
+		redoStack: history.redoStack.slice(0, -1),
 	};
+
+	switch (entry.type) {
+		case "cell-mutations":
+			return {
+				history: nextHistory,
+				mutations: entry.forward,
+				selection: entry.selectionAfter,
+			};
+
+		case "row-operation": {
+			let rowChange: UndoRedoRowChange | undefined;
+			if (entry.rowOp.type === "insertRows") {
+				rowChange = {
+					type: "insertRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+				};
+			} else {
+				rowChange = {
+					type: "deleteRows",
+					atIndex: entry.rowOp.atIndex,
+					count: entry.rowOp.count,
+				};
+			}
+
+			return {
+				history: nextHistory,
+				mutations: [],
+				selection: entry.selectionAfter,
+				rowOp: entry.rowOp,
+				rowChange,
+			};
+		}
+
+		case "row-reorder":
+			return {
+				history: nextHistory,
+				mutations: [],
+				selection: entry.selectionAfter,
+				rowReorder: materializeRowReorder(entry.rowReorder, "redo"),
+			};
+	}
 }
 
 export function canUndo(history: HistoryStack): boolean {

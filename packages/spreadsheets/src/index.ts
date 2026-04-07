@@ -15,9 +15,13 @@ export type {
 	ColumnDef,
 	EditModeState,
 	FormulaEngineConfig,
+	RowReorderMutation,
 	ScrollPosition,
 	Selection,
 	SheetController,
 	SheetCustomization,
 	SheetProps,
+	SortBehavior,
+	SortDirection,
+	SortState,
 } from "./types";

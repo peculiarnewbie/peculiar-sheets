@@ -1,14 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
-import type { ColumnDef } from "../types";
+import type { ColumnDef, SortState } from "../types";
 import { DEFAULT_MIN_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
 import { columnIndexToLetters } from "../formula/references";
-
-export type SortDirection = "asc" | "desc" | null;
-
-export interface SortState {
-	columnId: string;
-	direction: "asc" | "desc";
-}
 
 interface GridHeaderProps {
 	columns: ColumnDef[];
@@ -247,11 +240,12 @@ export default function GridHeader(props: GridHeaderProps) {
 				<For each={props.columns}>
 					{(col, index) => {
 						const isPinned = () => (props.pinnedLeftOffsets?.[index()] ?? -1) >= 0;
+						const isSortable = col.sortable !== false;
 						return (
 							<div
 								class="se-header-cell"
 								classList={{
-									"se-header-cell--sortable": true,
+									"se-header-cell--sortable": isSortable,
 									"se-header-cell--pinned": isPinned(),
 									"se-header-cell--pinned-last": index() === props.lastPinnedIndex,
 								}}
@@ -267,8 +261,13 @@ export default function GridHeader(props: GridHeaderProps) {
 									"min-width": `${getColWidth(col)}px`,
 									height: `${HEADER_HEIGHT}px`,
 									left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
+									cursor: isSortable ? "pointer" : undefined,
 								}}
-								onClick={() => props.onSort(col.id)}
+								onClick={() => {
+									if (isSortable) {
+										props.onSort(col.id);
+									}
+								}}
 							>
 								<span class="se-header-cell__label">
 									{col.header}{getSortIndicator(col)}

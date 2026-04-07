@@ -15,6 +15,8 @@ interface HyperFormulaLike {
 	addSheet(name?: string): string;
 	getSheetId(name: string): number | undefined;
 	setSheetContent(sheetId: number, data: unknown[][]): void;
+	setRowOrder(sheetId: number, newRowOrder: number[]): unknown;
+	isItPossibleToSetRowOrder(sheetId: number, newRowOrder: number[]): boolean;
 	on(event: string, callback: (...args: unknown[]) => void): void;
 	off(event: string, callback: (...args: unknown[]) => void): void;
 }
@@ -28,6 +30,8 @@ export interface FormulaBridge {
 	syncAll(cells: CellValue[][]): void;
 	/** Update a single cell in the formula engine. */
 	setCell(row: number, col: number, value: CellValue): void;
+	/** Reorder rows structurally in the formula engine. */
+	setRowOrder(newRowOrder: number[]): boolean;
 	/** Get the display value for a cell (evaluated formula result or raw value). */
 	getDisplayValue(row: number, col: number, rawValue: CellValue): CellValue;
 	/** Check if a cell value is a formula. */
@@ -172,6 +176,22 @@ export function createFormulaBridge(
 				bumpRevision();
 			} catch {
 				// Ignore errors for now
+			}
+		},
+
+		setRowOrder(newRowOrder: number[]) {
+			const sheetId = resolveSheetId();
+			if (sheetId === null) return false;
+
+			try {
+				if (!hf.isItPossibleToSetRowOrder(sheetId, newRowOrder)) {
+					return false;
+				}
+				hf.setRowOrder(sheetId, newRowOrder);
+				bumpRevision();
+				return true;
+			} catch {
+				return false;
 			}
 		},
 

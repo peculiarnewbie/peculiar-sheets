@@ -6,8 +6,12 @@ import type {
 	CellRange,
 	CellValue,
 	ColumnDef,
+	RowReorderMutation,
 	Selection,
 	SheetController,
+	SortBehavior,
+	SortDirection,
+	SortState,
 } from "../types";
 import { DEFAULT_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
 import { useSheetCustomization } from "../customization";
@@ -23,16 +27,16 @@ import {
 	selectionContains,
 } from "../core/selection";
 import {
-	buildVerticalFillMutations,
 	computeFillPreview,
 	getAutoFillSourceRange,
+	resolveAutoFillMode,
 } from "../core/autofill";
 import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
-import { buildPasteMutations, parseTSV, serializeToTSV } from "../core/clipboard";
-import { applyMutations, commitCellEdit, deleteSelectedCells } from "../core/commands";
+import { parseTSV } from "../core/clipboard";
+import { applyMutations, commitCellEdit } from "../core/commands";
 import type { FormulaBridge } from "../formula/bridge";
-import { addressToA1, isFormulaText, rangeToA1 } from "../formula/references";
-import GridHeader, { type SortState } from "./GridHeader";
+import { addressToA1, isFormulaText, isFormulaValue, rangeToA1, shiftFormulaByDelta } from "../formula/references";
+import GridHeader from "./GridHeader";
 import GridBody from "./GridBody";
 import CellEditor from "./CellEditor";
 import FormulaBar from "./FormulaBar";
@@ -62,12 +66,17 @@ interface GridProps {
 		cells: CellValue[][];
 	}) => void) | undefined;
 	onColumnResize?: ((columnId: string, width: number) => void) | undefined;
-	onSort?: ((columnId: string, direction: "asc" | "desc") => void) | undefined;
+	onSort?: ((columnId: string, direction: SortDirection | null) => void) | undefined;
+	onSortChange?: ((state: SortState | null) => void) | undefined;
 	onRowInsert?: ((atIndex: number, count: number) => void) | undefined;
 	onRowDelete?: ((atIndex: number, count: number) => void) | undefined;
+	onRowReorder?: ((mutation: RowReorderMutation) => void) | undefined;
 	onCellPointerDown?: ((address: CellAddress, event: MouseEvent) => boolean) | undefined;
 	onCellPointerMove?: ((address: CellAddress, event: MouseEvent) => boolean) | undefined;
 	controllerRef?: ((controller: SheetController) => void) | undefined;
+	sortBehavior: SortBehavior;
+	sortState?: SortState | null;
+	defaultSortState: SortState | null;
 }
 
 interface CaretRange {
@@ -137,6 +146,67 @@ function canInsertReferenceAtCaret(
 	return "=+-*/^(,:&<>".includes(previous);
 }
 
+const SORT_COLLATOR = new Intl.Collator(undefined, {
+	numeric: true,
+	sensitivity: "base",
+});
+
+function buildIndexOrder(oldOrder: number[], newOrder: number[]): number[] {
+	const nextIndexByRowId = new Map<number, number>();
+	for (let i = 0; i < newOrder.length; i++) {
+		nextIndexByRowId.set(newOrder[i]!, i);
+	}
+
+	return oldOrder.map((rowId) => nextIndexByRowId.get(rowId) ?? -1);
+}
+
+function isBlankSortValue(value: string | number | boolean | null): boolean {
+	return value === null || value === "";
+}
+
+function getSortTypeOrder(value: string | number | boolean | null): number {
+	if (typeof value === "number") return 0;
+	if (typeof value === "string") return 1;
+	if (typeof value === "boolean") return 2;
+	return 3;
+}
+
+function compareSortValues(
+	left: string | number | boolean | null,
+	right: string | number | boolean | null,
+): number {
+	if (typeof left === "number" && typeof right === "number") {
+		return left - right;
+	}
+
+	if (typeof left === "string" && typeof right === "string") {
+		return SORT_COLLATOR.compare(left, right);
+	}
+
+	if (typeof left === "boolean" && typeof right === "boolean") {
+		if (left === right) return 0;
+		return left ? 1 : -1;
+	}
+
+	return getSortTypeOrder(left) - getSortTypeOrder(right);
+}
+
+function compareSortableEntries(
+	left: string | number | boolean | null,
+	right: string | number | boolean | null,
+	direction: SortDirection,
+): number {
+	const leftBlank = isBlankSortValue(left);
+	const rightBlank = isBlankSortValue(right);
+
+	if (leftBlank && rightBlank) return 0;
+	if (leftBlank) return 1;
+	if (rightBlank) return -1;
+
+	const comparison = compareSortValues(left, right);
+	return direction === "asc" ? comparison : -comparison;
+}
+
 export default function Grid(props: GridProps) {
 	const customization = useSheetCustomization();
 
@@ -146,7 +216,10 @@ export default function Grid(props: GridProps) {
 	let formulaBarInputRef: HTMLInputElement | undefined;
 
 	const [isDraggingSelection, setIsDraggingSelection] = createSignal(false);
-	const [sortState, setSortState] = createSignal<SortState | null>(null);
+	const [internalSortState, setInternalSortState] = createSignal<SortState | null>(
+		props.defaultSortState,
+	);
+	const [mutationSortBaseOrder, setMutationSortBaseOrder] = createSignal<number[] | null>(null);
 	const [contextMenu, setContextMenu] = createSignal<{ x: number; y: number } | null>(null);
 	const [clipboardRange, setClipboardRange] = createSignal<CellRange | null>(null);
 	const [editorText, setEditorText] = createSignal("");
@@ -167,6 +240,12 @@ export default function Grid(props: GridProps) {
 
 	const hasFormulaEngine = () => Boolean(props.formulaBridge);
 	const rowGutterWidth = () => props.showReferenceHeaders ? ROW_GUTTER_WIDTH : 0;
+	const currentSortState = createMemo(() =>
+		props.sortState !== undefined ? props.sortState ?? null : internalSortState(),
+	);
+	const isViewSortActive = createMemo(() =>
+		props.sortBehavior === "view" && currentSortState() !== null,
+	);
 
 	const columnWidths = createMemo(() =>
 		props.columns.map(
@@ -221,6 +300,78 @@ export default function Grid(props: GridProps) {
 		if (props.showReferenceHeaders) height += HEADER_HEIGHT;
 		if (hasGroups()) height += GROUP_HEADER_HEIGHT;
 		return height;
+	});
+
+	function getPhysicalRowForVisualRow(visualRow: number): number {
+		if (!isViewSortActive()) return visualRow;
+		const rowId = visualRowIds()?.[visualRow];
+		if (rowId === undefined) return visualRow;
+		return props.store.getPhysicalRowForRowId(rowId) ?? visualRow;
+	}
+
+	function getRowIdAtVisualRow(visualRow: number): number | null {
+		if (!isViewSortActive()) return props.store.getRowIdAtPhysicalRow(visualRow);
+		return visualRowIds()?.[visualRow] ?? null;
+	}
+
+	function getVisualRowForRowId(rowId: number): number | null {
+		const activeVisualRowIds = visualRowIds();
+		if (!activeVisualRowIds) {
+			return props.store.getPhysicalRowForRowId(rowId);
+		}
+
+		const visualIndex = activeVisualRowIds.indexOf(rowId);
+		return visualIndex >= 0 ? visualIndex : null;
+	}
+
+	function mapModelToVisualAddress(address: CellAddress): CellAddress | null {
+		const rowId = props.store.getRowIdAtPhysicalRow(address.row);
+		if (rowId === null) return null;
+		const visualRow = getVisualRowForRowId(rowId);
+		if (visualRow === null) return null;
+		return { row: visualRow, col: address.col };
+	}
+
+	function getSortComparableValue(physicalRow: number, col: number): string | number | boolean | null {
+		const column = props.columns[col];
+		if (!column) return null;
+
+		const baseValue = hasFormulaEngine()
+			? getDisplayCellValueForPhysicalRow(physicalRow, col)
+			: getRawCellValueForPhysicalRow(physicalRow, col);
+
+		const accessed = column.sortAccessor
+			? column.sortAccessor(baseValue, physicalRow, column.id)
+			: baseValue;
+
+		return accessed === undefined ? null : accessed;
+	}
+
+	const visualRowIds = createMemo<number[] | null>(() => {
+		if (!isViewSortActive()) return null;
+
+		const sort = currentSortState();
+		if (!sort) return null;
+
+		const columnIndex = props.columns.findIndex((column) => column.id === sort.columnId);
+		if (columnIndex < 0) return null;
+
+		const currentRowIds = props.store.rowIds();
+		const nextOrder = currentRowIds.map((rowId, physicalRow) => ({
+			rowId,
+			physicalRow,
+			value: getSortComparableValue(physicalRow, columnIndex),
+		}));
+
+		nextOrder.sort((left, right) => {
+			const comparison = compareSortableEntries(left.value, right.value, sort.direction);
+			if (comparison !== 0) {
+				return comparison;
+			}
+			return left.physicalRow - right.physicalRow;
+		});
+
+		return nextOrder.map((entry) => entry.rowId);
 	});
 
 	// ── Search ────────────────────────────────────────────────────────────
@@ -285,10 +436,17 @@ export default function Grid(props: GridProps) {
 	});
 
 	const selectedAddress = createMemo(() => props.store.selection().anchor);
+	const selectedPhysicalAddress = createMemo(() => {
+		const addr = selectedAddress();
+		return {
+			row: getPhysicalRowForVisualRow(addr.row),
+			col: addr.col,
+		};
+	});
 
 	const selectedRawValue = createMemo(() => {
 		const addr = selectedAddress();
-		return props.store.cells[addr.row]?.[addr.col] ?? null;
+		return getRawCellValue(addr.row, addr.col);
 	});
 
 	const formulaBarValue = createMemo(() => {
@@ -296,7 +454,7 @@ export default function Grid(props: GridProps) {
 		if (editMode) return editorText();
 		const raw = cellValueToEditorText(selectedRawValue());
 		if (customization?.translateFormulaForDisplay && typeof raw === "string" && raw.startsWith("=")) {
-			const addr = selectedAddress();
+			const addr = selectedPhysicalAddress();
 			return customization.translateFormulaForDisplay(raw, addr.row, addr.col);
 		}
 		return raw;
@@ -368,16 +526,118 @@ export default function Grid(props: GridProps) {
 		),
 	);
 
-	function getRawCellValue(row: number, col: number): CellValue {
+	function remapAddressForRowOrder(
+		address: CellAddress,
+		oldOrder: number[],
+		newOrder: number[],
+	): CellAddress | null {
+		const rowId = oldOrder[address.row];
+		if (rowId === undefined) return null;
+		const nextRow = newOrder.indexOf(rowId);
+		if (nextRow < 0) return null;
+		return { row: nextRow, col: address.col };
+	}
+
+	function remapSelectionForRowOrder(
+		selection: Selection,
+		oldOrder: number[],
+		newOrder: number[],
+	): Selection | null {
+		const nextRanges = selection.ranges
+			.map((range) => {
+				const start = remapAddressForRowOrder(range.start, oldOrder, newOrder);
+				const end = remapAddressForRowOrder(range.end, oldOrder, newOrder);
+				if (!start || !end) return null;
+				return { start, end };
+			})
+			.filter((range): range is CellRange => range !== null);
+		const nextAnchor = remapAddressForRowOrder(selection.anchor, oldOrder, newOrder);
+		const nextFocus = remapAddressForRowOrder(selection.focus, oldOrder, newOrder);
+
+		if (nextRanges.length !== selection.ranges.length || !nextAnchor || !nextFocus) {
+			return null;
+		}
+
+		return {
+			ranges: nextRanges,
+			anchor: nextAnchor,
+			focus: nextFocus,
+			editing: selection.editing
+				? remapAddressForRowOrder(selection.editing, oldOrder, newOrder)
+				: null,
+		};
+	}
+
+	function remapEditModeForRowOrder(
+		mode: ReturnType<SheetStore["editMode"]>,
+		oldOrder: number[],
+		newOrder: number[],
+	): ReturnType<SheetStore["editMode"]> {
+		if (!mode) return mode;
+		const nextAddress = remapAddressForRowOrder(mode.address, oldOrder, newOrder);
+		if (!nextAddress) return null;
+		return {
+			...mode,
+			address: nextAddress,
+		};
+	}
+
+	let previousRenderedRowOrder: number[] | null = null;
+
+	createEffect(() => {
+		const nextRenderedOrder = [...(visualRowIds() ?? props.store.rowIds())];
+
+		if (
+			previousRenderedRowOrder &&
+			(previousRenderedRowOrder.length !== nextRenderedOrder.length ||
+				previousRenderedRowOrder.some((rowId, index) => rowId !== nextRenderedOrder[index]))
+		) {
+			const remappedSelection = remapSelectionForRowOrder(
+				untrack(() => props.store.selection()),
+				previousRenderedRowOrder,
+				nextRenderedOrder,
+			);
+			if (remappedSelection) {
+				props.store.setSelection(remappedSelection);
+			}
+
+			const currentEditMode = untrack(() => props.store.editMode());
+			const remappedEditMode = remapEditModeForRowOrder(
+				currentEditMode,
+				previousRenderedRowOrder,
+				nextRenderedOrder,
+			);
+			if (
+				currentEditMode &&
+				(!remappedEditMode ||
+					remappedEditMode.address.row !== currentEditMode.address.row ||
+					remappedEditMode.address.col !== currentEditMode.address.col)
+			) {
+				props.store.setEditMode(remappedEditMode);
+			}
+		}
+
+		previousRenderedRowOrder = nextRenderedOrder;
+	});
+
+	function getRawCellValueForPhysicalRow(row: number, col: number): CellValue {
 		return props.store.cells[row]?.[col] ?? null;
 	}
 
-	function getDisplayCellValue(row: number, col: number): CellValue {
-		const rawValue = getRawCellValue(row, col);
+	function getDisplayCellValueForPhysicalRow(row: number, col: number): CellValue {
+		const rawValue = getRawCellValueForPhysicalRow(row, col);
 		if (props.formulaBridge && typeof props.formulaBridge.revision === "function") {
 			props.formulaBridge.revision();
 		}
 		return props.formulaBridge?.getDisplayValue(row, col, rawValue) ?? rawValue;
+	}
+
+	function getRawCellValue(row: number, col: number): CellValue {
+		return getRawCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
+	}
+
+	function getDisplayCellValue(row: number, col: number): CellValue {
+		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
 	}
 
 	function syncMutationToFormulaEngine(mutation: CellMutation) {
@@ -392,6 +652,31 @@ export default function Grid(props: GridProps) {
 		for (const mutation of mutations) {
 			syncMutationToFormulaEngine(mutation);
 		}
+	}
+
+	function buildCellMutation(
+		viewAddress: CellAddress,
+		newValue: CellValue,
+		source: CellMutation["source"],
+	): CellMutation | null {
+		const column = props.columns[viewAddress.col];
+		if (!column) return null;
+
+		const physicalRow = getPhysicalRowForVisualRow(viewAddress.row);
+		const rowId = getRowIdAtVisualRow(viewAddress.row) ?? props.store.getRowIdAtPhysicalRow(physicalRow);
+		const oldValue = getRawCellValueForPhysicalRow(physicalRow, viewAddress.col);
+
+		if (oldValue === newValue) return null;
+
+		return {
+			address: { row: physicalRow, col: viewAddress.col },
+			viewAddress,
+			rowId: rowId ?? undefined,
+			columnId: column.id,
+			oldValue,
+			newValue,
+			source,
+		};
 	}
 
 	function applyBatchMutations(mutations: CellMutation[]) {
@@ -452,17 +737,31 @@ export default function Grid(props: GridProps) {
 		if (!editState) return;
 
 		const normalized = normalizeRange(range);
+		const modelRange = {
+			start: {
+				row: getPhysicalRowForVisualRow(normalized.start.row),
+				col: normalized.start.col,
+			},
+			end: {
+				row: getPhysicalRowForVisualRow(normalized.end.row),
+				col: normalized.end.col,
+			},
+		};
+		const modelEditAddress = {
+			row: getPhysicalRowForVisualRow(editState.address.row),
+			col: editState.address.col,
+		};
 
 		// Check if a custom reference text override is provided
 		if (customization?.getReferenceText) {
-			const customText = customization.getReferenceText(editState.address, normalized.start);
+			const customText = customization.getReferenceText(modelEditAddress, modelRange.start);
 			if (customText !== null) {
 				insertReferenceText(customText, normalized);
 				return;
 			}
 		}
 
-		insertReferenceText(rangeToA1(range), normalized);
+		insertReferenceText(rangeToA1(modelRange), normalized);
 	}
 
 	function insertReferenceText(text: string, nextReferenceRange?: CellRange | null) {
@@ -494,15 +793,21 @@ export default function Grid(props: GridProps) {
 		const editMode = props.store.editMode();
 		if (!editMode) return;
 		const nextValue = parseEditValue(editMode.initialValue, editorText());
+		const physicalRow = getPhysicalRowForVisualRow(editMode.address.row);
+		const rowId = getRowIdAtVisualRow(editMode.address.row) ?? props.store.getRowIdAtPhysicalRow(physicalRow);
 
 		props.store.setEditMode(null);
 
 		const mutation = commitCellEdit(
 			props.store,
-			editMode.address.row,
+			physicalRow,
 			editMode.address.col,
 			nextValue,
 			props.columns,
+			{
+				viewAddress: editMode.address,
+				rowId: rowId ?? undefined,
+			},
 		);
 
 		if (mutation) {
@@ -715,14 +1020,199 @@ export default function Grid(props: GridProps) {
 		props.store.setSelection(extendSelection(sel.anchor, { row, col }));
 	}
 
+	function stringifyClipboardValue(value: CellValue): string {
+		if (value === null || value === undefined) return "";
+		return String(value);
+	}
+
+	function serializeSelectionRange(range: CellRange): string {
+		const normalized = normalizeRange(range);
+		const lines: string[] = [];
+
+		for (let row = normalized.start.row; row <= normalized.end.row; row++) {
+			const rowValues: string[] = [];
+			for (let col = normalized.start.col; col <= normalized.end.col; col++) {
+				rowValues.push(stringifyClipboardValue(getRawCellValue(row, col)));
+			}
+			lines.push(rowValues.join("\t"));
+		}
+
+		return lines.join("\n");
+	}
+
+	function buildDeleteMutationsFromSelection(selection: Selection = props.store.selection()): CellMutation[] {
+		const mutations: CellMutation[] = [];
+
+		for (const range of selection.ranges) {
+			const normalized = normalizeRange(range);
+			for (let row = normalized.start.row; row <= normalized.end.row; row++) {
+				for (let col = normalized.start.col; col <= normalized.end.col; col++) {
+					const column = props.columns[col];
+					if (!column || column.editable === false) continue;
+
+					const mutation = buildCellMutation({ row, col }, null, "delete");
+					if (mutation) mutations.push(mutation);
+				}
+			}
+		}
+
+		return mutations;
+	}
+
+	function buildPasteMutationsForSelection(
+		parsed: CellValue[][],
+		target: CellAddress,
+	): CellMutation[] {
+		const mutations: CellMutation[] = [];
+
+		for (let r = 0; r < parsed.length; r++) {
+			const pasteRow = parsed[r];
+			if (!pasteRow) continue;
+
+			for (let c = 0; c < pasteRow.length; c++) {
+				const viewAddress = { row: target.row + r, col: target.col + c };
+				const column = props.columns[viewAddress.col];
+				if (!column || column.editable === false) continue;
+
+				const mutation = buildCellMutation(
+					viewAddress,
+					pasteRow[c] ?? null,
+					"paste",
+				);
+				if (mutation) mutations.push(mutation);
+			}
+		}
+
+		return mutations;
+	}
+
+	function mapDestinationRowToSourceRow(
+		source: CellRange,
+		preview: NonNullable<ReturnType<typeof computeFillPreview>>,
+		destinationRow: number,
+	): number {
+		const height = source.end.row - source.start.row + 1;
+		if (preview.direction === "down") {
+			const offset = destinationRow - (source.end.row + 1);
+			return source.start.row + modulo(offset, height);
+		}
+
+		const offset = (source.start.row - 1) - destinationRow;
+		return source.end.row - modulo(offset, height);
+	}
+
+	function computeLinearSeriesValue(
+		seedValues: CellValue[],
+		source: CellRange,
+		preview: NonNullable<ReturnType<typeof computeFillPreview>>,
+		destinationRow: number,
+	): CellValue {
+		const numericSeed = seedValues as number[];
+		const lastSeed = numericSeed[numericSeed.length - 1]!;
+		const previousSeed = numericSeed[numericSeed.length - 2]!;
+		const step = lastSeed - previousSeed;
+
+		if (preview.direction === "down") {
+			const distance = destinationRow - source.end.row;
+			return lastSeed + step * distance;
+		}
+
+		const firstSeed = numericSeed[0]!;
+		const distance = source.start.row - destinationRow;
+		return firstSeed - step * distance;
+	}
+
+	function modulo(value: number, divisor: number): number {
+		return ((value % divisor) + divisor) % divisor;
+	}
+
+	function buildFillMutations(
+		sourceRange: CellRange,
+		preview: NonNullable<ReturnType<typeof computeFillPreview>> | null,
+	): CellMutation[] {
+		if (!preview || preview.axis !== "vertical") return [];
+
+		const source = normalizeRange(sourceRange);
+		const extension = normalizeRange(preview.extension);
+		const width = source.end.col - source.start.col + 1;
+		const height = source.end.row - source.start.row + 1;
+
+		if (
+			extension.start.col !== source.start.col ||
+			extension.end.col !== source.end.col ||
+			width <= 0 ||
+			height <= 0
+		) {
+			return [];
+		}
+
+		const columnStates = Array.from({ length: width }, (_, offset) => {
+			const col = source.start.col + offset;
+			const seedValues = Array.from(
+				{ length: height },
+				(_, rowOffset) => getRawCellValue(source.start.row + rowOffset, col),
+			);
+
+			return {
+				mode: resolveAutoFillMode(seedValues),
+				seedValues,
+			};
+		});
+
+		const mutations: CellMutation[] = [];
+
+		for (let row = extension.start.row; row <= extension.end.row; row++) {
+			for (let col = extension.start.col; col <= extension.end.col; col++) {
+				const column = props.columns[col];
+				if (!column || column.editable === false) continue;
+
+				const sourceRow = mapDestinationRowToSourceRow(source, preview, row);
+				const sourceValue = getRawCellValue(sourceRow, col);
+				const columnState = columnStates[col - source.start.col]!;
+				let nextValue: CellValue;
+
+				switch (columnState.mode) {
+					case "formula-copy":
+						if (typeof sourceValue === "string" && isFormulaValue(sourceValue)) {
+							nextValue = shiftFormulaByDelta(
+								sourceValue,
+								getPhysicalRowForVisualRow(row) - getPhysicalRowForVisualRow(sourceRow),
+								0,
+							);
+						} else {
+							nextValue = sourceValue;
+						}
+						break;
+
+					case "linear-series":
+						nextValue = computeLinearSeriesValue(
+							columnState.seedValues,
+							source,
+							preview,
+							row,
+						);
+						break;
+
+					case "copy":
+					default:
+						nextValue = sourceValue;
+						break;
+				}
+
+				const mutation = buildCellMutation({ row, col }, nextValue, "fill");
+				if (mutation) mutations.push(mutation);
+			}
+		}
+
+		return mutations;
+	}
+
 	function handleMouseUp() {
 		const activeFillDrag = fillDragState();
 		if (activeFillDrag) {
-			const mutations = buildVerticalFillMutations(
+			const mutations = buildFillMutations(
 				activeFillDrag.source,
 				activeFillDrag.preview,
-				props.store.cells,
-				props.columns,
 			);
 			setFillDragState(null);
 			applyBatchMutations(mutations);
@@ -740,6 +1230,7 @@ export default function Grid(props: GridProps) {
 	}
 
 	function handleInsertRows(atIndex: number, count: number) {
+		if (isViewSortActive()) return;
 		const selBefore = props.store.selection();
 		props.store.insertRows(atIndex, count);
 		props.store.pushRowOperation(
@@ -752,8 +1243,11 @@ export default function Grid(props: GridProps) {
 	}
 
 	function handleDeleteRows(atIndex: number, count: number) {
+		if (isViewSortActive() && count !== 1) return;
+
+		const physicalAtIndex = getPhysicalRowForVisualRow(atIndex);
 		const selBefore = props.store.selection();
-		const removedData = props.store.deleteRows(atIndex, count);
+		const removedData = props.store.deleteRows(physicalAtIndex, count);
 
 		// Clamp selection if it's now beyond the last row
 		const newRowCount = props.store.rowCount();
@@ -765,11 +1259,11 @@ export default function Grid(props: GridProps) {
 		}
 
 		props.store.pushRowOperation(
-			{ type: "deleteRows", atIndex, count, removedData },
+			{ type: "deleteRows", atIndex: physicalAtIndex, count, removedData },
 			selBefore,
 			props.store.selection(),
 		);
-		props.onRowDelete?.(atIndex, count);
+		props.onRowDelete?.(physicalAtIndex, count);
 		focusGrid();
 	}
 
@@ -800,44 +1294,157 @@ export default function Grid(props: GridProps) {
 					);
 				},
 			},
-			{
-				label: "Delete",
-				shortcut: "Del",
-				disabled: isReadOnly,
-				action: () => {
-					const mutations = deleteSelectedCells(props.store, props.columns);
-					applyBatchMutations(mutations);
+				{
+					label: "Delete",
+					shortcut: "Del",
+					disabled: isReadOnly,
+					action: () => {
+						const mutations = buildDeleteMutationsFromSelection();
+						applyBatchMutations(mutations);
+					},
 				},
-			},
 			{ type: "separator" as const },
-			{
-				label: "Insert row above",
-				disabled: isReadOnly,
-				action: () => handleInsertRows(anchorRow, 1),
-			},
-			{
-				label: "Insert row below",
-				disabled: isReadOnly,
-				action: () => handleInsertRows(anchorRow + 1, 1),
-			},
+				{
+					label: "Insert row above",
+					disabled: isReadOnly || isViewSortActive(),
+					action: () => handleInsertRows(anchorRow, 1),
+				},
+				{
+					label: "Insert row below",
+					disabled: isReadOnly || isViewSortActive(),
+					action: () => handleInsertRows(anchorRow + 1, 1),
+				},
 			{
 				label: "Delete row",
 				disabled: isReadOnly || props.store.rowCount() <= 1,
 				action: () => handleDeleteRows(anchorRow, 1),
 			},
-		];
-	});
+			];
+		});
+
+	function updateSortState(nextState: SortState | null) {
+		if (props.sortState === undefined) {
+			setInternalSortState(nextState);
+		}
+		props.onSortChange?.(nextState);
+	}
+
+	function commitRowReorder(
+		columnId: string,
+		direction: SortDirection | null,
+		nextOrder: number[],
+	) {
+		const oldOrder = [...props.store.rowIds()];
+		if (oldOrder.every((rowId, index) => rowId === nextOrder[index])) {
+			return;
+		}
+
+		const reorderEvent: RowReorderMutation = {
+			columnId,
+			direction,
+			oldOrder,
+			newOrder: nextOrder,
+			indexOrder: buildIndexOrder(oldOrder, nextOrder),
+			source: "sort",
+		};
+
+		if (props.formulaBridge && !props.formulaBridge.setRowOrder(reorderEvent.indexOrder)) {
+			return;
+		}
+
+		const selectionBefore = props.store.selection();
+		props.store.reorderRows(nextOrder);
+
+		const remappedSelection = remapSelectionForRowOrder(selectionBefore, oldOrder, nextOrder);
+		if (remappedSelection) {
+			props.store.setSelection(remappedSelection);
+		}
+
+		const remappedEditMode = remapEditModeForRowOrder(props.store.editMode(), oldOrder, nextOrder);
+		if (props.store.editMode()) {
+			props.store.setEditMode(remappedEditMode);
+		}
+
+		props.store.pushRowReorder(
+			{
+				columnId,
+				direction,
+				oldOrder,
+				newOrder: nextOrder,
+			},
+			selectionBefore,
+			props.store.selection(),
+		);
+		props.onRowReorder?.(reorderEvent);
+	}
+
+	function applyMutationSort(sort: SortState | null, options?: { baseOrder?: number[] | null }) {
+		if (!sort) {
+			const baseOrder = options?.baseOrder ?? mutationSortBaseOrder();
+			if (!baseOrder) return;
+			commitRowReorder(currentSortState()?.columnId ?? "", null, baseOrder);
+			setMutationSortBaseOrder(null);
+			return;
+		}
+
+		const columnIndex = props.columns.findIndex((column) => column.id === sort.columnId);
+		if (columnIndex < 0) return;
+
+		const oldOrder = [...props.store.rowIds()];
+		const nextOrder = oldOrder
+			.map((rowId, physicalRow) => ({
+				rowId,
+				physicalRow,
+				value: getSortComparableValue(physicalRow, columnIndex),
+			}))
+			.sort((left, right) => {
+				const comparison = compareSortableEntries(left.value, right.value, sort.direction);
+				if (comparison !== 0) {
+					return comparison;
+				}
+				return left.physicalRow - right.physicalRow;
+			})
+			.map((entry) => entry.rowId);
+
+		commitRowReorder(sort.columnId, sort.direction, nextOrder);
+	}
 
 	function handleSort(columnId: string) {
-		const current = sortState();
-		let newDirection: "asc" | "desc";
-		if (current && current.columnId === columnId) {
-			newDirection = current.direction === "asc" ? "desc" : "asc";
-		} else {
-			newDirection = "asc";
+		if (props.store.editMode()) {
+			handleEditorCommit();
 		}
-		setSortState({ columnId, direction: newDirection });
-		props.onSort?.(columnId, newDirection);
+
+		const column = props.columns.find((entry) => entry.id === columnId);
+		if (!column || column.sortable === false) return;
+
+		const current = currentSortState();
+		let nextState: SortState | null;
+		if (!current || current.columnId !== columnId) {
+			nextState = { columnId, direction: "asc" };
+		} else if (current.direction === "asc") {
+			nextState = { columnId, direction: "desc" };
+		} else {
+			nextState = null;
+		}
+
+		const previousOrderForMutation = props.sortBehavior === "mutation"
+			? [...props.store.rowIds()]
+			: null;
+
+		if (props.sortBehavior === "mutation") {
+			if (!current || current.columnId !== columnId) {
+				setMutationSortBaseOrder(previousOrderForMutation);
+			}
+			if (nextState === null) {
+				applyMutationSort(null, { baseOrder: mutationSortBaseOrder() ?? previousOrderForMutation });
+				setMutationSortBaseOrder(null);
+			} else {
+				applyMutationSort(nextState);
+			}
+		}
+
+		updateSortState(nextState);
+		props.onSort?.(columnId, nextState?.direction ?? null);
 	}
 
 	function handleSearchNext() {
@@ -929,12 +1536,12 @@ export default function Grid(props: GridProps) {
 				break;
 			}
 
-			case "delete": {
-				if (props.readOnly) break;
-				const mutations = deleteSelectedCells(props.store, props.columns);
-				applyBatchMutations(mutations);
-				break;
-			}
+				case "delete": {
+					if (props.readOnly) break;
+					const mutations = buildDeleteMutationsFromSelection();
+					applyBatchMutations(mutations);
+					break;
+				}
 
 			case "selectAll":
 				props.store.setSelection(
@@ -957,16 +1564,20 @@ export default function Grid(props: GridProps) {
 						syncMutationsToFormulaEngine(undoResult.mutations);
 						props.onBatchEdit?.(undoResult.mutations);
 					}
-					if (undoResult.rowChange) {
-						if (undoResult.rowChange.type === "insertRows") {
-							props.onRowInsert?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
-						} else {
-							props.onRowDelete?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
+						if (undoResult.rowChange) {
+							if (undoResult.rowChange.type === "insertRows") {
+								props.onRowInsert?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
+							} else {
+								props.onRowDelete?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
+							}
+						}
+						if (undoResult.rowReorder) {
+							props.formulaBridge?.setRowOrder(undoResult.rowReorder.indexOrder);
+							props.onRowReorder?.(undoResult.rowReorder);
 						}
 					}
+					break;
 				}
-				break;
-			}
 
 			case "redo": {
 				const redoResult = props.store.redo();
@@ -975,16 +1586,20 @@ export default function Grid(props: GridProps) {
 						syncMutationsToFormulaEngine(redoResult.mutations);
 						props.onBatchEdit?.(redoResult.mutations);
 					}
-					if (redoResult.rowChange) {
-						if (redoResult.rowChange.type === "insertRows") {
-							props.onRowInsert?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
-						} else {
-							props.onRowDelete?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
+						if (redoResult.rowChange) {
+							if (redoResult.rowChange.type === "insertRows") {
+								props.onRowInsert?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
+							} else {
+								props.onRowDelete?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
+							}
+						}
+						if (redoResult.rowReorder) {
+							props.formulaBridge?.setRowOrder(redoResult.rowReorder.indexOrder);
+							props.onRowReorder?.(redoResult.rowReorder);
 						}
 					}
+					break;
 				}
-				break;
-			}
 
 			case "search": {
 				setSearchOpen(true);
@@ -998,7 +1613,7 @@ export default function Grid(props: GridProps) {
 		const range = primaryRange(sel);
 		if (!range) return;
 
-		const tsv = serializeToTSV(props.store.cells, range);
+		const tsv = serializeSelectionRange(range);
 		void navigator.clipboard.writeText(tsv);
 		setClipboardRange({ ...range });
 
@@ -1017,7 +1632,7 @@ export default function Grid(props: GridProps) {
 		const range = primaryRange(sel);
 		if (!range) return;
 
-		const tsv = serializeToTSV(props.store.cells, range);
+		const tsv = serializeSelectionRange(range);
 		void navigator.clipboard.writeText(tsv);
 		setClipboardRange({ ...range });
 
@@ -1028,7 +1643,7 @@ export default function Grid(props: GridProps) {
 			cells: parseTSV(tsv),
 		});
 
-		const mutations = deleteSelectedCells(props.store, props.columns);
+		const mutations = buildDeleteMutationsFromSelection(sel);
 		applyBatchMutations(mutations);
 	}
 
@@ -1039,12 +1654,7 @@ export default function Grid(props: GridProps) {
 
 		const sel = props.store.selection();
 		const target = sel.anchor;
-		const mutations = buildPasteMutations(
-			parsed,
-			target,
-			props.store.cells,
-			props.columns,
-		);
+		const mutations = buildPasteMutationsForSelection(parsed, target);
 
 		applyBatchMutations(mutations);
 		setClipboardRange(null);
@@ -1157,23 +1767,15 @@ export default function Grid(props: GridProps) {
 					updateEditorText(value);
 					setEditorSelectionAndFocus(value.length, value.length);
 				},
-				commitActiveEditor: () => handleEditorCommit(),
-				cancelActiveEditor: () => handleEditCancel(),
-				getCellValue: getRawCellValue,
-				setCellValue: (row, col, value) => {
-					const colDef = props.columns[col];
-					if (!colDef) return;
-					const oldValue = getRawCellValue(row, col);
-					const mutation: CellMutation = {
-						address: { row, col },
-						columnId: colDef.id,
-						oldValue,
-						newValue: value,
-						source: "external",
-					};
-					applyMutations(props.store, [mutation]);
-					syncMutationToFormulaEngine(mutation);
-					props.onCellEdit?.(mutation);
+					commitActiveEditor: () => handleEditorCommit(),
+					cancelActiveEditor: () => handleEditCancel(),
+					getCellValue: getRawCellValue,
+					setCellValue: (row, col, value) => {
+						const mutation = buildCellMutation({ row, col }, value, "external");
+						if (!mutation) return;
+						applyMutations(props.store, [mutation]);
+						syncMutationToFormulaEngine(mutation);
+						props.onCellEdit?.(mutation);
 				},
 				getColumnMeta: (columnId) =>
 					props.columns.find((column) => column.id === columnId)?.meta,
@@ -1184,15 +1786,19 @@ export default function Grid(props: GridProps) {
 							syncMutationsToFormulaEngine(result.mutations);
 							props.onBatchEdit?.(result.mutations);
 						}
-						if (result.rowChange) {
-							if (result.rowChange.type === "insertRows") {
-								props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
-							} else {
-								props.onRowDelete?.(result.rowChange.atIndex, result.rowChange.count);
+							if (result.rowChange) {
+								if (result.rowChange.type === "insertRows") {
+									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
+								} else {
+									props.onRowDelete?.(result.rowChange.atIndex, result.rowChange.count);
+								}
+							}
+							if (result.rowReorder) {
+								props.formulaBridge?.setRowOrder(result.rowReorder.indexOrder);
+								props.onRowReorder?.(result.rowReorder);
 							}
 						}
-					}
-				},
+					},
 				redo: () => {
 					const result = props.store.redo();
 					if (result) {
@@ -1200,15 +1806,19 @@ export default function Grid(props: GridProps) {
 							syncMutationsToFormulaEngine(result.mutations);
 							props.onBatchEdit?.(result.mutations);
 						}
-						if (result.rowChange) {
-							if (result.rowChange.type === "insertRows") {
-								props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
-							} else {
-								props.onRowDelete?.(result.rowChange.atIndex, result.rowChange.count);
+							if (result.rowChange) {
+								if (result.rowChange.type === "insertRows") {
+									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
+								} else {
+									props.onRowDelete?.(result.rowChange.atIndex, result.rowChange.count);
+								}
+							}
+							if (result.rowReorder) {
+								props.formulaBridge?.setRowOrder(result.rowReorder.indexOrder);
+								props.onRowReorder?.(result.rowReorder);
 							}
 						}
-					}
-				},
+					},
 				insertRows: (atIndex, count) => handleInsertRows(atIndex, count),
 				deleteRows: (atIndex, count) => handleDeleteRows(atIndex, count),
 				canUndo: () => props.store.canUndo(),
@@ -1273,12 +1883,12 @@ export default function Grid(props: GridProps) {
 					position: "relative",
 				}}
 			>
-				<GridHeader
-					columns={props.columns}
-					columnWidths={props.store.columnWidths()}
-					totalWidth={totalWidth()}
-					sortState={sortState()}
-					showReferenceHeaders={props.showReferenceHeaders}
+					<GridHeader
+						columns={props.columns}
+						columnWidths={props.store.columnWidths()}
+						totalWidth={totalWidth()}
+						sortState={currentSortState()}
+						showReferenceHeaders={props.showReferenceHeaders}
 					rowGutterWidth={rowGutterWidth()}
 					pinnedLeftOffsets={pinnedLeftOffsets()}
 					lastPinnedIndex={lastPinnedIndex()}
@@ -1302,15 +1912,19 @@ export default function Grid(props: GridProps) {
 							</div>
 						}
 					>
-						<GridBody
-							columns={props.columns}
-							columnWidths={props.store.columnWidths()}
-							rowHeight={props.rowHeight}
-							rowGutterWidth={rowGutterWidth()}
-							showReferenceHeaders={props.showReferenceHeaders}
-							visibleRows={visibleRows()}
-							totalRows={props.store.rowCount()}
-							getDisplayValue={getDisplayCellValue}
+							<GridBody
+								columns={props.columns}
+								columnWidths={props.store.columnWidths()}
+								rowHeight={props.rowHeight}
+								rowGutterWidth={rowGutterWidth()}
+								showReferenceHeaders={props.showReferenceHeaders}
+								getRowHeaderIndex={(visualRow) => getPhysicalRowForVisualRow(visualRow)}
+								getRowHeaderTooltip={(visualRow, backingRow) =>
+									isViewSortActive() ? `View row ${visualRow + 1}` : null
+								}
+								visibleRows={visibleRows()}
+								totalRows={props.store.rowCount()}
+								getDisplayValue={getDisplayCellValue}
 							onCellMouseDown={handleCellMouseDown}
 							onRowHeaderMouseDown={handleRowHeaderMouseDown}
 							onCellDblClick={handleCellDblClick}

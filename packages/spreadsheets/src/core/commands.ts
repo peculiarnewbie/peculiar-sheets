@@ -65,6 +65,11 @@ export function commitCellEdit(
 	col: number,
 	newValue: CellValue,
 	columns: ColumnDef[],
+	options?: {
+		viewAddress?: { row: number; col: number };
+		rowId?: number;
+		source?: CellMutation["source"];
+	},
 ): CellMutation | null {
 	const colDef = columns[col];
 	if (!colDef) return null;
@@ -74,10 +79,12 @@ export function commitCellEdit(
 
 	const mutation: CellMutation = {
 		address: { row, col },
+		viewAddress: options?.viewAddress,
+		rowId: options?.rowId,
 		columnId: colDef.id,
 		oldValue,
 		newValue,
-		source: "user",
+		source: options?.source ?? "user",
 	};
 
 	applyMutations(store, [mutation]);

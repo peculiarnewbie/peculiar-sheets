@@ -1,5 +1,15 @@
-import { onMount } from "solid-js";
-import { Sheet, type CellMutation, type CellValue, type ColumnDef, type FormulaEngineConfig, type SheetController } from "peculiar-sheets";
+import { createEffect, createSignal, onMount } from "solid-js";
+import {
+	Sheet,
+	type CellMutation,
+	type CellValue,
+	type ColumnDef,
+	type FormulaEngineConfig,
+	type RowReorderMutation,
+	type SheetController,
+	type SortBehavior,
+	type SortState,
+} from "peculiar-sheets";
 import "peculiar-sheets/styles";
 
 export interface HarnessProps {
@@ -9,6 +19,9 @@ export interface HarnessProps {
 	readOnly?: boolean;
 	showFormulaBar?: boolean;
 	showReferenceHeaders?: boolean;
+	sortBehavior?: SortBehavior;
+	defaultSortState?: SortState | null;
+	onSort?: (columnId: string, direction: SortState["direction"] | null) => void;
 }
 
 /**
@@ -19,25 +32,38 @@ export interface HarnessProps {
  * - `window.__SHEET_CONTROLLER__` — imperative controller handle
  */
 export default function Harness(props: HarnessProps) {
-	const sheetData = structuredClone(props.initialData);
+	const [sheetData, setSheetData] = createSignal(structuredClone(props.initialData));
+	const [sortState, setSortState] = createSignal<SortState | null>(props.defaultSortState ?? null);
+
+	function syncWindowState() {
+		window.__SHEET_DATA__ = sheetData();
+		window.__SORT_STATE__ = sortState();
+	}
 
 	// ── Expose state on window ────────────────────────────────────────────
 
 	onMount(() => {
-		window.__SHEET_DATA__ = sheetData;
+		syncWindowState();
 		window.__MUTATIONS__ = [];
+		window.__ROW_REORDERS__ = [];
 		window.__SHEET_CONTROLLER__ = null;
+	});
+
+	createEffect(() => {
+		syncWindowState();
 	});
 
 	// ── Mutation handlers ─────────────────────────────────────────────────
 
 	function applyMutation(mutation: CellMutation) {
 		const { row, col } = mutation.address;
-		// Grow rows/cols if needed while preserving the same top-level reference.
-		while (sheetData.length <= row) sheetData.push([]);
-		while (sheetData[row]!.length <= col) sheetData[row]!.push(null);
-		sheetData[row]![col] = mutation.newValue;
-		window.__SHEET_DATA__ = sheetData;
+		setSheetData((prev) => {
+			const next = prev.map((dataRow) => [...dataRow]);
+			while (next.length <= row) next.push([]);
+			while (next[row]!.length <= col) next[row]!.push(null);
+			next[row]![col] = mutation.newValue;
+			return next;
+		});
 	}
 
 	function handleCellEdit(mutation: CellMutation) {
@@ -51,25 +77,42 @@ export default function Harness(props: HarnessProps) {
 	}
 
 	function handleRowInsert(atIndex: number, count: number) {
-		const emptyRows = Array.from({ length: count }, () =>
-			new Array(props.columns.length).fill(null),
-		);
-		sheetData.splice(atIndex, 0, ...emptyRows);
-		// Sync back from controller — during undo of deleteRows the store
-		// restores the original cell values, so read them back.
-		if (window.__SHEET_CONTROLLER__) {
-			for (let r = atIndex; r < atIndex + count; r++) {
-				for (let c = 0; c < props.columns.length; c++) {
-					sheetData[r]![c] = window.__SHEET_CONTROLLER__.getCellValue(r, c);
+		setSheetData((prev) => {
+			const next = prev.map((row) => [...row]);
+			const emptyRows = Array.from({ length: count }, () =>
+				new Array(props.columns.length).fill(null),
+			);
+			next.splice(atIndex, 0, ...emptyRows);
+			if (window.__SHEET_CONTROLLER__) {
+				for (let r = atIndex; r < atIndex + count; r++) {
+					for (let c = 0; c < props.columns.length; c++) {
+						next[r]![c] = window.__SHEET_CONTROLLER__.getCellValue(r, c);
+					}
 				}
 			}
-		}
-		window.__SHEET_DATA__ = sheetData;
+			return next;
+		});
 	}
 
 	function handleRowDelete(atIndex: number, count: number) {
-		sheetData.splice(atIndex, count);
-		window.__SHEET_DATA__ = sheetData;
+		setSheetData((prev) => {
+			const next = prev.map((row) => [...row]);
+			next.splice(atIndex, count);
+			return next;
+		});
+	}
+
+	function handleRowReorder(mutation: RowReorderMutation) {
+		window.__ROW_REORDERS__.push(mutation);
+		setSheetData((prev) => {
+			const next = new Array(prev.length).fill(null).map(() => [] as CellValue[]);
+			for (let oldIndex = 0; oldIndex < mutation.indexOrder.length; oldIndex++) {
+				const newIndex = mutation.indexOrder[oldIndex];
+				if (newIndex === undefined || newIndex < 0) continue;
+				next[newIndex] = [...(prev[oldIndex] ?? [])];
+			}
+			return next;
+		});
 	}
 
 	function handleRef(ctrl: SheetController) {
@@ -81,7 +124,7 @@ export default function Harness(props: HarnessProps) {
 	return (
 		<div style={{ width: "100vw", height: "100vh" }} data-testid="harness">
 			<Sheet
-				data={sheetData}
+				data={sheetData()}
 				columns={props.columns}
 				readOnly={props.readOnly}
 				formulaEngine={props.formulaEngine}
@@ -91,7 +134,12 @@ export default function Harness(props: HarnessProps) {
 				onBatchEdit={handleBatchEdit}
 				onRowInsert={handleRowInsert}
 				onRowDelete={handleRowDelete}
+				onRowReorder={handleRowReorder}
+				onSort={props.onSort}
+				onSortChange={setSortState}
 				ref={handleRef}
+				sortBehavior={props.sortBehavior}
+				defaultSortState={props.defaultSortState}
 			/>
 		</div>
 	);

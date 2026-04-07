@@ -13,6 +13,10 @@ import HistoryPage from "./routes/history";
 import ReadonlyPage from "./routes/readonly";
 import LargePage from "./routes/large";
 import RowsPage from "./routes/rows";
+import SortExternalPage from "./routes/sort-external";
+import SortViewPage from "./routes/sort-view";
+import SortMutationPage from "./routes/sort-mutation";
+import SortMutationFormulasPage from "./routes/sort-mutation-formulas";
 
 const rootRoute = createRootRoute({
 	component: () => <Outlet />,
@@ -32,6 +36,10 @@ const indexRoute = createRoute({
 				<li><a href="/history">History</a></li>
 				<li><a href="/readonly">Readonly</a></li>
 				<li><a href="/large">Large Dataset</a></li>
+				<li><a href="/sort-external">Sort External</a></li>
+				<li><a href="/sort-view">Sort View</a></li>
+				<li><a href="/sort-mutation">Sort Mutation</a></li>
+				<li><a href="/sort-mutation-formulas">Sort Mutation Formulas</a></li>
 			</ul>
 		</nav>
 	),
@@ -85,6 +93,30 @@ const rowsRoute = createRoute({
 	component: RowsPage,
 });
 
+const sortExternalRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/sort-external",
+	component: SortExternalPage,
+});
+
+const sortViewRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/sort-view",
+	component: SortViewPage,
+});
+
+const sortMutationRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/sort-mutation",
+	component: SortMutationPage,
+});
+
+const sortMutationFormulasRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/sort-mutation-formulas",
+	component: SortMutationFormulasPage,
+});
+
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	basicRoute,
@@ -95,6 +127,10 @@ const routeTree = rootRoute.addChildren([
 	readonlyRoute,
 	largeRoute,
 	rowsRoute,
+	sortExternalRoute,
+	sortViewRoute,
+	sortMutationRoute,
+	sortMutationFormulasRoute,
 ]);
 
 const router = createRouter({ routeTree });

@@ -5,6 +5,7 @@ import type {
 	CellValue,
 	ColumnDef,
 	EditModeState,
+	RowReorderMutation,
 	Selection,
 } from "../types";
 import { emptySelection, selectCell } from "./selection";
@@ -15,7 +16,9 @@ import {
 	canRedo as histCanRedo,
 	canUndo as histCanUndo,
 	createHistory,
-	pushHistory,
+	pushMutationHistory,
+	pushRowOperationHistory,
+	pushRowReorderHistory,
 	redo as histRedo,
 	undo as histUndo,
 } from "./history";
@@ -24,6 +27,7 @@ import {
 
 export interface SheetState {
 	cells: CellValue[][];
+	rowIds: number[];
 	rowCount: number;
 	colCount: number;
 }
@@ -31,6 +35,7 @@ export interface SheetState {
 export interface UndoRedoResult {
 	mutations: CellMutation[];
 	rowChange?: UndoRedoRowChange;
+	rowReorder?: RowReorderMutation;
 }
 
 export interface SheetStore {
@@ -38,6 +43,7 @@ export interface SheetStore {
 	cells: CellValue[][];
 	rowCount(): number;
 	colCount(): number;
+	rowIds(): number[];
 	selection(): Selection;
 	editMode(): EditModeState | null;
 	columnWidths(): Map<string, number>;
@@ -46,16 +52,24 @@ export interface SheetStore {
 	// Mutations
 	setCell(row: number, col: number, value: CellValue): void;
 	setCells(mutations: Array<{ row: number; col: number; value: CellValue }>): void;
+	reorderRows(nextRowIds: number[]): void;
 	setSelection(selection: Selection): void;
 	setEditMode(state: EditModeState | null): void;
 	setColumnWidth(columnId: string, width: number): void;
 	resizeGrid(rowCount: number, colCount: number): void;
 	insertRows(atIndex: number, count: number): void;
 	deleteRows(atIndex: number, count: number): CellValue[][];
+	getRowIdAtPhysicalRow(row: number): number | null;
+	getPhysicalRowForRowId(rowId: number): number | null;
 
 	// History
 	pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection): void;
 	pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection): void;
+	pushRowReorder(
+		rowReorder: Omit<RowReorderMutation, "indexOrder" | "source">,
+		selectionBefore: Selection,
+		selectionAfter: Selection,
+	): void;
 	undo(): UndoRedoResult | null;
 	redo(): UndoRedoResult | null;
 	canUndo(): boolean;
@@ -76,6 +90,10 @@ export function createSheetStore(
 
 	const [cells, setCells] = createStore<CellValue[][]>(initialCells);
 	const [dimensions, setDimensions] = createSignal({ rowCount, colCount });
+	const [rowIds, setRowIds] = createSignal<number[]>(
+		Array.from({ length: rowCount }, (_, index) => index),
+	);
+	const [nextRowId, setNextRowId] = createSignal(rowCount);
 	const [selection, setSelection] = createSignal<Selection>(
 		rowCount > 0 && colCount > 0 ? selectCell({ row: 0, col: 0 }) : emptySelection(),
 	);
@@ -90,6 +108,9 @@ export function createSheetStore(
 		const currentRowCount = dimensions().rowCount;
 		const cc = dimensions().colCount;
 		const insertAt = Math.max(0, Math.min(atIndex, currentRowCount));
+		const startId = nextRowId();
+		const newRowIds = Array.from({ length: count }, (_, index) => startId + index);
+		setNextRowId((value) => value + count);
 
 		setDimensions({ rowCount: currentRowCount + count, colCount: cc });
 		setCells(
@@ -100,6 +121,11 @@ export function createSheetStore(
 				draft.splice(insertAt, 0, ...newRows);
 			}),
 		);
+		setRowIds((prev) => {
+			const next = [...prev];
+			next.splice(insertAt, 0, ...newRowIds);
+			return next;
+		});
 	}
 
 	/** Internal: splice rows out of the cells array, update dimensions, return removed data. */
@@ -123,6 +149,11 @@ export function createSheetStore(
 				draft.splice(deleteAt, actualCount);
 			}),
 		);
+		setRowIds((prev) => {
+			const next = [...prev];
+			next.splice(deleteAt, actualCount);
+			return next;
+		});
 
 		return removedData;
 	}
@@ -153,6 +184,37 @@ export function createSheetStore(
 		}
 	}
 
+	function getPhysicalRowForRowId(rowId: number): number | null {
+		const index = rowIds().indexOf(rowId);
+		return index >= 0 ? index : null;
+	}
+
+	function reorderRows(nextOrder: number[]) {
+		const currentRowIds = rowIds();
+		if (nextOrder.length !== currentRowIds.length) return;
+
+		const currentIndexByRowId = new Map<number, number>();
+		for (let i = 0; i < currentRowIds.length; i++) {
+			currentIndexByRowId.set(currentRowIds[i]!, i);
+		}
+
+		if (nextOrder.some((rowId) => !currentIndexByRowId.has(rowId))) return;
+
+		const nextCells = nextOrder.map((rowId) => {
+			const currentIndex = currentIndexByRowId.get(rowId)!;
+			const row = cells[currentIndex];
+			return row ? [...row] : new Array(dimensions().colCount).fill(null) as CellValue[];
+		});
+
+		setCells(
+			produce((draft) => {
+				draft.length = 0;
+				draft.push(...nextCells);
+			}),
+		);
+		setRowIds([...nextOrder]);
+	}
+
 	return {
 		get cells() {
 			return cells;
@@ -160,6 +222,7 @@ export function createSheetStore(
 
 		rowCount: () => dimensions().rowCount,
 		colCount: () => dimensions().colCount,
+		rowIds,
 
 		selection,
 		editMode,
@@ -200,6 +263,8 @@ export function createSheetStore(
 			);
 		},
 
+		reorderRows,
+
 		setSelection,
 		setEditMode,
 
@@ -232,6 +297,22 @@ export function createSheetStore(
 					}
 				}),
 			);
+			setRowIds((prev) => {
+				if (prev.length === newRowCount) return prev;
+
+				if (prev.length > newRowCount) {
+					return prev.slice(0, newRowCount);
+				}
+
+				const next = [...prev];
+				const additional = newRowCount - prev.length;
+				const startId = nextRowId();
+				for (let i = 0; i < additional; i++) {
+					next.push(startId + i);
+				}
+				setNextRowId(startId + additional);
+				return next;
+			});
 		},
 
 		insertRows(atIndex: number, count: number) {
@@ -242,12 +323,26 @@ export function createSheetStore(
 			return _deleteRows(atIndex, count);
 		},
 
+		getRowIdAtPhysicalRow(row: number): number | null {
+			return rowIds()[row] ?? null;
+		},
+
+		getPhysicalRowForRowId,
+
 		pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection) {
-			setHistory((prev) => pushHistory(prev, mutations, selectionBefore, selectionAfter));
+			setHistory((prev) => pushMutationHistory(prev, mutations, selectionBefore, selectionAfter));
 		},
 
 		pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection) {
-			setHistory((prev) => pushHistory(prev, [], selectionBefore, selectionAfter, rowOp));
+			setHistory((prev) => pushRowOperationHistory(prev, rowOp, selectionBefore, selectionAfter));
+		},
+
+		pushRowReorder(
+			rowReorder: Omit<RowReorderMutation, "indexOrder" | "source">,
+			selectionBefore: Selection,
+			selectionAfter: Selection,
+		) {
+			setHistory((prev) => pushRowReorderHistory(prev, rowReorder, selectionBefore, selectionAfter));
 		},
 
 		undo(): UndoRedoResult | null {
@@ -260,8 +355,10 @@ export function createSheetStore(
 			if (result.rowOp) {
 				if (result.rowOp.type === "insertRows") {
 					// Undo of deleteRows → re-insert with saved data
-					const originalEntry = historyState().redoStack[historyState().redoStack.length - 1];
-					const originalRowOp = originalEntry?.rowOp;
+					const originalEntry = result.history.redoStack[result.history.redoStack.length - 1];
+					const originalRowOp = originalEntry?.type === "row-operation"
+						? originalEntry.rowOp
+						: undefined;
 					if (originalRowOp?.type === "deleteRows" && originalRowOp.removedData.length > 0) {
 						_insertRowsWithData(result.rowOp.atIndex, originalRowOp.removedData);
 					} else {
@@ -286,7 +383,15 @@ export function createSheetStore(
 				);
 			}
 
-			return { mutations: result.mutations, rowChange: result.rowChange };
+			if (result.rowReorder) {
+				reorderRows(result.rowReorder.newOrder);
+			}
+
+			return {
+				mutations: result.mutations,
+				rowChange: result.rowChange,
+				rowReorder: result.rowReorder,
+			};
 		},
 
 		redo(): UndoRedoResult | null {
@@ -314,7 +419,15 @@ export function createSheetStore(
 				);
 			}
 
-			return { mutations: result.mutations, rowChange: result.rowChange };
+			if (result.rowReorder) {
+				reorderRows(result.rowReorder.newOrder);
+			}
+
+			return {
+				mutations: result.mutations,
+				rowChange: result.rowChange,
+				rowReorder: result.rowReorder,
+			};
 		},
 
 		canUndo: () => histCanUndo(historyState()),
@@ -332,6 +445,7 @@ export function createReconciler(
 	store: SheetStore,
 	getData: () => CellValue[][],
 	getColumns: () => ColumnDef[],
+	onExternalChange?: () => void,
 ): void {
 	createEffect(
 		on(
@@ -339,10 +453,12 @@ export function createReconciler(
 			([data, columns]) => {
 				const newRowCount = data.length;
 				const newColCount = columns.length;
+				let didChange = false;
 
 				// Resize grid if dimensions changed
 				if (newRowCount !== store.rowCount() || newColCount !== store.colCount()) {
 					store.resizeGrid(newRowCount, newColCount);
+					didChange = true;
 				}
 
 				// Update column widths for new columns
@@ -368,6 +484,11 @@ export function createReconciler(
 
 				if (mutations.length > 0) {
 					store.setCells(mutations);
+					didChange = true;
+				}
+
+				if (didChange) {
+					onExternalChange?.();
 				}
 			},
 		),

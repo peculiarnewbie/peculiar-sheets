@@ -14,6 +14,8 @@ interface GridBodyProps {
 	rowHeight: number;
 	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
+	getRowHeaderIndex: (visualRow: number) => number;
+	getRowHeaderTooltip?: (visualRow: number, backingRow: number) => string | null;
 	/** Indices of visible rows from the virtualizer. */
 	visibleRows: number[];
 	/** Total row count for sizing. */
@@ -47,6 +49,8 @@ export default function GridBody(props: GridBodyProps) {
 		>
 			<For each={props.visibleRows}>
 				{(rowIdx) => {
+					const rowHeaderIndex = () => props.getRowHeaderIndex(rowIdx);
+					const rowHeaderTooltip = () => props.getRowHeaderTooltip?.(rowIdx, rowHeaderIndex()) ?? null;
 					return (
 						<div
 							class="se-row"
@@ -61,19 +65,20 @@ export default function GridBody(props: GridBodyProps) {
 						>
 							<Show when={props.showReferenceHeaders}>
 								<div
-									class={`se-row-header-cell${customization?.getRowHeaderClass ? ` ${customization.getRowHeaderClass(rowIdx)}` : ""}`}
+									class={`se-row-header-cell${customization?.getRowHeaderClass ? ` ${customization.getRowHeaderClass(rowHeaderIndex())}` : ""}`}
 									role="rowheader"
 									style={{
 										width: `${props.rowGutterWidth}px`,
 										"min-width": `${props.rowGutterWidth}px`,
 										height: `${props.rowHeight}px`,
 									}}
+									title={rowHeaderTooltip() ?? undefined}
 									onMouseDown={(e) => props.onRowHeaderMouseDown?.(rowIdx, e)}
 								>
-									<Show when={customization?.getRowHeaderSublabel?.(rowIdx)}>
+									<Show when={customization?.getRowHeaderSublabel?.(rowHeaderIndex())}>
 										{(sub) => <span class="se-row-header-sublabel">{sub()}</span>}
 									</Show>
-									{customization?.getRowHeaderLabel?.(rowIdx) ?? String(rowIdx + 1)}
+									{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ?? String(rowHeaderIndex() + 1)}
 								</div>
 							</Show>
 							<For each={props.columns}>

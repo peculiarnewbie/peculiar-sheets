@@ -110,6 +110,12 @@ function cellLocator(row: number, col: number) {
 	);
 }
 
+function rowHeaderLocator(row: number) {
+	return getPage().locator(
+		`[role="row"][aria-rowindex="${row + 1}"] [role="rowheader"]`,
+	);
+}
+
 /** Click a cell at the given (0-indexed) row/col position. */
 export async function clickCell(
 	_sh: Stagehand,
@@ -117,6 +123,25 @@ export async function clickCell(
 	col: number,
 ) {
 	await cellLocator(row, col).click();
+}
+
+/** Click a column header in the main header row by its label text. */
+export async function clickColumnHeader(
+	_sh: Stagehand,
+	label: string,
+) {
+	await getPage().evaluate((targetLabel: string) => {
+		const headers = Array.from(
+			document.querySelectorAll<HTMLElement>(".se-header-row--columns .se-header-cell"),
+		);
+		const header = headers.find((element) =>
+			(element.textContent ?? "").trim().startsWith(targetLabel),
+		);
+		if (!header) {
+			throw new Error(`Column header not found: ${targetLabel}`);
+		}
+		header.click();
+	}, label);
 }
 
 /** Double-click a cell to enter edit mode. */
@@ -135,6 +160,25 @@ export async function getCellText(
 	col: number,
 ): Promise<string> {
 	return (await cellLocator(row, col).textContent()) ?? "";
+}
+
+export async function getRowHeaderText(
+	_sh: Stagehand,
+	row: number,
+): Promise<string> {
+	return ((await rowHeaderLocator(row).textContent()) ?? "").trim();
+}
+
+export async function getRowHeaderTitle(
+	_sh: Stagehand,
+	row: number,
+): Promise<string | null> {
+	return getPage().evaluate((targetRow: number) => {
+		const rowHeader = document.querySelector<HTMLElement>(
+			`[role="row"][aria-rowindex="${targetRow + 1}"] [role="rowheader"]`,
+		);
+		return rowHeader?.getAttribute("title") ?? null;
+	}, row);
 }
 
 /** Type into the currently active cell editor and press Enter. */

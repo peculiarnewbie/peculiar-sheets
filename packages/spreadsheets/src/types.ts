@@ -25,6 +25,17 @@ export interface Selection {
 	editing: CellAddress | null;
 }
 
+// ── Sorting ──────────────────────────────────────────────────────────────────
+
+export type SortBehavior = "external" | "view" | "mutation";
+
+export type SortDirection = "asc" | "desc";
+
+export interface SortState {
+	columnId: string;
+	direction: SortDirection;
+}
+
 // ── Column Definitions ───────────────────────────────────────────────────────
 
 export interface ColumnDef {
@@ -41,16 +52,33 @@ export interface ColumnDef {
 	groupId?: string;
 	/** App-specific metadata (e.g. mapped, sourceColumn, structField). */
 	meta?: Record<string, unknown>;
+	sortable?: boolean;
+	sortAccessor?: (
+		value: CellValue,
+		modelRow: number,
+		columnId: string,
+	) => string | number | boolean | null;
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
 
 export interface CellMutation {
 	address: CellAddress;
+	viewAddress?: CellAddress;
+	rowId?: number;
 	columnId: string;
 	oldValue: CellValue;
 	newValue: CellValue;
 	source: "user" | "paste" | "delete" | "formula" | "external" | "fill";
+}
+
+export interface RowReorderMutation {
+	columnId: string;
+	direction: SortDirection | null;
+	oldOrder: number[];
+	newOrder: number[];
+	indexOrder: number[];
+	source: "sort" | "undo" | "redo";
 }
 
 export type FillAxis = "vertical";
@@ -149,11 +177,17 @@ export interface SheetProps {
 	onClipboard?: (payload: ClipboardPayload) => void;
 	onScroll?: (position: ScrollPosition) => void;
 	onColumnResize?: (columnId: string, width: number) => void;
-	onSort?: (columnId: string, direction: "asc" | "desc") => void;
+	onSort?: (columnId: string, direction: SortDirection | null) => void;
+	onSortChange?: (state: SortState | null) => void;
 	/** Called when rows are inserted. The host should update its data array accordingly. */
 	onRowInsert?: (atIndex: number, count: number) => void;
 	/** Called when rows are deleted. The host should update its data array accordingly. */
 	onRowDelete?: (atIndex: number, count: number) => void;
+	onRowReorder?: (mutation: RowReorderMutation) => void;
+
+	sortBehavior?: SortBehavior;
+	sortState?: SortState | null;
+	defaultSortState?: SortState | null;
 
 	/**
 	 * Visual and formula-display customization hooks.

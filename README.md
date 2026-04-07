@@ -12,7 +12,7 @@ A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/)
 - **Undo / redo** with full mutation history
 - **Copy / paste** with TSV serialization
 - **Autofill** (fill-down) with copy, linear series, and formula-shift modes
-- **Column resizing**, pinning, sorting, and group headers
+- **Column resizing**, pinning, external/view/mutation sorting, and group headers
 - **Cell search** with match highlighting
 - **Context menu** support
 - **Fully customizable** row headers, cell classes, address labels, and formula display
@@ -91,6 +91,9 @@ const summarySheetId = hf.getSheetId(hf.addSheet("Summary"))!;
 | `formulaEngine` | `FormulaEngineConfig?` | HyperFormula instance + sheet ID |
 | `showFormulaBar` | `boolean?` | Show the formula bar |
 | `showReferenceHeaders` | `boolean?` | Show A1-style column/row headers |
+| `sortBehavior` | `"external" \| "view" \| "mutation"` | Built-in sort mode (`view` by default) |
+| `sortState` | `SortState \| null` | Controlled sort state |
+| `defaultSortState` | `SortState \| null` | Initial uncontrolled sort state |
 | `customization` | `SheetCustomization?` | Visual customization hooks |
 | `ref` | `(controller: SheetController) => void` | Imperative API handle |
 | `class` | `string?` | CSS class for the root element |
@@ -106,7 +109,20 @@ const summarySheetId = hf.getSheetId(hf.addSheet("Summary"))!;
 | `onClipboard` | `ClipboardPayload` | Copy/cut/paste event |
 | `onScroll` | `ScrollPosition` | Scroll position changed |
 | `onColumnResize` | `(columnId, width)` | Column resized |
-| `onSort` | `(columnId, direction)` | Column sort requested |
+| `onSort` | `(columnId, direction)` | Column sort requested (`direction` can be `null` when sort is cleared) |
+| `onSortChange` | `SortState \| null` | Sort UI state changed |
+| `onRowReorder` | `RowReorderMutation` | Underlying rows were structurally reordered |
+
+## Sorting
+
+By default, the sheet uses `sortBehavior="view"`. Header clicks cycle `asc -> desc -> none`.
+
+Use `sortBehavior="external"` to keep sorting as host-controlled UI state only.
+
+Use `sortBehavior="view"` to sort only the rendered row order. Edits still mutate backing/model rows, and `CellMutation.address` stays in backing coordinates while `CellMutation.viewAddress` records the visible coordinate at edit time.
+In this mode, row headers show backing row numbers rather than visual positions, and hovering a row header shows the visible row number in a tooltip.
+
+Use `sortBehavior="mutation"` to physically reorder the table. Mutation sorts are recorded in undo/redo history and emit `onRowReorder` so host apps can persist the reordered data.
 
 ## SheetController (Imperative API)
 
