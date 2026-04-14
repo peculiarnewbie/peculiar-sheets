@@ -230,6 +230,7 @@ export default function Grid(props: GridProps) {
 	const [referenceInsertion, setReferenceInsertion] = createSignal<CaretRange | null>(null);
 	const [isReferenceDragging, setIsReferenceDragging] = createSignal(false);
 	const [referenceDragAnchor, setReferenceDragAnchor] = createSignal<CellAddress | null>(null);
+	const [externalReferenceRange, setExternalReferenceRange] = createSignal<CellRange | null>(null);
 	const [fillDragState, setFillDragState] = createSignal<{
 		source: CellRange;
 		preview: ReturnType<typeof computeFillPreview>;
@@ -520,6 +521,7 @@ export default function Grid(props: GridProps) {
 					setEditorText("");
 					setReferenceInsertion(null);
 					setReferenceRange(null);
+					setExternalReferenceRange(null);
 					setPendingCaret(null);
 				}
 			},
@@ -726,8 +728,13 @@ export default function Grid(props: GridProps) {
 		setEditorText(nextText);
 		if (!props.store.editMode()) return;
 
+		// Always clear referenceInsertion when the user manually types.
+		// This signal tracks the "replaceable" region during click/drag reference
+		// selection — once the user types new characters the previous insertion is
+		// finalised and the next reference click should insert at the caret.
+		setReferenceInsertion(null);
+
 		if (!isFormulaText(nextText)) {
-			setReferenceInsertion(null);
 			setReferenceRange(null);
 		}
 	}
@@ -1756,6 +1763,7 @@ export default function Grid(props: GridProps) {
 				getEditorText: () => props.store.editMode() ? editorText() : null,
 				canInsertReference: () => isReferenceSelectionMode(),
 				insertReferenceText: (text) => insertReferenceText(text),
+				setReferenceHighlight: (range) => setExternalReferenceRange(range),
 				setActiveEditorValue: (value) => {
 					if (!props.store.editMode()) {
 						startEditing(selectedAddress(), {
@@ -1939,6 +1947,7 @@ export default function Grid(props: GridProps) {
 							selection={props.store.selection()}
 							clipboardRange={clipboardRange()}
 							referenceRange={referenceRange()}
+							externalReferenceRange={externalReferenceRange()}
 							fillPreview={fillDragState()?.preview ?? null}
 							showFillHandle={showFillHandle()}
 							columnWidths={columnWidths()}

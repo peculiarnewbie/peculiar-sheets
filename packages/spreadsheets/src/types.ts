@@ -227,6 +227,13 @@ export interface SheetController {
 	getEditorText(): string | null;
 	canInsertReference(): boolean;
 	insertReferenceText(text: string): void;
+	/**
+	 * Set (or clear) a cross-sheet reference highlight on this sheet's grid.
+	 * Used by composite views to highlight cells in a *different* sheet when the
+	 * active editor references them (e.g., typing `=Scratch!A1` in the Data sheet
+	 * highlights A1 in the Scratch sheet).
+	 */
+	setReferenceHighlight(range: CellRange | null): void;
 	setActiveEditorValue(value: string): void;
 	commitActiveEditor(): void;
 	cancelActiveEditor(): void;

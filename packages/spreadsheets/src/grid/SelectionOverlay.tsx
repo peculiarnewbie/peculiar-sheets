@@ -6,6 +6,7 @@ interface SelectionOverlayProps {
 	selection: Selection;
 	clipboardRange: CellRange | null;
 	referenceRange: CellRange | null;
+	externalReferenceRange: CellRange | null;
 	fillPreview: FillPreview | null;
 	showFillHandle: boolean;
 	columnWidths: number[];
@@ -64,6 +65,12 @@ export default function SelectionOverlay(props: SelectionOverlayProps) {
 		return computeRangeRect(range, props.columnWidths, props.rowHeight);
 	};
 
+	const externalReferenceRect = () => {
+		const range = props.externalReferenceRange;
+		if (!range) return null;
+		return computeRangeRect(range, props.columnWidths, props.rowHeight);
+	};
+
 	const fillPreviewRect = () => {
 		const preview = props.fillPreview;
 		if (!preview) return null;
@@ -110,6 +117,20 @@ export default function SelectionOverlay(props: SelectionOverlayProps) {
 				)}
 			</Show>
 			<Show when={referenceRect()}>
+				{(rect) => (
+					<div
+						class="se-reference-rect"
+						style={{
+							position: "absolute",
+							left: `${rect().left}px`,
+							top: `${rect().top}px`,
+							width: `${rect().width}px`,
+							height: `${rect().height}px`,
+						}}
+					/>
+				)}
+			</Show>
+			<Show when={externalReferenceRect()}>
 				{(rect) => (
 					<div
 						class="se-reference-rect"
