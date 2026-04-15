@@ -1,8 +1,11 @@
-import { createSignal, Switch, Match } from "solid-js";
+import { createSignal, onMount, onCleanup, Switch, Match } from "solid-js";
+import { createStore } from "solid-js/store";
 import HyperFormula from "hyperformula";
 import {
   Sheet,
+  createWorkbookCoordinator,
   type CellValue,
+  type CellMutation,
   type ColumnDef,
 } from "peculiar-sheets";
 import "peculiar-sheets/styles";
@@ -199,6 +202,282 @@ function LargeSheet() {
   return <Sheet data={data} columns={columns} />;
 }
 
+function RowsSheet() {
+  const columns: ColumnDef[] = [
+    { id: "a", header: "Name", width: 120, editable: true },
+    { id: "b", header: "Value", width: 120, editable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["alpha", 10],
+    ["beta", 20],
+    ["gamma", 30],
+  ];
+
+  return <Sheet data={data} columns={columns} />;
+}
+
+function SortViewSheet() {
+  const columns: ColumnDef[] = [
+    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
+    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
+    { id: "city", header: "City", width: 140, editable: true, sortable: true },
+    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["Alice", 30, "Portland", 88],
+    ["Bob", 25, "Seattle", 72],
+    ["Carol", 35, "Denver", 95],
+    ["Dave", 28, "Austin", 61],
+  ];
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      sortBehavior="view"
+      showReferenceHeaders
+    />
+  );
+}
+
+function SortMutationSheet() {
+  const columns: ColumnDef[] = [
+    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
+    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
+    { id: "city", header: "City", width: 140, editable: true, sortable: true },
+    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["Alice", 30, "Portland", 88],
+    ["Bob", 25, "Seattle", 72],
+    ["Carol", 35, "Denver", 95],
+    ["Dave", 28, "Austin", 61],
+  ];
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      sortBehavior="mutation"
+      showReferenceHeaders
+    />
+  );
+}
+
+function SortExternalSheet() {
+  const columns: ColumnDef[] = [
+    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
+    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
+    { id: "city", header: "City", width: 140, editable: true, sortable: true },
+    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["Alice", 30, "Portland", 88],
+    ["Bob", 25, "Seattle", 72],
+    ["Carol", 35, "Denver", 95],
+    ["Dave", 28, "Austin", 61],
+  ];
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      sortBehavior="external"
+      showReferenceHeaders
+    />
+  );
+}
+
+function SortMutationFormulasSheet() {
+  const columns: ColumnDef[] = [
+    { id: "a", header: "A", width: 100, editable: true, sortable: true },
+    { id: "b", header: "B", width: 100, editable: true, sortable: true },
+    { id: "c", header: "C", width: 120, editable: true, sortable: true },
+  ];
+
+  const data: CellValue[][] = [
+    [1, 10, "=A1+B1"],
+    [3, 30, "=A2+B2"],
+    [2, 20, "=A3+B3"],
+  ];
+
+  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+  const sheetName = hf.addSheet("sort-mutation-formulas");
+  const sheetId = hf.getSheetId(sheetName)!;
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      formulaEngine={{ instance: hf, sheetId, sheetName }}
+      showFormulaBar
+      showReferenceHeaders
+      sortBehavior="mutation"
+    />
+  );
+}
+
+function FormulaRowsSheet() {
+  const columns: ColumnDef[] = [
+    { id: "team", header: "Team", width: 120, editable: true },
+    { id: "q1", header: "Q1", width: 85, editable: true },
+    { id: "q2", header: "Q2", width: 85, editable: true },
+    { id: "total", header: "Total", width: 95, editable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["Engineering", 48, 52, "=B1+C1"],
+    ["Design", 32, 35, "=B2+C2"],
+    ["Marketing", 28, 31, "=B3+C3"],
+    [null, null, "Sum", "=SUM(D1:D3)"],
+    [null, null, null, null],
+    [null, null, null, null],
+  ];
+
+  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+  const sheetName = hf.addSheet("formula-rows");
+  const sheetId = hf.getSheetId(sheetName)!;
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      formulaEngine={{ instance: hf, sheetId, sheetName }}
+      showFormulaBar
+      showReferenceHeaders
+    />
+  );
+}
+
+function FormulaRowDeleteSheet() {
+  const columns: ColumnDef[] = [
+    { id: "team", header: "Team", width: 120, editable: true },
+    { id: "q1", header: "Q1", width: 85, editable: true },
+    { id: "q2", header: "Q2", width: 85, editable: true },
+    { id: "total", header: "Total", width: 110, editable: true },
+  ];
+
+  const data: CellValue[][] = [
+    ["Engineering", 48, 52, "=B1+C1"],
+    ["Design", 32, 35, "=B2+C2"],
+    ["Marketing", 28, 31, "=B3+C3"],
+    ["Ops", 5, 7, "=B4+C4"],
+    [null, null, "Sum", "=SUM(D1:D4)"],
+    ["RefToMarketing", null, null, "=B3"],
+    ["Pair", null, null, "=B3+B4"],
+  ];
+
+  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+  const sheetName = hf.addSheet("formula-row-delete");
+  const sheetId = hf.getSheetId(sheetName)!;
+
+  return (
+    <Sheet
+      data={data}
+      columns={columns}
+      formulaEngine={{ instance: hf, sheetId, sheetName }}
+      showFormulaBar
+      showReferenceHeaders
+    />
+  );
+}
+
+function CrossSheetDemo() {
+  const dataColumns: ColumnDef[] = [
+    { id: "label", header: "Label", width: 140, editable: true },
+    { id: "value", header: "Value", width: 100, editable: true },
+  ];
+
+  const summaryColumns: ColumnDef[] = [
+    { id: "metric", header: "Metric", width: 140, editable: true },
+    { id: "result", header: "Result", width: 180, editable: true },
+  ];
+
+  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+  const coordinator = createWorkbookCoordinator({ engine: hf });
+  const dataWorkbook = coordinator.bindSheet({
+    sheetKey: "data",
+    formulaName: "Data",
+  });
+  const summaryWorkbook = coordinator.bindSheet({
+    sheetKey: "summary",
+    formulaName: "Summary",
+  });
+
+  const [sheets, setSheets] = createStore<Record<string, CellValue[][]>>({
+    data: [
+      ["Alpha", 10],
+      ["Beta", 20],
+      ["Gamma", 30],
+    ],
+    summary: [
+      ["Total", "=SUM(Data!B1:B3)"],
+      ["First", "=Data!A1"],
+      ["Mid", "=Data!B2"],
+      ["Draft", null],
+    ],
+  });
+
+  function applyMutation(sheetKey: string, mutation: CellMutation) {
+    const { row, col } = mutation.address;
+    setSheets(sheetKey, (prev) => {
+      const next = prev.map((r) => [...r]);
+      while (next.length <= row) next.push([]);
+      while (next[row]!.length <= col) next[row]!.push(null);
+      next[row]![col] = mutation.newValue;
+      return next;
+    });
+  }
+
+  onMount(() => {
+    const unsubscribe = coordinator.subscribe((change) => {
+      for (const snapshot of change.snapshots) {
+        setSheets(
+          snapshot.sheetKey,
+          snapshot.cells.map((row) => [...row]),
+        );
+      }
+    });
+    onCleanup(() => unsubscribe());
+  });
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        "grid-template-columns": "1fr 1fr",
+        gap: "12px",
+        height: "100%",
+      }}
+    >
+      <div style={{ overflow: "hidden" }}>
+        <Sheet
+          data={sheets.data}
+          columns={dataColumns}
+          workbook={dataWorkbook}
+          onCellEdit={(m) => applyMutation("data", m)}
+          onBatchEdit={(ms) => ms.forEach((m) => applyMutation("data", m))}
+        />
+      </div>
+      <div style={{ overflow: "hidden" }}>
+        <Sheet
+          data={sheets.summary}
+          columns={summaryColumns}
+          workbook={summaryWorkbook}
+          onCellEdit={(m) => applyMutation("summary", m)}
+          onBatchEdit={(ms) =>
+            ms.forEach((m) => applyMutation("summary", m))
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Demo metadata ───────────────────────────────────────────
 
 const DEMOS = [
@@ -286,6 +565,106 @@ const DEMOS = [
       "full edit support",
     ],
     tall: true,
+  },
+  {
+    id: "rows",
+    tab: "Row Ops",
+    title: "Row Insert / Delete",
+    desc: "Right-click a row to insert above, insert below, or delete. Row operations update references and keep formulas consistent.",
+    badges: ["insert above", "insert below", "delete row", "context menu"],
+    tall: false,
+  },
+  {
+    id: "sort-view",
+    tab: "Sort (View)",
+    title: "Sort \u2014 View Mode",
+    desc: "Click a column header to sort. Rows reorder visually but the underlying data stays in its original order. Click again to cycle ascending \u2192 descending \u2192 none.",
+    badges: [
+      "click to sort",
+      "asc / desc / none",
+      "visual only",
+      "data unchanged",
+    ],
+    tall: false,
+  },
+  {
+    id: "sort-mutation",
+    tab: "Sort (Mutate)",
+    title: "Sort \u2014 Mutation Mode",
+    desc: "Click a column header to sort. Unlike view mode, this physically reorders the data array. Useful when the host needs sorted data for export or persistence.",
+    badges: [
+      "click to sort",
+      "asc / desc / none",
+      "reorders data",
+      "row indices update",
+    ],
+    tall: false,
+  },
+  {
+    id: "sort-external",
+    tab: "Sort (External)",
+    title: "Sort \u2014 External Mode",
+    desc: "Column headers show sort indicators and fire an onSort callback, but the sheet does not sort itself. The host application is responsible for reordering the data.",
+    badges: [
+      "sort indicators",
+      "onSort callback",
+      "host-controlled",
+      "server-side friendly",
+    ],
+    tall: false,
+  },
+  {
+    id: "sort-mutation-formulas",
+    tab: "Sort + Formulas",
+    title: "Sort with Formulas",
+    desc: "Mutation sort combined with a HyperFormula engine. Column C computes =A+B. Sort by any column and formulas re-evaluate with the new row order.",
+    badges: [
+      "mutation sort",
+      "=A1+B1",
+      "formula bar",
+      "refs shift on sort",
+    ],
+    tall: false,
+  },
+  {
+    id: "formula-rows",
+    tab: "Formula + Rows",
+    title: "Formulas + Row Ops",
+    desc: "Insert or delete rows in a sheet with formulas. =SUM ranges expand, cell references shift, and the formula engine stays in sync automatically.",
+    badges: [
+      "=B1+C1",
+      "=SUM(D1:D3)",
+      "insert row",
+      "refs auto-shift",
+      "formula bar",
+    ],
+    tall: false,
+  },
+  {
+    id: "formula-row-delete",
+    tab: "Formula + Delete",
+    title: "Formula Row Delete",
+    desc: "Delete rows that are referenced by formulas. Cross-row references like =B3 and =B3+B4 update or error gracefully when their target row is removed.",
+    badges: [
+      "delete row",
+      "=B3 ref shift",
+      "=SUM range shrink",
+      "dangling ref \u2192 error",
+    ],
+    tall: false,
+  },
+  {
+    id: "cross-sheet",
+    tab: "Cross-Sheet",
+    title: "Cross-Sheet References",
+    desc: "Two sheets side by side with a shared workbook coordinator. The summary sheet references cells from the data sheet via =Data!B1 syntax. Edit a value on the left and watch the right update.",
+    badges: [
+      "=SUM(Data!B1:B3)",
+      "=Data!A1",
+      "workbook coordinator",
+      "live sync",
+    ],
+    tall: false,
   },
 ] as const;
 
@@ -487,6 +866,30 @@ function DemoPlayground() {
                 </Match>
                 <Match when={activeIdx() === 6}>
                   <LargeSheet />
+                </Match>
+                <Match when={activeIdx() === 7}>
+                  <RowsSheet />
+                </Match>
+                <Match when={activeIdx() === 8}>
+                  <SortViewSheet />
+                </Match>
+                <Match when={activeIdx() === 9}>
+                  <SortMutationSheet />
+                </Match>
+                <Match when={activeIdx() === 10}>
+                  <SortExternalSheet />
+                </Match>
+                <Match when={activeIdx() === 11}>
+                  <SortMutationFormulasSheet />
+                </Match>
+                <Match when={activeIdx() === 12}>
+                  <FormulaRowsSheet />
+                </Match>
+                <Match when={activeIdx() === 13}>
+                  <FormulaRowDeleteSheet />
+                </Match>
+                <Match when={activeIdx() === 14}>
+                  <CrossSheetDemo />
                 </Match>
               </Switch>
             </div>

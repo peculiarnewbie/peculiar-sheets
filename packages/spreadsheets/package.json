@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "A high-performance spreadsheet engine for SolidJS powered by HyperFormula",
 	"license": "GPL-3.0-only",
 	"author": "peculiarnewbie",
