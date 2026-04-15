@@ -10,7 +10,7 @@
     "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
-    "peculiar-sheets": "^0.4.0",
+    "peculiar-sheets": "^0.4.2",
     "hyperformula": "^3.0.0",
     "solid-js": "^1.9.11"
   },
