@@ -47,6 +47,7 @@
 	},
 	"dependencies": {
 		"@tanstack/solid-virtual": "^3.13.6",
+		"better-result": "^2.8.2",
 		"hyperformula": "^2.0.0"
 	},
 	"devDependencies": {

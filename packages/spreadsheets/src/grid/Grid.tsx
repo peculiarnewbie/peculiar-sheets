@@ -36,6 +36,7 @@ import { parseTSV } from "../core/clipboard";
 import { applyMutations, commitCellEdit } from "../core/commands";
 import type { FormulaBridge } from "../formula/bridge";
 import { addressToA1, isFormulaText, isFormulaValue, rangeToA1, shiftFormulaByDelta } from "../formula/references";
+import { Result, isApplied } from "../internal/result";
 import GridHeader from "./GridHeader";
 import GridBody from "./GridBody";
 import CellEditor from "./CellEditor";
@@ -54,7 +55,7 @@ interface GridProps {
 	rowHeight: number;
 	readOnly: boolean;
 	formulaBridge?: FormulaBridge | null;
-	workbook?: WorkbookSheetBinding;
+	workbook?: WorkbookSheetBinding | undefined;
 	showFormulaBar: boolean;
 	showReferenceHeaders: boolean;
 	onSelectionChange?: ((selection: Selection) => void) | undefined;
@@ -646,12 +647,36 @@ export default function Grid(props: GridProps) {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
 	}
 
-	function syncMutationToFormulaEngine(mutation: CellMutation) {
-		props.formulaBridge?.setCell(
+	function didApplyFormulaBridgeOperation(
+		result:
+			| ReturnType<FormulaBridge["ensureSheet"]>
+			| ReturnType<FormulaBridge["syncAll"]>
+			| ReturnType<FormulaBridge["setCell"]>
+			| ReturnType<FormulaBridge["setRowOrder"]>
+			| null
+			| undefined,
+	): boolean {
+		return Boolean(result && Result.isOk(result) && isApplied(result.value));
+	}
+
+	function syncAllToFormulaEngine(): boolean {
+		return didApplyFormulaBridgeOperation(
+			props.formulaBridge?.syncAll(props.store.cells),
+		);
+	}
+
+	function syncRowOrderToFormulaEngine(indexOrder: number[]): boolean {
+		return didApplyFormulaBridgeOperation(
+			props.formulaBridge?.setRowOrder(indexOrder),
+		);
+	}
+
+	function syncMutationToFormulaEngine(mutation: CellMutation): boolean {
+		return didApplyFormulaBridgeOperation(props.formulaBridge?.setCell(
 			mutation.address.row,
 			mutation.address.col,
 			mutation.newValue,
-		);
+		));
 	}
 
 	function syncMutationsToFormulaEngine(mutations: CellMutation[]) {
@@ -1258,7 +1283,7 @@ export default function Grid(props: GridProps) {
 		}
 		const selBefore = props.store.selection();
 		props.store.insertRows(atIndex, count);
-		props.formulaBridge?.syncAll(props.store.cells);
+		syncAllToFormulaEngine();
 		props.store.pushRowOperation(
 			{ type: "insertRows", atIndex, count },
 			selBefore,
@@ -1285,7 +1310,7 @@ export default function Grid(props: GridProps) {
 		const selBefore = props.store.selection();
 		const previousCells = props.store.cells.map((row) => [...row]);
 		const removedData = props.store.deleteRows(physicalAtIndex, count);
-		props.formulaBridge?.syncAll(props.store.cells);
+		syncAllToFormulaEngine();
 
 		// Clamp selection if it's now beyond the last row
 		const newRowCount = props.store.rowCount();
@@ -1395,7 +1420,7 @@ export default function Grid(props: GridProps) {
 			return;
 		}
 
-		if (props.formulaBridge && !props.formulaBridge.setRowOrder(reorderEvent.indexOrder)) {
+		if (props.formulaBridge && !syncRowOrderToFormulaEngine(reorderEvent.indexOrder)) {
 			return;
 		}
 
@@ -1616,7 +1641,7 @@ export default function Grid(props: GridProps) {
 						props.onBatchEdit?.(undoResult.mutations);
 					}
 					if (undoResult.rowChange) {
-						props.formulaBridge?.syncAll(props.store.cells);
+						syncAllToFormulaEngine();
 						if (undoResult.rowChange.type === "insertRows") {
 							props.onRowInsert?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
 						} else {
@@ -1624,7 +1649,7 @@ export default function Grid(props: GridProps) {
 						}
 					}
 					if (undoResult.rowReorder) {
-						props.formulaBridge?.setRowOrder(undoResult.rowReorder.indexOrder);
+						syncRowOrderToFormulaEngine(undoResult.rowReorder.indexOrder);
 						props.onRowReorder?.(undoResult.rowReorder);
 					}
 				}
@@ -1643,7 +1668,7 @@ export default function Grid(props: GridProps) {
 						props.onBatchEdit?.(redoResult.mutations);
 					}
 					if (redoResult.rowChange) {
-						props.formulaBridge?.syncAll(props.store.cells);
+						syncAllToFormulaEngine();
 						if (redoResult.rowChange.type === "insertRows") {
 							props.onRowInsert?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
 						} else {
@@ -1651,7 +1676,7 @@ export default function Grid(props: GridProps) {
 						}
 					}
 					if (redoResult.rowReorder) {
-						props.formulaBridge?.setRowOrder(redoResult.rowReorder.indexOrder);
+						syncRowOrderToFormulaEngine(redoResult.rowReorder.indexOrder);
 						props.onRowReorder?.(redoResult.rowReorder);
 					}
 				}
@@ -1849,7 +1874,7 @@ export default function Grid(props: GridProps) {
 							props.onBatchEdit?.(result.mutations);
 						}
 							if (result.rowChange) {
-								props.formulaBridge?.syncAll(props.store.cells);
+								syncAllToFormulaEngine();
 								if (result.rowChange.type === "insertRows") {
 									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
 								} else {
@@ -1857,7 +1882,7 @@ export default function Grid(props: GridProps) {
 								}
 							}
 							if (result.rowReorder) {
-								props.formulaBridge?.setRowOrder(result.rowReorder.indexOrder);
+								syncRowOrderToFormulaEngine(result.rowReorder.indexOrder);
 								props.onRowReorder?.(result.rowReorder);
 							}
 						}
@@ -1874,7 +1899,7 @@ export default function Grid(props: GridProps) {
 							props.onBatchEdit?.(result.mutations);
 						}
 							if (result.rowChange) {
-								props.formulaBridge?.syncAll(props.store.cells);
+								syncAllToFormulaEngine();
 								if (result.rowChange.type === "insertRows") {
 									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
 								} else {
@@ -1882,7 +1907,7 @@ export default function Grid(props: GridProps) {
 								}
 							}
 							if (result.rowReorder) {
-								props.formulaBridge?.setRowOrder(result.rowReorder.indexOrder);
+								syncRowOrderToFormulaEngine(result.rowReorder.indexOrder);
 								props.onRowReorder?.(result.rowReorder);
 							}
 						}

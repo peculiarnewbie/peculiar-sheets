@@ -54,6 +54,7 @@ export default function CrossSheetPage() {
 	};
 
 	function syncWindowState() {
+		window.__SHEET_DATA__ = cloneSheetMap(sheetState).data;
 		window.__WORKBOOK_DATA__ = cloneSheetMap(sheetState);
 		window.__WORKBOOK_CONTROLLERS__ = { ...controllers };
 	}

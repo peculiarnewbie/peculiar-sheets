@@ -1,6 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import * as HyperFormulaNS from "hyperformula";
 import type { CellRange, CellValue, SheetController } from "../types";
+import { setInternalTraceSink, type InternalTraceEvent } from "../internal/trace";
 import { createWorkbookCoordinator, getWorkbookCoordinatorInternals } from "./coordinator";
 
 const HyperFormula = HyperFormulaNS.HyperFormula ?? HyperFormulaNS.default;
@@ -44,6 +45,15 @@ function createStubController(
 }
 
 describe("workbook coordinator", () => {
+	let traceEvents: InternalTraceEvent[] = [];
+	let resetTraceSink: (() => void) | null = null;
+
+	afterEach(() => {
+		traceEvents = [];
+		resetTraceSink?.();
+		resetTraceSink = null;
+	});
+
 	it("binds sheets once and reuses the same sheet ids", () => {
 		const coordinator = createWorkbookCoordinator({
 			engine: HyperFormula.buildEmpty({ licenseKey: "gpl-v3" }),
@@ -158,5 +168,62 @@ describe("workbook coordinator", () => {
 		expect(nextData[0]?.[0]).toBe("Gamma");
 		expect(nextSummary[0]?.[1]).toBe("=Data!A1");
 		expect(hf.getSheetValues(internals.getFormulaEngineConfig(summary).sheetId!)[0]?.[1]).toBe("Gamma");
+	});
+
+	it("returns null and emits noop traces for invalid structural operations", () => {
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const coordinator = createWorkbookCoordinator({
+			engine: HyperFormula.buildEmpty({ licenseKey: "gpl-v3" }),
+		});
+		coordinator.bindSheet({ sheetKey: "data", formulaName: "Data" });
+
+		expect(coordinator.insertRows("data", 0, 0)).toBeNull();
+		expect(traceEvents.some((event) =>
+			event.operation === "insertRows" &&
+			event.status === "noop" &&
+			event.context.reason === "invalid-count"
+		)).toBe(true);
+	});
+
+	it("returns false and emits noop traces when no active reference source exists", () => {
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const coordinator = createWorkbookCoordinator({
+			engine: HyperFormula.buildEmpty({ licenseKey: "gpl-v3" }),
+		});
+		coordinator.bindSheet({ sheetKey: "data", formulaName: "Data" });
+		coordinator.bindSheet({ sheetKey: "summary", formulaName: "Summary" });
+
+		const inserted = coordinator.insertReference("summary", "data", {
+			start: { row: 0, col: 0 },
+			end: { row: 0, col: 0 },
+		});
+
+		expect(inserted).toBe(false);
+		expect(traceEvents.some((event) =>
+			event.operation === "insertReference" &&
+			event.status === "noop" &&
+			event.context.reason === "missing-controller"
+		)).toBe(true);
+	});
+
+	it("emits an error trace when snapshot building fails", () => {
+		const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const coordinator = createWorkbookCoordinator({ engine: hf });
+		coordinator.bindSheet({ sheetKey: "data", formulaName: "Data" });
+
+		const original = hf.getSheetSerialized.bind(hf);
+		hf.getSheetSerialized = (() => {
+			throw new Error("snapshot build failed");
+		}) as typeof hf.getSheetSerialized;
+
+		expect(coordinator.insertRows("data", 0, 1)).toBeNull();
+		expect(traceEvents.some((event) =>
+			event.operation === "buildSnapshots" &&
+			event.status === "err" &&
+			event.context.message === "snapshot build failed"
+		)).toBe(true);
+
+		hf.getSheetSerialized = original;
 	});
 });

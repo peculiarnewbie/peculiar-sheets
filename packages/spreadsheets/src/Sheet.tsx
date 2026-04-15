@@ -3,6 +3,7 @@ import type { SheetController, SheetProps } from "./types";
 import { DEFAULT_ROW_HEIGHT } from "./types";
 import { createReconciler, createSheetStore } from "./core/state";
 import { createFormulaBridge } from "./formula/bridge";
+import { Result, isApplied } from "./internal/result";
 import { SheetCustomizationContext } from "./customization";
 import Grid from "./grid/Grid";
 import { getWorkbookCoordinatorInternals } from "./workbook/coordinator";
@@ -29,6 +30,20 @@ export function Sheet(props: SheetProps) {
 	const workbookDataGetter = () => props.data;
 	let attachedController: SheetController | null = null;
 
+	function syncFormulaBridge() {
+		if (!formulaBridge) return;
+
+		const ensured = formulaBridge.ensureSheet();
+		if (Result.isError(ensured) || !isApplied(ensured.value)) {
+			return;
+		}
+
+		const synced = formulaBridge.syncAll(props.data);
+		if (Result.isError(synced) || !isApplied(synced.value)) {
+			return;
+		}
+	}
+
 	// ── Create Store ───────────────────────────────────────────────────────
 
 	const store = createSheetStore(props.data, props.columns);
@@ -40,8 +55,7 @@ export function Sheet(props: SheetProps) {
 		() => props.data,
 		() => props.columns,
 		() => {
-			formulaBridge?.ensureSheet();
-			formulaBridge?.syncAll(props.data);
+			syncFormulaBridge();
 		},
 	);
 
@@ -49,8 +63,7 @@ export function Sheet(props: SheetProps) {
 		if (props.workbook) {
 			workbookInternals()!.attachDataGetter(props.workbook.sheetKey, workbookDataGetter);
 		}
-		formulaBridge?.ensureSheet();
-		formulaBridge?.syncAll(props.data);
+		syncFormulaBridge();
 	});
 
 	onCleanup(() => {

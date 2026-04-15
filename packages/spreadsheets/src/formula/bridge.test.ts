@@ -1,5 +1,7 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { createFormulaBridge } from "./bridge";
+import { Result, isApplied, isNoop } from "../internal/result";
+import { setInternalTraceSink, type InternalTraceEvent } from "../internal/trace";
 
 function columnLettersToIndex(input: string): number {
 	let index = 0;
@@ -91,6 +93,13 @@ function createMockEngine() {
 		getCellValue(address: { sheet: number; row: number; col: number }) {
 			return evaluateCell(address.sheet, address.row, address.col);
 		},
+		isItPossibleToSetRowOrder(_sheetId: number, _newRowOrder: number[]) {
+			return true;
+		},
+		setRowOrder(sheetId: number, newRowOrder: number[]) {
+			const current = sheetContents.get(sheetId) ?? [];
+			sheetContents.set(sheetId, newRowOrder.map((index) => [...(current[index] ?? [])]));
+		},
 		on(event: string, callback: (...args: unknown[]) => void) {
 			const registered = handlers.get(event) ?? new Set<(...args: unknown[]) => void>();
 			registered.add(callback);
@@ -108,7 +117,24 @@ function createMockEngine() {
 	};
 }
 
+function expectAppliedNumber(result: ReturnType<NonNullable<ReturnType<typeof createFormulaBridge>>["ensureSheet"]>) {
+	expect(Result.isOk(result)).toBe(true);
+	if (!Result.isOk(result) || !isApplied(result.value)) {
+		throw new Error("Expected applied Result");
+	}
+	return result.value.value;
+}
+
 describe("formula bridge", () => {
+	let traceEvents: InternalTraceEvent[] = [];
+	let resetTraceSink: (() => void) | null = null;
+
+	afterEach(() => {
+		traceEvents = [];
+		resetTraceSink?.();
+		resetTraceSink = null;
+	});
+
 	it("creates and reuses sheets by name", () => {
 		const engine = createMockEngine();
 		const bridge = createFormulaBridge({
@@ -117,8 +143,8 @@ describe("formula bridge", () => {
 		});
 
 		expect(bridge).not.toBeNull();
-		expect(bridge!.ensureSheet()).toBe(0);
-		expect(bridge!.ensureSheet()).toBe(0);
+		expect(expectAppliedNumber(bridge!.ensureSheet())).toBe(0);
+		expect(expectAppliedNumber(bridge!.ensureSheet())).toBe(0);
 	});
 
 	it("returns evaluated display values for formulas", () => {
@@ -128,10 +154,10 @@ describe("formula bridge", () => {
 			sheetName: "Gameplay",
 		});
 
-		bridge!.syncAll([
+		expectAppliedNumber(bridge!.syncAll([
 			[1, 2],
 			["=A1+B1", null],
-		]);
+		]));
 
 		expect(bridge!.getDisplayValue(1, 0, "=A1+B1")).toBe(3);
 		expect(bridge!.getDisplayValue(0, 0, 1)).toBe(1);
@@ -147,7 +173,7 @@ describe("formula bridge", () => {
 		expect(engine.getListenerCount("valuesUpdated")).toBe(1);
 		expect(bridge!.revision()).toBe(0);
 
-		bridge!.ensureSheet();
+		expectAppliedNumber(bridge!.ensureSheet());
 		engine.emitValuesUpdated([{ address: { sheet: 0, row: 1, col: 0 } }]);
 
 		expect(bridge!.revision()).toBe(1);
@@ -163,10 +189,10 @@ describe("formula bridge", () => {
 			sheetName: "Gameplay",
 		});
 
-		bridge!.ensureSheet();
+		expectAppliedNumber(bridge!.ensureSheet());
 		expect(bridge!.revision()).toBe(0);
 
-		bridge!.setCell(0, 0, "=A1");
+		expectAppliedNumber(bridge!.setCell(0, 0, "=A1"));
 
 		expect(bridge!.revision()).toBe(1);
 	});
@@ -178,8 +204,8 @@ describe("formula bridge", () => {
 			sheetName: "Gameplay",
 		});
 
-		bridge!.syncAll([[1, 2, null]]);
-		bridge!.setCell(0, 2, "==A1+B1");
+		expectAppliedNumber(bridge!.syncAll([[1, 2, null]]));
+		expectAppliedNumber(bridge!.setCell(0, 2, "==A1+B1"));
 
 		expect(bridge!.getDisplayValue(0, 2, "=A1+B1")).toBe(3);
 	});
@@ -191,10 +217,10 @@ describe("formula bridge", () => {
 			sheetName: "Gameplay",
 		});
 
-		bridge!.syncAll([[1, 2, "=A1+B1"]]);
+		expectAppliedNumber(bridge!.syncAll([[1, 2, "=A1+B1"]]));
 		expect(bridge!.getDisplayValue(0, 2, "=A1+B1")).toBe(3);
 
-		bridge!.setCell(0, 0, 5);
+		expectAppliedNumber(bridge!.setCell(0, 0, 5));
 		engine.emitValuesUpdated([
 			{ address: { sheet: 0, row: 0, col: 0 } },
 			{ address: { sheet: 0, row: 0, col: 2 } },
@@ -202,5 +228,107 @@ describe("formula bridge", () => {
 
 		expect(bridge!.revision()).toBeGreaterThan(1);
 		expect(bridge!.getDisplayValue(0, 2, "=A1+B1")).toBe(7);
+	});
+
+	it("traces subscription failures without throwing during bridge creation", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		engine.on = () => {
+			throw new Error("subscribe failed");
+		};
+
+		const bridge = createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		});
+
+		expect(bridge).not.toBeNull();
+		expect(traceEvents.some((event) =>
+			event.operation === "subscribeValuesUpdated" &&
+			event.status === "err" &&
+			event.context.message === "subscribe failed"
+		)).toBe(true);
+	});
+
+	it("traces sync errors and returns an error Result", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const bridge = createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		});
+		engine.setSheetContent = () => {
+			throw new Error("sync failed");
+		};
+
+		const result = bridge!.syncAll([[1]]);
+
+		expect(Result.isError(result)).toBe(true);
+		expect(traceEvents.some((event) =>
+			event.operation === "syncAll" &&
+			event.status === "err" &&
+			event.context.message === "sync failed"
+		)).toBe(true);
+	});
+
+	it("traces cell update errors and returns an error Result", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const bridge = createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		});
+
+		expectAppliedNumber(bridge!.ensureSheet());
+		engine.setCellContents = () => {
+			throw new Error("cell update failed");
+		};
+
+		const result = bridge!.setCell(0, 0, 1);
+
+		expect(Result.isError(result)).toBe(true);
+		expect(traceEvents.some((event) =>
+			event.operation === "setCell" &&
+			event.status === "err" &&
+			event.context.message === "cell update failed"
+		)).toBe(true);
+	});
+
+	it("returns a noop Result when row reordering is rejected by the engine", () => {
+		const engine = createMockEngine();
+		const bridge = createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		});
+		engine.isItPossibleToSetRowOrder = () => false;
+
+		const result = bridge!.setRowOrder([0]);
+
+		expect(Result.isOk(result)).toBe(true);
+		if (!Result.isOk(result) || !isNoop(result.value)) {
+			throw new Error("Expected noop Result");
+		}
+		expect(result.value.reason).toBe("engine-rejected");
+	});
+
+	it("falls back to the raw formula text when display evaluation fails", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const bridge = createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		});
+
+		expectAppliedNumber(bridge!.syncAll([["=A1"]]));
+		engine.getCellValue = () => {
+			throw new Error("display failed");
+		};
+
+		expect(bridge!.getDisplayValue(0, 0, "=A1")).toBe("=A1");
+		expect(traceEvents.some((event) =>
+			event.operation === "getDisplayValue" &&
+			event.status === "err" &&
+			event.context.message === "display failed"
+		)).toBe(true);
 	});
 });
