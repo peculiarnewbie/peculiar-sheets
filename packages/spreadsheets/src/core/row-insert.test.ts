@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { CellValue, ColumnDef } from "../types";
 import { createSheetStore } from "./state";
-import { isFormulaValue, shiftFormulaByDelta } from "../formula/references";
+import { isFormulaValue } from "../formula/references";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -11,18 +11,6 @@ function makeColumns(count: number): ColumnDef[] {
 		header: `Col ${i}`,
 		editable: true,
 	}));
-}
-
-/** Collect all formula strings from a specific column across all rows. */
-function formulasInColumn(cells: CellValue[][], col: number): Array<{ row: number; formula: string }> {
-	const result: Array<{ row: number; formula: string }> = [];
-	for (let r = 0; r < cells.length; r++) {
-		const v = cells[r]?.[col];
-		if (typeof v === "string" && isFormulaValue(v)) {
-			result.push({ row: r, formula: v });
-		}
-	}
-	return result;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -75,16 +63,16 @@ describe("insertRows rewrites formula references", () => {
 
 		// Row 0: =A1*2 — A1 is above insert → stays =A1*2
 		expect(store.cells[0]?.[1]).toBe("=A1*2");
-		// Row 1: =A1+A2 — A1 above (stays), A2 is at insert point → shifts to A3
-		expect(store.cells[1]?.[1]).toBe("=A1+A3");
+		// Row 1: =A1+A2 — A1 (0-indexed 0) stays, A2 (0-indexed 1) < insertAt 2 → stays
+		expect(store.cells[1]?.[1]).toBe("=A1+A2");
 		// Row 2: new empty row
 		expect(store.cells[2]?.[0]).toBeNull();
-		// Row 3 (was row 2): formula was =A2+A3, cell moved down by 1
-		// A2 was below insert → shifts to A3, A3 was below → shifts to A4
-		expect(store.cells[3]?.[1]).toBe("=A3+A4");
+		// Row 3 (was row 2): formula was =A2+A3
+		// A2 (0-indexed 1) < insertAt 2 → stays, A3 (0-indexed 2) >= 2 → shifts to A4
+		expect(store.cells[3]?.[1]).toBe("=A2+A4");
 	});
 
-	it("does not shift absolute ($) references", () => {
+	it("shifts absolute row references structurally on insert", () => {
 		const columns = makeColumns(2);
 		const store = createSheetStore(
 			[
@@ -97,8 +85,8 @@ describe("insertRows rewrites formula references", () => {
 
 		store.insertRows(0, 1);
 
-		// Row 2 (was row 1): $A$1 stays, A2 shifts to A3
-		expect(store.cells[2]?.[1]).toBe("=$A$1+A3");
+		// Row 2 (was row 1): both refs participate in the structural insert
+		expect(store.cells[2]?.[1]).toBe("=$A$2+A3");
 	});
 
 	it("shifts range references when insert is within the range", () => {
@@ -216,6 +204,109 @@ describe("deleteRows rewrites formula references", () => {
 		// Row 1 (was row 2): =A3*2 → A3 shifts up → =A2*2
 		expect(store.cells[1]?.[1]).toBe("=A2*2");
 	});
+
+	it("deletes the first referenced row into explicit #REF!", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, null],
+				[20, "=A1+A2"],
+				[30, null],
+			],
+			columns,
+		);
+
+		store.deleteRows(0, 1);
+
+		expect(store.cells[0]?.[1]).toBe("=#REF!+A1");
+	});
+
+	it("shrinks formulas when deleting the last data row in a referenced range", () => {
+		const columns = makeColumns(4);
+		const store = createSheetStore(
+			[
+				["Engineering", 48, 52, "=B1+C1"],
+				["Design", 32, 35, "=B2+C2"],
+				["Marketing", 28, 31, "=B3+C3"],
+				["Ops", 5, 7, "=B4+C4"],
+				[null, null, "Sum", "=SUM(D1:D4)"],
+			],
+			columns,
+		);
+
+		store.deleteRows(3, 1);
+
+		expect(store.cells[3]?.[3]).toBe("=SUM(D1:#REF!)");
+	});
+
+	it("shifts by the correct count when deleting multiple rows", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, null],
+				[20, null],
+				[30, null],
+				[40, "=A4+A5"],
+				[50, null],
+			],
+			columns,
+		);
+
+		store.deleteRows(1, 2);
+
+		expect(store.cells[1]?.[1]).toBe("=A2+A3");
+	});
+
+	it("rewrites surviving formulas that point into deleted rows", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A3+A4"],
+				[20, null],
+				[30, null],
+				[40, null],
+			],
+			columns,
+		);
+
+		store.deleteRows(2, 1);
+
+		expect(store.cells[0]?.[1]).toBe("=#REF!+A3");
+	});
+
+	it("rewrites absolute and mixed references structurally on delete", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, null],
+				[20, "=$A1+B$4"],
+				[20, null],
+				[30, null],
+				[40, null],
+			],
+			columns,
+		);
+
+		store.deleteRows(0, 1);
+
+		expect(store.cells[0]?.[1]).toBe("=#REF!+B$3");
+	});
+
+	it("rewrites formulas before removing the row that contains the formula itself", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A2"],
+				[20, "=A3"],
+				[30, null],
+			],
+			columns,
+		);
+
+		store.deleteRows(1, 1);
+
+		expect(store.cells[0]?.[1]).toBe("=#REF!");
+	});
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -265,9 +356,9 @@ describe("scratch-sheet scenario: insert row with adjacent-sum formulas", () => 
 
 		expect(store.cells.length).toBe(16); // was 15, now 16
 
-		// Row 3: =E4+E5 — E5 was at/below insert → shifts to E6
-		// E4 was at insert point → shifts to E5
-		expect(store.cells[3]?.[5]).toBe("=E5+E6");
+		// Row 3: =E4+E5 — E4 (0-indexed 3) < insertAt 4 → stays
+		// E5 (0-indexed 4) >= insertAt 4 → shifts to E6
+		expect(store.cells[3]?.[5]).toBe("=E4+E6");
 
 		// Row 10 (was row 9): =E10+E11 → both shift → =E11+E12
 		expect(store.cells[10]?.[5]).toBe("=E11+E12");
@@ -332,5 +423,198 @@ describe("hero-sheet scenario: insert row with sum formulas", () => {
 		expect(store.cells[3]?.[3]).toBe("=B4+C4");
 		// Row 4 (was 3, Sum): =SUM(D1:D3) → D3 at insert boundary shifts → =SUM(D1:D4)
 		expect(store.cells[4]?.[3]).toBe("=SUM(D1:D4)");
+	});
+});
+
+describe("row operation history with formulas", () => {
+	it("delete row with formulas -> undo restores original raw formulas and row count", () => {
+		const columns = makeColumns(4);
+		const store = createSheetStore(
+			[
+				["Engineering", 48, 52, "=B1+C1"],
+				["Design", 32, 35, "=B2+C2"],
+				["Marketing", 28, 31, "=B3+C3"],
+				["Ops", 5, 7, "=B4+C4"],
+				[null, null, "Sum", "=SUM(D1:D4)"],
+			],
+			columns,
+		);
+		const selectionBefore = store.selection();
+		const previousCells = store.cells.map((row) => [...row]);
+		const removedData = store.deleteRows(2, 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 2, count: 1, removedData, previousCells },
+			selectionBefore,
+			store.selection(),
+		);
+
+		expect(store.rowCount()).toBe(4);
+		expect(store.cells[2]?.[3]).toBe("=B3+C3");
+		expect(store.cells[3]?.[3]).toBe("=SUM(D1:D3)");
+
+		const undoResult = store.undo();
+		expect(undoResult).not.toBeNull();
+		expect(store.rowCount()).toBe(5);
+		expect(store.cells[2]?.[3]).toBe("=B3+C3");
+		expect(store.cells[3]?.[3]).toBe("=B4+C4");
+		expect(store.cells[4]?.[3]).toBe("=SUM(D1:D4)");
+	});
+
+	it("delete row -> undo -> redo restores shifted and #REF! formulas", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A3+A4"],
+				[20, null],
+				[30, null],
+				[40, null],
+			],
+			columns,
+		);
+		const selectionBefore = store.selection();
+		const previousCells = store.cells.map((row) => [...row]);
+		const removedData = store.deleteRows(2, 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 2, count: 1, removedData, previousCells },
+			selectionBefore,
+			store.selection(),
+		);
+
+		expect(store.cells[0]?.[1]).toBe("=#REF!+A3");
+
+		store.undo();
+		expect(store.rowCount()).toBe(4);
+		expect(store.cells[0]?.[1]).toBe("=A3+A4");
+
+		store.redo();
+		expect(store.rowCount()).toBe(3);
+		expect(store.cells[0]?.[1]).toBe("=#REF!+A3");
+	});
+
+	it("insert -> undo -> redo -> undo remains stable with formulas", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A1+A2"],
+				[20, "=A2+A3"],
+				[30, null],
+			],
+			columns,
+		);
+		const selectionBefore = store.selection();
+		store.insertRows(1, 1);
+		store.pushRowOperation(
+			{ type: "insertRows", atIndex: 1, count: 1 },
+			selectionBefore,
+			store.selection(),
+		);
+
+		expect(store.cells[0]?.[1]).toBe("=A1+A3");
+
+		store.undo();
+		expect(store.rowCount()).toBe(3);
+		expect(store.cells[0]?.[1]).toBe("=A1+A2");
+
+		store.redo();
+		expect(store.rowCount()).toBe(4);
+		expect(store.cells[0]?.[1]).toBe("=A1+A3");
+
+		store.undo();
+		expect(store.rowCount()).toBe(3);
+		expect(store.cells[0]?.[1]).toBe("=A1+A2");
+	});
+
+	it("delete formula row -> undo restores the removed formula cells exactly", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A1*2"],
+				[20, "=A2*2"],
+				[30, "=A3*2"],
+			],
+			columns,
+		);
+		const selectionBefore = store.selection();
+		const previousCells = store.cells.map((row) => [...row]);
+		const removedData = store.deleteRows(1, 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 1, count: 1, removedData, previousCells },
+			selectionBefore,
+			store.selection(),
+		);
+
+		expect(store.rowCount()).toBe(2);
+		store.undo();
+
+		expect(store.rowCount()).toBe(3);
+		expect(store.cells[1]?.[1]).toBe("=A2*2");
+	});
+
+	it("supports alternating insert/delete history with formulas across multiple steps", () => {
+		const columns = makeColumns(2);
+		const store = createSheetStore(
+			[
+				[10, "=A1+A2"],
+				[20, "=A2+A3"],
+				[30, "=A3+A4"],
+				[40, null],
+			],
+			columns,
+		);
+
+		let selectionBefore = store.selection();
+		store.insertRows(1, 1);
+		store.pushRowOperation(
+			{ type: "insertRows", atIndex: 1, count: 1 },
+			selectionBefore,
+			store.selection(),
+		);
+
+		selectionBefore = store.selection();
+		let previousCells = store.cells.map((row) => [...row]);
+		let removedData = store.deleteRows(3, 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 3, count: 1, removedData, previousCells },
+			selectionBefore,
+			store.selection(),
+		);
+
+		selectionBefore = store.selection();
+		store.insertRows(0, 1);
+		store.pushRowOperation(
+			{ type: "insertRows", atIndex: 0, count: 1 },
+			selectionBefore,
+			store.selection(),
+		);
+
+		selectionBefore = store.selection();
+		previousCells = store.cells.map((row) => [...row]);
+		removedData = store.deleteRows(2, 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 2, count: 1, removedData, previousCells },
+			selectionBefore,
+			store.selection(),
+		);
+
+		selectionBefore = store.selection();
+		store.insertRows(4, 1);
+		store.pushRowOperation(
+			{ type: "insertRows", atIndex: 4, count: 1 },
+			selectionBefore,
+			store.selection(),
+		);
+
+		expect(store.rowCount()).toBe(5);
+
+		store.undo();
+		store.undo();
+		store.undo();
+		store.undo();
+		store.undo();
+
+		expect(store.rowCount()).toBe(4);
+		expect(store.cells[0]?.[1]).toBe("=A1+A2");
+		expect(store.cells[1]?.[1]).toBe("=A2+A3");
+		expect(store.cells[2]?.[1]).toBe("=A3+A4");
 	});
 });

@@ -1240,6 +1240,7 @@ export default function Grid(props: GridProps) {
 		if (isViewSortActive()) return;
 		const selBefore = props.store.selection();
 		props.store.insertRows(atIndex, count);
+		props.formulaBridge?.syncAll(props.store.cells);
 		props.store.pushRowOperation(
 			{ type: "insertRows", atIndex, count },
 			selBefore,
@@ -1254,7 +1255,9 @@ export default function Grid(props: GridProps) {
 
 		const physicalAtIndex = getPhysicalRowForVisualRow(atIndex);
 		const selBefore = props.store.selection();
+		const previousCells = props.store.cells.map((row) => [...row]);
 		const removedData = props.store.deleteRows(physicalAtIndex, count);
+		props.formulaBridge?.syncAll(props.store.cells);
 
 		// Clamp selection if it's now beyond the last row
 		const newRowCount = props.store.rowCount();
@@ -1266,7 +1269,7 @@ export default function Grid(props: GridProps) {
 		}
 
 		props.store.pushRowOperation(
-			{ type: "deleteRows", atIndex: physicalAtIndex, count, removedData },
+			{ type: "deleteRows", atIndex: physicalAtIndex, count, removedData, previousCells },
 			selBefore,
 			props.store.selection(),
 		);
@@ -1572,6 +1575,7 @@ export default function Grid(props: GridProps) {
 						props.onBatchEdit?.(undoResult.mutations);
 					}
 						if (undoResult.rowChange) {
+							props.formulaBridge?.syncAll(props.store.cells);
 							if (undoResult.rowChange.type === "insertRows") {
 								props.onRowInsert?.(undoResult.rowChange.atIndex, undoResult.rowChange.count);
 							} else {
@@ -1594,6 +1598,7 @@ export default function Grid(props: GridProps) {
 						props.onBatchEdit?.(redoResult.mutations);
 					}
 						if (redoResult.rowChange) {
+							props.formulaBridge?.syncAll(props.store.cells);
 							if (redoResult.rowChange.type === "insertRows") {
 								props.onRowInsert?.(redoResult.rowChange.atIndex, redoResult.rowChange.count);
 							} else {
@@ -1795,6 +1800,7 @@ export default function Grid(props: GridProps) {
 							props.onBatchEdit?.(result.mutations);
 						}
 							if (result.rowChange) {
+								props.formulaBridge?.syncAll(props.store.cells);
 								if (result.rowChange.type === "insertRows") {
 									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
 								} else {
@@ -1815,6 +1821,7 @@ export default function Grid(props: GridProps) {
 							props.onBatchEdit?.(result.mutations);
 						}
 							if (result.rowChange) {
+								props.formulaBridge?.syncAll(props.store.cells);
 								if (result.rowChange.type === "insertRows") {
 									props.onRowInsert?.(result.rowChange.atIndex, result.rowChange.count);
 								} else {

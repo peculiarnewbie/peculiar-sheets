@@ -2,6 +2,7 @@ import type { CellAddress, CellRange, CellValue } from "../types";
 import { normalizeRange } from "../core/selection";
 
 const A1_REFERENCE_PATTERN = /(?<![A-Za-z0-9_!])(\$?[A-Z]{1,3}\$?\d+)(?::(\$?[A-Z]{1,3}\$?\d+))?/g;
+const A1_ROW_OP_REFERENCE_PATTERN = /(?<![A-Za-z0-9_!])(\$?[A-Z]{1,3}\$?\d+)(?::(\$?[A-Z]{1,3}\$?\d+))?/gi;
 
 export function columnIndexToLetters(col: number): string {
 	let index = col;
@@ -97,6 +98,11 @@ interface ParsedA1Reference {
 	rowIndex: number;
 }
 
+interface StructuralRowRefResult {
+	status: "valid" | "deleted";
+	value: string;
+}
+
 function shiftA1Reference(
 	reference: string,
 	rowDelta: number,
@@ -116,8 +122,131 @@ function shiftA1Reference(
 	return `${colPrefix}${columnIndexToLetters(nextCol)}${rowPrefix}${nextRow + 1}`;
 }
 
+/**
+ * Shift a single A1 reference only when its 0-indexed row >= thresholdRow.
+ * Returns the shifted string, or null if the reference couldn't be parsed.
+ */
+function serializeA1Reference(parsed: ParsedA1Reference): string {
+	const colPrefix = parsed.colAbsolute ? "$" : "";
+	const rowPrefix = parsed.rowAbsolute ? "$" : "";
+	return `${colPrefix}${columnIndexToLetters(parsed.colIndex)}${rowPrefix}${parsed.rowIndex + 1}`;
+}
+
+function shiftA1ReferenceForRowInsert(
+	reference: string,
+	insertAtRow: number,
+	count: number,
+): string | null {
+	const parsed = parseA1Reference(reference);
+	if (!parsed) return null;
+
+	const nextRow = parsed.rowIndex >= insertAtRow
+		? parsed.rowIndex + count
+		: parsed.rowIndex;
+
+	return serializeA1Reference({
+		...parsed,
+		rowIndex: nextRow,
+	});
+}
+
+function shiftA1ReferenceForRowDelete(
+	reference: string,
+	deleteAtRow: number,
+	count: number,
+): StructuralRowRefResult | null {
+	const parsed = parseA1Reference(reference);
+	if (!parsed) return null;
+
+	if (parsed.rowIndex < deleteAtRow) {
+		return { status: "valid", value: serializeA1Reference(parsed) };
+	}
+
+	if (parsed.rowIndex >= deleteAtRow + count) {
+		return {
+			status: "valid",
+			value: serializeA1Reference({
+				...parsed,
+				rowIndex: parsed.rowIndex - count,
+			}),
+		};
+	}
+
+	return { status: "deleted", value: "#REF!" };
+}
+
+function rewriteRangeAfterRowDelete(
+	startResult: StructuralRowRefResult,
+	endResult: StructuralRowRefResult,
+): string {
+	if (startResult.status === "deleted" && endResult.status === "deleted") {
+		return "#REF!";
+	}
+	if (startResult.status === "deleted") {
+		return `#REF!:${endResult.value}`;
+	}
+	if (endResult.status === "deleted") {
+		return `${startResult.value}:#REF!`;
+	}
+	return `${startResult.value}:${endResult.value}`;
+}
+
+/**
+ * Rewrite A1 references in a formula after rows are inserted.
+ * References whose 0-indexed row >= insertAtRow are shifted by +count.
+ * Same-sheet refs are matched case-insensitively and rewritten in normalized A1 form.
+ */
+export function shiftFormulaReferencesForRowInsert(
+	formula: string,
+	insertAtRow: number,
+	count: number,
+): string {
+	if (!isFormulaText(formula) || count <= 0) return formula;
+
+	return formula.replace(
+		A1_ROW_OP_REFERENCE_PATTERN,
+		(match, startRef: string, endRef?: string) => {
+			const shiftedStart = shiftA1ReferenceForRowInsert(startRef, insertAtRow, count);
+			if (!shiftedStart) return match;
+			if (!endRef) return shiftedStart;
+
+			const shiftedEnd = shiftA1ReferenceForRowInsert(endRef, insertAtRow, count);
+			if (!shiftedEnd) return match;
+
+			return `${shiftedStart}:${shiftedEnd}`;
+		},
+	);
+}
+
+/**
+ * Rewrite A1 references in a formula after rows are deleted.
+ * References inside the deleted range become explicit #REF! tokens.
+ * Same-sheet refs are matched case-insensitively and rewritten in normalized A1 form.
+ */
+export function shiftFormulaReferencesForRowDelete(
+	formula: string,
+	deleteAtRow: number,
+	count: number,
+): string {
+	if (!isFormulaText(formula) || count <= 0) return formula;
+
+	return formula.replace(
+		A1_ROW_OP_REFERENCE_PATTERN,
+		(match, startRef: string, endRef?: string) => {
+			const shiftedStart = shiftA1ReferenceForRowDelete(startRef, deleteAtRow, count);
+			if (!shiftedStart) return match;
+			if (!endRef) return shiftedStart.value;
+
+			const shiftedEnd = shiftA1ReferenceForRowDelete(endRef, deleteAtRow, count);
+			if (!shiftedEnd) return match;
+
+			return rewriteRangeAfterRowDelete(shiftedStart, shiftedEnd);
+		},
+	);
+}
+
 function parseA1Reference(reference: string): ParsedA1Reference | null {
-	const match = reference.match(/^(\$?)([A-Z]{1,3})(\$?)(\d+)$/);
+	const match = reference.match(/^(\$?)([A-Z]{1,3})(\$?)(\d+)$/i);
 	if (!match) return null;
 
 	const [, colLock, letters, rowLock, rowText] = match;

@@ -4,7 +4,13 @@ import type { CellMutation, CellValue, RowReorderMutation, Selection } from "../
 
 export type RowOperation =
 	| { type: "insertRows"; atIndex: number; count: number }
-	| { type: "deleteRows"; atIndex: number; count: number; removedData: CellValue[][] };
+	| {
+		type: "deleteRows";
+		atIndex: number;
+		count: number;
+		removedData: CellValue[][];
+		previousCells?: CellValue[][];
+	};
 
 interface StoredRowReorder {
 	columnId: string;

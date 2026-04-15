@@ -10,6 +10,11 @@ import type {
 } from "../types";
 import { emptySelection, selectCell } from "./selection";
 import {
+	isFormulaValue,
+	shiftFormulaReferencesForRowInsert,
+	shiftFormulaReferencesForRowDelete,
+} from "../formula/references";
+import {
 	type HistoryStack,
 	type RowOperation,
 	type UndoRedoRowChange,
@@ -62,6 +67,10 @@ export interface SheetStore {
 	getRowIdAtPhysicalRow(row: number): number | null;
 	getPhysicalRowForRowId(rowId: number): number | null;
 
+	// Row operation tracking (for reconciler guard)
+	hasPendingRowOp(): boolean;
+	clearPendingRowOp(): void;
+
 	// History
 	pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection): void;
 	pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection): void;
@@ -102,6 +111,7 @@ export function createSheetStore(
 		new Map(columns.map((c) => [c.id, c.width ?? 120])),
 	);
 	const [historyState, setHistory] = createSignal<HistoryStack>(createHistory());
+	const [hasPendingRowOp, setHasPendingRowOp] = createSignal(false);
 
 	/** Internal: splice empty rows into the cells array and update dimensions. */
 	function _insertRows(atIndex: number, count: number) {
@@ -119,6 +129,18 @@ export function createSheetStore(
 					new Array(cc).fill(null) as CellValue[],
 				);
 				draft.splice(insertAt, 0, ...newRows);
+
+				// Rewrite formula references: shift refs at/below insertAt by +count
+				for (let r = 0; r < draft.length; r++) {
+					const row = draft[r];
+					if (!row) continue;
+					for (let c = 0; c < row.length; c++) {
+						const v = row[c];
+						if (typeof v === "string" && isFormulaValue(v)) {
+							row[c] = shiftFormulaReferencesForRowInsert(v, insertAt, count);
+						}
+					}
+				}
 			}),
 		);
 		setRowIds((prev) => {
@@ -126,6 +148,7 @@ export function createSheetStore(
 			next.splice(insertAt, 0, ...newRowIds);
 			return next;
 		});
+		setHasPendingRowOp(true);
 	}
 
 	/** Internal: splice rows out of the cells array, update dimensions, return removed data. */
@@ -147,6 +170,18 @@ export function createSheetStore(
 		setCells(
 			produce((draft) => {
 				draft.splice(deleteAt, actualCount);
+
+				// Rewrite formula references: shift refs at/below deleteAt+actualCount by -actualCount
+				for (let r = 0; r < draft.length; r++) {
+					const row = draft[r];
+					if (!row) continue;
+					for (let c = 0; c < row.length; c++) {
+						const v = row[c];
+						if (typeof v === "string" && isFormulaValue(v)) {
+							row[c] = shiftFormulaReferencesForRowDelete(v, deleteAt, actualCount);
+						}
+					}
+				}
 			}),
 		);
 		setRowIds((prev) => {
@@ -154,6 +189,7 @@ export function createSheetStore(
 			next.splice(deleteAt, actualCount);
 			return next;
 		});
+		setHasPendingRowOp(true);
 
 		return removedData;
 	}
@@ -170,6 +206,17 @@ export function createSheetStore(
 					for (let c = 0; c < row.length; c++) {
 						targetRow[c] = row[c] ?? null;
 					}
+				}
+			}),
+		);
+	}
+
+	function _restoreAllCells(snapshot: CellValue[][]) {
+		setCells(
+			produce((draft) => {
+				draft.length = 0;
+				for (const row of snapshot) {
+					draft.push([...row]);
 				}
 			}),
 		);
@@ -329,6 +376,9 @@ export function createSheetStore(
 
 		getPhysicalRowForRowId,
 
+		hasPendingRowOp: () => hasPendingRowOp(),
+		clearPendingRowOp: () => setHasPendingRowOp(false),
+
 		pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection) {
 			setHistory((prev) => pushMutationHistory(prev, mutations, selectionBefore, selectionAfter));
 		},
@@ -361,6 +411,9 @@ export function createSheetStore(
 						: undefined;
 					if (originalRowOp?.type === "deleteRows" && originalRowOp.removedData.length > 0) {
 						_insertRowsWithData(result.rowOp.atIndex, originalRowOp.removedData);
+						if (originalRowOp.previousCells) {
+							_restoreAllCells(originalRowOp.previousCells);
+						}
 					} else {
 						applyRowOp(result.rowOp);
 					}
@@ -454,6 +507,26 @@ export function createReconciler(
 				const newRowCount = data.length;
 				const newColCount = columns.length;
 				let didChange = false;
+
+				// ── Row-operation guard ──────────────────────────────────
+				// If an internal insertRows/deleteRows just ran, the store
+				// dimensions may differ from the host data.  Don't let the
+				// reconciler destroy those internal changes.
+				const pending = store.hasPendingRowOp();
+				if (pending) {
+					if (newRowCount === store.rowCount() && newColCount === store.colCount()) {
+						// Host mirrored the row op (dimensions match).
+						// Skip cell reconciliation — host data has stale formula
+						// strings while the store has correctly rewritten ones.
+						// Do NOT call onExternalChange — HF was already synced
+						// from Grid.tsx after the row operation.
+						store.clearPendingRowOp();
+						return;
+					}
+					// Host hasn't mirrored yet (dimensions still differ).
+					// Skip the entire pass — don't resize, don't overwrite cells.
+					return;
+				}
 
 				// Resize grid if dimensions changed
 				if (newRowCount !== store.rowCount() || newColCount !== store.colCount()) {

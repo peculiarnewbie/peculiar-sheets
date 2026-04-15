@@ -83,8 +83,10 @@ export default function Harness(props: HarnessProps) {
 				new Array(props.columns.length).fill(null),
 			);
 			next.splice(atIndex, 0, ...emptyRows);
+			// Re-read ALL cells from the controller so the host data
+			// picks up formula references rewritten by the engine.
 			if (window.__SHEET_CONTROLLER__) {
-				for (let r = atIndex; r < atIndex + count; r++) {
+				for (let r = 0; r < next.length; r++) {
 					for (let c = 0; c < props.columns.length; c++) {
 						next[r]![c] = window.__SHEET_CONTROLLER__.getCellValue(r, c);
 					}
@@ -98,6 +100,15 @@ export default function Harness(props: HarnessProps) {
 		setSheetData((prev) => {
 			const next = prev.map((row) => [...row]);
 			next.splice(atIndex, count);
+			// Re-read ALL cells from the controller so the host data
+			// picks up formula references rewritten by the engine.
+			if (window.__SHEET_CONTROLLER__) {
+				for (let r = 0; r < next.length; r++) {
+					for (let c = 0; c < props.columns.length; c++) {
+						next[r]![c] = window.__SHEET_CONTROLLER__.getCellValue(r, c);
+					}
+				}
+			}
 			return next;
 		});
 	}

@@ -248,6 +248,24 @@ describe("formula + row operations (E2E)", () => {
 			expect(await getCellValue(sh, 5, 3)).toBe("=B6+C6");
 		});
 
+		it("insert row then autofill over the gap uses the post-insert layout", async () => {
+			await getPage().evaluate(() => {
+				(window as any).__SHEET_CONTROLLER__.insertRows(2, 1);
+			});
+
+			await clickCell(sh, 0, 3);
+			await shiftClickCell(sh, 1, 3);
+			await dragFillHandle(sh, 3, 3);
+
+			expect(await getCellValue(sh, 2, 3)).toBe("=B3+C3");
+			expect(await getCellValue(sh, 3, 3)).toBe("=B4+C4");
+
+			const display = await getPage().evaluate(
+				() => (window as any).__SHEET_CONTROLLER__?.getDisplayCellValue(3, 3),
+			);
+			expect(display).toBe(59);
+		});
+
 		it("autofilled formulas display computed values, not literal text", async () => {
 			await clickCell(sh, 0, 3);
 			await shiftClickCell(sh, 2, 3);

@@ -7,6 +7,8 @@ import {
 	lettersToColumnIndex,
 	rangeToA1,
 	shiftFormulaByDelta,
+	shiftFormulaReferencesForRowDelete,
+	shiftFormulaReferencesForRowInsert,
 } from "./references";
 
 describe("formula references", () => {
@@ -67,5 +69,28 @@ describe("formula references", () => {
 	it("preserves unsupported reference syntaxes unchanged", () => {
 		expect(shiftFormulaByDelta("=Sheet2!A1", 1, 0)).toBe("=Sheet2!A1");
 		expect(shiftFormulaByDelta("=Table[Column]", 1, 0)).toBe("=Table[Column]");
+	});
+
+	it("rewrites row insert references structurally, including absolute rows", () => {
+		expect(shiftFormulaReferencesForRowInsert("=$A1:B$5", 0, 1)).toBe("=$A2:B$6");
+		expect(shiftFormulaReferencesForRowInsert("=SUM(a1:b2)", 1, 2)).toBe("=SUM(A1:B4)");
+		expect(shiftFormulaReferencesForRowInsert("=42", 1, 1)).toBe("=42");
+	});
+
+	it("rewrites row delete scalar references into #REF! when needed", () => {
+		expect(shiftFormulaReferencesForRowDelete("=A5", 4, 1)).toBe("=#REF!");
+		expect(shiftFormulaReferencesForRowDelete("=A3+A4", 2, 1)).toBe("=#REF!+A3");
+		expect(shiftFormulaReferencesForRowDelete("=a3+B4", 2, 1)).toBe("=#REF!+B3");
+	});
+
+	it("shrinks or invalidates ranges after row delete", () => {
+		expect(shiftFormulaReferencesForRowDelete("=SUM(D1:D5)", 2, 1)).toBe("=SUM(D1:D4)");
+		expect(shiftFormulaReferencesForRowDelete("=SUM(D3:D5)", 2, 1)).toBe("=SUM(#REF!:D4)");
+		expect(shiftFormulaReferencesForRowDelete("=SUM(D3:D4)", 2, 2)).toBe("=SUM(#REF!)");
+	});
+
+	it("keeps unsupported syntaxes unchanged for row ops", () => {
+		expect(shiftFormulaReferencesForRowInsert("=Sheet2!a1", 0, 1)).toBe("=Sheet2!a1");
+		expect(shiftFormulaReferencesForRowDelete("=Table[Column]", 0, 1)).toBe("=Table[Column]");
 	});
 });
