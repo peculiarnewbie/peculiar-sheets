@@ -516,15 +516,15 @@ function DemoPlayground() {
           </div>
 
           <div class="demo-sheet-frame">
-            <button
-              class={`demo-code-toggle${showCode() ? " active" : ""}`}
-              onClick={() => setShowCode((s) => !s)}
-              title={showCode() ? "Show live demo" : "Show source code"}
-            >
-              {showCode() ? "← Demo" : "</>"}
-            </button>
-
             <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
+              <button
+                class={`demo-code-toggle${showCode() ? " active" : ""}`}
+                onClick={() => setShowCode((s) => !s)}
+                title={showCode() ? "Show live demo" : "Show source code"}
+              >
+                {showCode() ? "← Demo" : "</>"}
+              </button>
+
               <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
                 <Show
                   when={showCode()}

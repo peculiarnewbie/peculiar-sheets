@@ -596,7 +596,6 @@ a:hover {
 /* ── Demo sheet ───────────────────────────────────────────── */
 
 .demo-sheet-frame {
-  position: relative;
   margin-top: 1.75rem;
 }
 
@@ -604,7 +603,7 @@ a:hover {
   position: absolute;
   top: 0.625rem;
   right: 0.625rem;
-  z-index: 10;
+  z-index: 40;
   padding: 0.3rem 0.7rem;
   font-family: "JetBrains Mono", monospace;
   font-size: 0.7rem;
@@ -653,6 +652,7 @@ a:hover {
 }
 
 .demo-sheet-wrap {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   overflow: hidden;
