@@ -424,6 +424,74 @@ export default function Grid(props: GridProps) {
 		}),
 	);
 
+	function scrollCellIntoView(addr: CellAddress) {
+		const viewport = viewportRef;
+		if (!viewport) return;
+
+		const widths = untrack(columnWidths);
+		const { row, col } = addr;
+
+		// Cell bounds within the scrollable canvas.
+		const cellTop = row * props.rowHeight;
+		const cellBottom = cellTop + props.rowHeight;
+
+		let cellLeft = rowGutterWidth();
+		for (let c = 0; c < col; c++) {
+			cellLeft += widths[c] ?? DEFAULT_COL_WIDTH;
+		}
+		const cellRight = cellLeft + (widths[col] ?? DEFAULT_COL_WIDTH);
+
+		// Space covered by sticky overlays (header on top, gutter + pinned cols on left).
+		const stickyTop = headerTotalHeight();
+		let stickyLeft = rowGutterWidth();
+		for (let c = 0; c < props.columns.length; c++) {
+			if (props.columns[c]?.pinned === "left") {
+				stickyLeft += widths[c] ?? DEFAULT_COL_WIDTH;
+			}
+		}
+
+		// Pinned cells are always visible; only scroll vertically for them.
+		const isColPinned = props.columns[col]?.pinned === "left";
+
+		const scrollTop = viewport.scrollTop;
+		const scrollLeft = viewport.scrollLeft;
+		const viewHeight = viewport.clientHeight;
+		const viewWidth = viewport.clientWidth;
+
+		let nextTop = scrollTop;
+		let nextLeft = scrollLeft;
+
+		if (cellTop < scrollTop + stickyTop) {
+			nextTop = cellTop - stickyTop;
+		} else if (cellBottom > scrollTop + viewHeight) {
+			nextTop = cellBottom - viewHeight;
+		}
+
+		if (!isColPinned) {
+			if (cellLeft < scrollLeft + stickyLeft) {
+				nextLeft = cellLeft - stickyLeft;
+			} else if (cellRight > scrollLeft + viewWidth) {
+				nextLeft = cellRight - viewWidth;
+			}
+		}
+
+		nextTop = Math.max(0, nextTop);
+		nextLeft = Math.max(0, nextLeft);
+
+		if (nextTop !== scrollTop || nextLeft !== scrollLeft) {
+			viewport.scrollTo({ top: nextTop, left: nextLeft });
+		}
+	}
+
+	// Keep the focused cell in view when selection moves (arrows, tab, shift+arrow, etc.).
+	createEffect(
+		on(
+			() => props.store.selection().focus,
+			(addr) => scrollCellIntoView(addr),
+			{ defer: true },
+		),
+	);
+
 	const editCellRect = createMemo(() => {
 		const editMode = props.store.editMode();
 		if (!editMode || editorSource() !== "cell") return null;
