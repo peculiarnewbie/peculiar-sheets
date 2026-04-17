@@ -77,6 +77,7 @@ export interface ColumnDef {
 	header: string;
 	width?: number;
 	minWidth?: number;
+	maxWidth?: number;
 	resizable?: boolean;
 	editable?: boolean;
 	pinned?: "left" | undefined;
@@ -206,6 +207,27 @@ export interface ScrollPosition {
 	visibleColRange: [number, number];
 }
 
+// ── Sizing ───────────────────────────────────────────────────────────────────
+
+export interface SheetSizingState {
+	columnWidths: Map<string, number>;
+	rowHeights: Map<number, number>;
+}
+
+export type ResizeAxis = "column" | "row";
+
+export type ResizeMode = "onEnd" | "onChange";
+
+export interface ResizeSessionState {
+	axis: ResizeAxis;
+	targetId: string | number;
+	startPointerOffset: number;
+	startSize: number;
+	currentDelta: number;
+	previewSize: number;
+	isActive: boolean;
+}
+
 // ── Sheet Customization ─────────────────────────────────────────────────────
 // Provided via SolidJS context so inner components can consume directly
 // without prop drilling through Sheet → Grid → GridBody → GridCell.
@@ -246,6 +268,8 @@ export interface SheetProps {
 	rowCount?: number;
 	/** Row height in px (default 28). */
 	rowHeight?: number;
+	/** Resize commit timing (`onEnd` by default). */
+	resizeMode?: ResizeMode;
 	/** When true, no cell editing is allowed. */
 	readOnly?: boolean;
 	/** Optional HyperFormula integration. */
@@ -264,7 +288,12 @@ export interface SheetProps {
 	onEditModeChange?: (state: EditModeState | null) => void;
 	onClipboard?: (payload: ClipboardPayload) => void;
 	onScroll?: (position: ScrollPosition) => void;
+	columnSizing?: Record<string, number>;
+	onColumnSizingChange?: (next: Record<string, number>) => void;
+	rowSizing?: Record<number, number>;
+	onRowSizingChange?: (next: Record<number, number>) => void;
 	onColumnResize?: (columnId: string, width: number) => void;
+	onRowResize?: (rowId: number, height: number) => void;
 	onSort?: (columnId: string, direction: SortDirection | null) => void;
 	onSortChange?: (state: SortState | null) => void;
 	/** Called when rows are inserted. The host should update its data array accordingly. */

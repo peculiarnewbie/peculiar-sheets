@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import type { CellRange, FillPreview, Selection } from "../types";
 import { normalizeRange, primaryRange } from "../core/selection";
+import type { RowMetrics } from "./rowMetrics";
 
 interface SelectionOverlayProps {
 	selection: Selection;
@@ -10,7 +11,7 @@ interface SelectionOverlayProps {
 	fillPreview: FillPreview | null;
 	showFillHandle: boolean;
 	columnWidths: number[];
-	rowHeight: number;
+	rowMetrics: RowMetrics;
 	scrollLeft: number;
 	scrollTop: number;
 	leftOffset?: number;
@@ -27,7 +28,7 @@ interface RangeRect {
 function computeRangeRect(
 	range: CellRange,
 	columnWidths: number[],
-	rowHeight: number,
+	rowMetrics: RowMetrics,
 ): RangeRect {
 	const nr = normalizeRange(range);
 
@@ -41,8 +42,9 @@ function computeRangeRect(
 		width += columnWidths[c] ?? 120;
 	}
 
-	const top = nr.start.row * rowHeight;
-	const height = (nr.end.row - nr.start.row + 1) * rowHeight;
+	const top = rowMetrics.getRowTop(nr.start.row);
+	const endTop = rowMetrics.getRowTop(nr.end.row);
+	const height = endTop + rowMetrics.getRowHeight(nr.end.row) - top;
 
 	return { left, top, width, height };
 }
@@ -50,37 +52,37 @@ function computeRangeRect(
 export default function SelectionOverlay(props: SelectionOverlayProps) {
 	const rects = () =>
 		props.selection.ranges.map((range) =>
-			computeRangeRect(range, props.columnWidths, props.rowHeight),
+			computeRangeRect(range, props.columnWidths, props.rowMetrics),
 		);
 
 	const clipboardRect = () => {
 		const range = props.clipboardRange;
 		if (!range) return null;
-		return computeRangeRect(range, props.columnWidths, props.rowHeight);
+		return computeRangeRect(range, props.columnWidths, props.rowMetrics);
 	};
 
 	const referenceRect = () => {
 		const range = props.referenceRange;
 		if (!range) return null;
-		return computeRangeRect(range, props.columnWidths, props.rowHeight);
+		return computeRangeRect(range, props.columnWidths, props.rowMetrics);
 	};
 
 	const externalReferenceRect = () => {
 		const range = props.externalReferenceRange;
 		if (!range) return null;
-		return computeRangeRect(range, props.columnWidths, props.rowHeight);
+		return computeRangeRect(range, props.columnWidths, props.rowMetrics);
 	};
 
 	const fillPreviewRect = () => {
 		const preview = props.fillPreview;
 		if (!preview) return null;
-		return computeRangeRect(preview.extension, props.columnWidths, props.rowHeight);
+		return computeRangeRect(preview.extension, props.columnWidths, props.rowMetrics);
 	};
 
 	const primaryRect = () => {
 		const range = primaryRange(props.selection);
 		if (!range) return null;
-		return computeRangeRect(range, props.columnWidths, props.rowHeight);
+		return computeRangeRect(range, props.columnWidths, props.rowMetrics);
 	};
 
 	return (

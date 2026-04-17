@@ -1,6 +1,7 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import type { ColumnDef, SortState } from "../types";
-import { DEFAULT_MIN_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
+import { GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
+import { getEffectiveColumnWidth } from "../core/sizing";
 import { columnIndexToLetters } from "../formula/references";
 
 interface GridHeaderProps {
@@ -12,7 +13,9 @@ interface GridHeaderProps {
 	rowGutterWidth: number;
 	pinnedLeftOffsets: number[];
 	lastPinnedIndex: number;
-	onColumnResize: (columnId: string, width: number) => void;
+	activeResizeColumnId: string | null;
+	onSort: (columnId: string) => void;
+	onColumnResizeStart: (columnId: string, event: MouseEvent) => void;
 	onColumnHeaderMouseDown?: (col: number, event: MouseEvent) => void;
 }
 
@@ -60,14 +63,8 @@ export default function GridHeader(props: GridHeaderProps) {
 	const groups = () => buildColumnGroups(props.columns);
 	const hasGroups = () => groups().length > 0;
 
-	const [resizing, setResizing] = createSignal<{
-		columnId: string;
-		startX: number;
-		startWidth: number;
-	} | null>(null);
-
 	function getColWidth(col: ColumnDef): number {
-		return props.columnWidths.get(col.id) ?? col.width ?? 120;
+		return getEffectiveColumnWidth(col, props.columnWidths);
 	}
 
 	function getGroupWidth(group: ColumnGroup): number {
@@ -79,14 +76,13 @@ export default function GridHeader(props: GridHeaderProps) {
 		return width;
 	}
 
-	/** Build a flat array of group header items, reactively. */
 	const groupHeaderItems = createMemo<GroupHeaderItem[]>(() => {
 		const items: GroupHeaderItem[] = [];
 		const allGroups = groups();
 		let colIdx = 0;
 
 		while (colIdx < props.columns.length) {
-			const group = allGroups.find((g) => g.startIdx === colIdx);
+			const group = allGroups.find((entry) => entry.startIdx === colIdx);
 			if (group) {
 				items.push({
 					type: "group",
@@ -107,39 +103,22 @@ export default function GridHeader(props: GridHeaderProps) {
 		return items;
 	});
 
-	function handleResizeStart(event: MouseEvent, col: ColumnDef) {
-		event.preventDefault();
-		event.stopPropagation();
-		const startX = event.clientX;
-		const startWidth = getColWidth(col);
-		setResizing({ columnId: col.id, startX, startWidth });
-
-		function onMouseMove(e: MouseEvent) {
-			const r = resizing();
-			if (!r) return;
-			const delta = e.clientX - r.startX;
-			const minWidth = col.minWidth ?? DEFAULT_MIN_COL_WIDTH;
-			const newWidth = Math.max(minWidth, r.startWidth + delta);
-			props.onColumnResize(r.columnId, newWidth);
-		}
-
-		function onMouseUp() {
-			setResizing(null);
-			document.removeEventListener("mousemove", onMouseMove);
-			document.removeEventListener("mouseup", onMouseUp);
-		}
-
-		document.addEventListener("mousemove", onMouseMove);
-		document.addEventListener("mouseup", onMouseUp);
-	}
-
 	function getSortIndicator(col: ColumnDef): string {
 		if (!props.sortState || props.sortState.columnId !== col.id) return "";
 		return props.sortState.direction === "asc" ? " \u25B2" : " \u25BC";
 	}
 
 	return (
-		<div class="se-header" role="rowgroup" style={{ position: "sticky", top: "0", "z-index": "10", "min-width": `${props.totalWidth}px` }}>
+		<div
+			class="se-header"
+			role="rowgroup"
+			style={{
+				position: "sticky",
+				top: "0",
+				"z-index": "10",
+				"min-width": `${props.totalWidth}px`,
+			}}
+		>
 			<Show when={props.showReferenceHeaders}>
 				<div
 					class="se-header-row se-header-row--references"
@@ -167,24 +146,23 @@ export default function GridHeader(props: GridHeaderProps) {
 									}}
 									role="columnheader"
 									aria-colindex={index() + 1}
-								style={{
-									width: `${getColWidth(col)}px`,
-									"min-width": `${getColWidth(col)}px`,
-									height: `${HEADER_HEIGHT}px`,
-									left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
-								}}
-								data-col-index={index()}
-								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(index(), e)}
-							>
-								{columnIndexToLetters(index())}
-							</div>
+									style={{
+										width: `${getColWidth(col)}px`,
+										"min-width": `${getColWidth(col)}px`,
+										height: `${HEADER_HEIGHT}px`,
+										left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
+									}}
+									data-col-index={index()}
+									onMouseDown={(e) => props.onColumnHeaderMouseDown?.(index(), e)}
+								>
+									{columnIndexToLetters(index())}
+								</div>
 							);
 						}}
 					</For>
 				</div>
 			</Show>
 
-			{/* Group header row */}
 			<Show when={hasGroups()}>
 				<div
 					class="se-header-row se-header-row--groups"
@@ -220,7 +198,6 @@ export default function GridHeader(props: GridHeaderProps) {
 				</div>
 			</Show>
 
-			{/* Column header row */}
 			<div
 				class="se-header-row se-header-row--columns"
 				role="row"
@@ -241,6 +218,7 @@ export default function GridHeader(props: GridHeaderProps) {
 					{(col, index) => {
 						const isPinned = () => (props.pinnedLeftOffsets?.[index()] ?? -1) >= 0;
 						const isSortable = col.sortable !== false;
+						const isResizing = () => props.activeResizeColumnId === col.id;
 						return (
 							<div
 								class="se-header-cell"
@@ -248,6 +226,7 @@ export default function GridHeader(props: GridHeaderProps) {
 									"se-header-cell--sortable": isSortable,
 									"se-header-cell--pinned": isPinned(),
 									"se-header-cell--pinned-last": index() === props.lastPinnedIndex,
+									"se-header-cell--resizing": isResizing(),
 								}}
 								role="columnheader"
 								aria-colindex={index() + 1}
@@ -264,6 +243,11 @@ export default function GridHeader(props: GridHeaderProps) {
 									cursor: isSortable ? "pointer" : undefined,
 								}}
 								data-col-index={index()}
+								onClick={() => {
+									if (isSortable) {
+										props.onSort(col.id);
+									}
+								}}
 								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(index(), e)}
 							>
 								<span class="se-header-cell__label">
@@ -272,7 +256,8 @@ export default function GridHeader(props: GridHeaderProps) {
 								<Show when={col.resizable !== false}>
 									<div
 										class="se-resize-handle"
-										onMouseDown={(e) => handleResizeStart(e, col)}
+										classList={{ "se-resize-handle--active": isResizing() }}
+										onMouseDown={(e) => props.onColumnResizeStart(col.id, e)}
 									/>
 								</Show>
 							</div>

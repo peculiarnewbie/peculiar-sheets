@@ -1,8 +1,10 @@
 import { For, Show } from "solid-js";
 import type { CellAddress, CellValue, ColumnDef } from "../types";
 import { useSheetCustomization } from "../customization";
+import { getEffectiveColumnWidth } from "../core/sizing";
 import { defaultFormatCellValue } from "../core/formatting";
 import GridCell from "./GridCell";
+import type { RowMetrics } from "./rowMetrics";
 
 function addressMatchesCurrent(addr: CellAddress, current: CellAddress | null): boolean {
 	if (!current) return false;
@@ -12,15 +14,17 @@ function addressMatchesCurrent(addr: CellAddress, current: CellAddress | null): 
 interface GridBodyProps {
 	columns: ColumnDef[];
 	columnWidths: Map<string, number>;
-	rowHeight: number;
+	rowMetrics: RowMetrics;
 	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
 	getRowHeaderIndex: (visualRow: number) => number;
 	getRowHeaderTooltip?: (visualRow: number, backingRow: number) => string | null;
-	/** Indices of visible rows from the virtualizer. */
-	visibleRows: number[];
-	/** Total row count for sizing. */
-	totalRows: number;
+	onRowResizeStart?: (row: number, event: MouseEvent) => void;
+	activeResizeRow?: number | null;
+	/** Visible rows from the virtualizer. */
+	virtualRows: Array<{ index: number; start: number; size: number }>;
+	/** Total rendered height for sizing. */
+	totalHeight: number;
 	getDisplayValue: (row: number, col: number) => CellValue;
 	/** Raw cell value (pre-formula-eval, pre-formatValue). Used for renderCell + title hooks. */
 	getRawValue: (row: number, col: number) => CellValue;
@@ -41,7 +45,7 @@ export default function GridBody(props: GridBodyProps) {
 	const customization = useSheetCustomization();
 
 	function getColWidth(col: ColumnDef): number {
-		return props.columnWidths.get(col.id) ?? col.width ?? 120;
+		return getEffectiveColumnWidth(col, props.columnWidths);
 	}
 
 	return (
@@ -50,70 +54,86 @@ export default function GridBody(props: GridBodyProps) {
 			role="rowgroup"
 			style={{
 				position: "relative",
-				height: `${props.totalRows * props.rowHeight}px`,
+				height: `${props.totalHeight}px`,
 			}}
 		>
-			<For each={props.visibleRows}>
-				{(rowIdx) => {
-					const rowHeaderIndex = () => props.getRowHeaderIndex(rowIdx);
-					const rowHeaderTooltip = () => props.getRowHeaderTooltip?.(rowIdx, rowHeaderIndex()) ?? null;
+			<For each={props.virtualRows}>
+				{(virtualRow) => {
+					const rowIdx = () => virtualRow.index;
+					const rowHeight = () => virtualRow.size;
+					const rowTop = () => virtualRow.start;
+					const rowHeaderIndex = () => props.getRowHeaderIndex(rowIdx());
+					const rowHeaderTooltip = () => props.getRowHeaderTooltip?.(rowIdx(), rowHeaderIndex()) ?? null;
 					return (
 						<div
 							class="se-row"
 							role="row"
-							aria-rowindex={rowIdx + 1}
+							aria-rowindex={rowIdx() + 1}
 							style={{
 								position: "absolute",
-								top: `${rowIdx * props.rowHeight}px`,
+								top: `${rowTop()}px`,
 								display: "flex",
-								height: `${props.rowHeight}px`,
+								height: `${rowHeight()}px`,
 							}}
 						>
 							<Show when={props.showReferenceHeaders}>
 								<div
 									class={`se-row-header-cell${customization?.getRowHeaderClass ? ` ${customization.getRowHeaderClass(rowHeaderIndex())}` : ""}`}
+									classList={{
+										"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
+									}}
 									role="rowheader"
 									style={{
 										width: `${props.rowGutterWidth}px`,
 										"min-width": `${props.rowGutterWidth}px`,
-										height: `${props.rowHeight}px`,
+										height: `${rowHeight()}px`,
 									}}
 									title={rowHeaderTooltip() ?? undefined}
-									onMouseDown={(e) => props.onRowHeaderMouseDown?.(rowIdx, e)}
+									onMouseDown={(e) => props.onRowHeaderMouseDown?.(rowIdx(), e)}
 								>
 									<Show when={customization?.getRowHeaderSublabel?.(rowHeaderIndex())}>
 										{(sub) => <span class="se-row-header-sublabel">{sub()}</span>}
 									</Show>
 									{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ?? String(rowHeaderIndex() + 1)}
+									<Show when={props.onRowResizeStart}>
+										<div
+											class="se-row-resize-handle"
+											onMouseDown={(e) => {
+												e.preventDefault();
+												e.stopPropagation();
+												props.onRowResizeStart?.(rowIdx(), e);
+											}}
+										/>
+									</Show>
 								</div>
 							</Show>
 							<For each={props.columns}>
 								{(col, colIdx) => {
-									const addr = (): CellAddress => ({ row: rowIdx, col: colIdx() });
-									const rawValue = () => props.getRawValue(rowIdx, colIdx());
-									const displayValue = () => props.getDisplayValue(rowIdx, colIdx());
+									const addr = (): CellAddress => ({ row: rowIdx(), col: colIdx() });
+									const rawValue = () => props.getRawValue(rowIdx(), colIdx());
+									const displayValue = () => props.getDisplayValue(rowIdx(), colIdx());
 									const formattedText = () =>
 										col.formatValue
-											? col.formatValue(displayValue(), { row: rowIdx, col: colIdx() })
+											? col.formatValue(displayValue(), { row: rowIdx(), col: colIdx() })
 											: defaultFormatCellValue(displayValue());
 									const titleOverride = () =>
-										col.getCellTitle?.(rawValue(), { row: rowIdx, col: colIdx() });
+										col.getCellTitle?.(rawValue(), { row: rowIdx(), col: colIdx() });
 									const isEditing = () =>
-										props.editingAddress?.row === rowIdx &&
+										props.editingAddress?.row === rowIdx() &&
 										props.editingAddress?.col === colIdx();
 
 									return (
 										<GridCell
 											rawValue={rawValue()}
 											formattedText={formattedText()}
-											row={rowIdx}
+											row={rowIdx()}
 											width={getColWidth(col)}
-											height={props.rowHeight}
+											height={rowHeight()}
 											colIndex={colIdx()}
 											readOnly={props.readOnly ?? false}
 											pinnedLeft={props.pinnedLeftOffsets?.[colIdx()] ?? -1}
 											isLastPinned={colIdx() === props.lastPinnedIndex}
-											searchMatch={props.searchMatchSet.has(`${rowIdx},${colIdx()}`)}
+											searchMatch={props.searchMatchSet.has(`${rowIdx()},${colIdx()}`)}
 											searchCurrent={addressMatchesCurrent(addr(), props.searchCurrentAddress)}
 											isEditing={isEditing()}
 											{...(titleOverride() !== undefined ? { title: titleOverride() as string } : {})}

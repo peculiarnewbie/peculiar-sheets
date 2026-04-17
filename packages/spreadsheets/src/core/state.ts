@@ -52,6 +52,7 @@ export interface SheetStore {
 	selection(): Selection;
 	editMode(): EditModeState | null;
 	columnWidths(): Map<string, number>;
+	rowHeights(): Map<number, number>;
 	history(): HistoryStack;
 
 	// Mutations
@@ -61,6 +62,7 @@ export interface SheetStore {
 	setSelection(selection: Selection): void;
 	setEditMode(state: EditModeState | null): void;
 	setColumnWidth(columnId: string, width: number): void;
+	setRowHeight(rowId: number, height: number): void;
 	resizeGrid(rowCount: number, colCount: number): void;
 	insertRows(atIndex: number, count: number): void;
 	deleteRows(atIndex: number, count: number): CellValue[][];
@@ -110,6 +112,7 @@ export function createSheetStore(
 	const [colWidths, setColWidths] = createSignal<Map<string, number>>(
 		new Map(columns.map((c) => [c.id, c.width ?? 120])),
 	);
+	const [rowHeights, setRowHeights] = createSignal<Map<number, number>>(new Map());
 	const [historyState, setHistory] = createSignal<HistoryStack>(createHistory());
 	const [hasPendingRowOp, setHasPendingRowOp] = createSignal(false);
 
@@ -274,6 +277,7 @@ export function createSheetStore(
 		selection,
 		editMode,
 		columnWidths: colWidths,
+		rowHeights,
 		history: historyState,
 
 		setCell(row: number, col: number, value: CellValue) {
@@ -319,6 +323,14 @@ export function createSheetStore(
 			setColWidths((prev) => {
 				const next = new Map(prev);
 				next.set(columnId, width);
+				return next;
+			});
+		},
+
+		setRowHeight(rowId: number, height: number) {
+			setRowHeights((prev) => {
+				const next = new Map(prev);
+				next.set(rowId, height);
 				return next;
 			});
 		},

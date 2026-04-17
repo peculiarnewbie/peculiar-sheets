@@ -95,7 +95,13 @@ export function Sheet(props: SheetProps) {
 					props.onEditModeChange?.(state);
 				}}
 				onClipboard={props.onClipboard}
+				resizeMode={props.resizeMode ?? "onEnd"}
+				columnSizing={props.columnSizing}
+				onColumnSizingChange={props.onColumnSizingChange}
+				rowSizing={props.rowSizing}
+				onRowSizingChange={props.onRowSizingChange}
 				onColumnResize={props.onColumnResize}
+				onRowResize={props.onRowResize}
 				onSort={props.onSort}
 				onSortChange={props.onSortChange}
 				onRowInsert={props.onRowInsert}

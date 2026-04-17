@@ -125,11 +125,14 @@ Notes:
 | `columns` | `ColumnDef[]` | Column definitions |
 | `rowCount` | `number?` | Override row count |
 | `rowHeight` | `number?` | Row height in px (default `28`) |
+| `resizeMode` | `"onEnd" \| "onChange"` | Resize commit timing (`onEnd` by default) |
 | `readOnly` | `boolean?` | Disable editing |
 | `formulaEngine` | `FormulaEngineConfig?` | HyperFormula instance + sheet ID |
 | `workbook` | `WorkbookSheetBinding?` | Headless workbook binding for shared cross-sheet coordination |
 | `showFormulaBar` | `boolean?` | Show the formula bar |
 | `showReferenceHeaders` | `boolean?` | Show A1-style column/row headers |
+| `columnSizing` | `Record<string, number>?` | Controlled column sizing state |
+| `rowSizing` | `Record<number, number>?` | Controlled row sizing state keyed by stable row ID |
 | `sortBehavior` | `"external" \| "view" \| "mutation"` | Built-in sort mode (`view` by default) |
 | `sortState` | `SortState \| null` | Controlled sort state |
 | `defaultSortState` | `SortState \| null` | Initial uncontrolled sort state |
@@ -147,7 +150,10 @@ Notes:
 | `onEditModeChange` | `EditModeState \| null` | Enter/exit edit mode |
 | `onClipboard` | `ClipboardPayload` | Copy/cut/paste event |
 | `onScroll` | `ScrollPosition` | Scroll position changed |
+| `onColumnSizingChange` | `(next) => void` | Controlled column sizing changed |
+| `onRowSizingChange` | `(next) => void` | Controlled row sizing changed |
 | `onColumnResize` | `(columnId, width)` | Column resized |
+| `onRowResize` | `(rowId, height)` | Row resized |
 | `onSort` | `(columnId, direction)` | Column sort requested (`direction` can be `null` when sort is cleared) |
 | `onSortChange` | `SortState \| null` | Sort UI state changed |
 | `onRowReorder` | `RowReorderMutation` | Underlying rows were structurally reordered |

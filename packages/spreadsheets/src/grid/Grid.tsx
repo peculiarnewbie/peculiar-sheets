@@ -6,6 +6,8 @@ import type {
 	CellRange,
 	CellValue,
 	ColumnDef,
+	ResizeMode,
+	ResizeSessionState,
 	RowReorderMutation,
 	Selection,
 	SheetController,
@@ -16,6 +18,7 @@ import type {
 import { DEFAULT_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
 import { useSheetCustomization } from "../customization";
 import type { SheetStore } from "../core/state";
+import { clampColumnWidth, getColumnWidth, getEffectiveColumnWidth, mapToRecord, recordToMap } from "../core/sizing";
 import {
 	emptySelection,
 	extendSelection,
@@ -45,6 +48,7 @@ import SelectionOverlay from "./SelectionOverlay";
 import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
 import SearchBar from "./SearchBar";
 import { createMatchSet, findMatches } from "../core/search";
+import { buildRowMetrics } from "./rowMetrics";
 import type { WorkbookSheetBinding } from "../workbook/types";
 
 const ROW_GUTTER_WIDTH = 48;
@@ -68,7 +72,13 @@ interface GridProps {
 		text: string;
 		cells: CellValue[][];
 	}) => void) | undefined;
+	resizeMode: ResizeMode;
+	columnSizing?: Record<string, number> | undefined;
+	onColumnSizingChange?: ((next: Record<string, number>) => void) | undefined;
+	rowSizing?: Record<number, number> | undefined;
+	onRowSizingChange?: ((next: Record<number, number>) => void) | undefined;
 	onColumnResize?: ((columnId: string, width: number) => void) | undefined;
+	onRowResize?: ((rowId: number, height: number) => void) | undefined;
 	onSort?: ((columnId: string, direction: SortDirection | null) => void) | undefined;
 	onSortChange?: ((state: SortState | null) => void) | undefined;
 	onRowInsert?: ((atIndex: number, count: number) => void) | undefined;
@@ -273,6 +283,7 @@ export default function Grid(props: GridProps) {
 	const [searchOpen, setSearchOpen] = createSignal(false);
 	const [searchQuery, setSearchQuery] = createSignal("");
 	const [searchCurrentIndex, setSearchCurrentIndex] = createSignal(-1);
+	const [resizeSession, setResizeSession] = createSignal<ResizeSessionState | null>(null);
 
 	const hasFormulaEngine = () => Boolean(props.formulaBridge);
 	const rowGutterWidth = () => props.showReferenceHeaders ? ROW_GUTTER_WIDTH : 0;
@@ -283,11 +294,35 @@ export default function Grid(props: GridProps) {
 		props.sortBehavior === "view" && currentSortState() !== null,
 	);
 
-	const columnWidths = createMemo(() =>
-		props.columns.map(
-			(col) => props.store.columnWidths().get(col.id) ?? col.width ?? DEFAULT_COL_WIDTH,
-		),
+	const committedColumnWidths = createMemo(() =>
+		props.columnSizing
+			? recordToMap<string>(props.columnSizing)
+			: props.store.columnWidths(),
 	);
+	const committedRowHeights = createMemo(() =>
+		props.rowSizing
+			? recordToMap<number>(props.rowSizing, (key) => Number(key))
+			: props.store.rowHeights(),
+	);
+	const columnSizingRecord = createMemo(() =>
+		props.columnSizing ?? mapToRecord(props.store.columnWidths()),
+	);
+	const rowSizingRecord = createMemo(() =>
+		props.rowSizing ?? mapToRecord(props.store.rowHeights()),
+	);
+
+	const columnWidths = createMemo(() =>
+		props.columns.map((col) => getEffectiveColumnWidth(col, committedColumnWidths())),
+	);
+	const columnLeftOffsets = createMemo(() => {
+		const offsets: number[] = [];
+		let left = rowGutterWidth();
+		for (let index = 0; index < props.columns.length; index++) {
+			offsets.push(left);
+			left += columnWidths()[index] ?? DEFAULT_COL_WIDTH;
+		}
+		return offsets;
+	});
 
 	const pinnedLeftOffsets = createMemo(() => {
 		const offsets: number[] = [];
@@ -310,17 +345,66 @@ export default function Grid(props: GridProps) {
 		return -1;
 	});
 
+	const visualRowIds = createMemo<number[] | null>(() => {
+		if (!isViewSortActive()) return null;
+
+		const sort = currentSortState();
+		if (!sort) return null;
+
+		const columnIndex = props.columns.findIndex((column) => column.id === sort.columnId);
+		if (columnIndex < 0) return null;
+
+		const currentRowIds = props.store.rowIds();
+		const nextOrder = currentRowIds.map((rowId, physicalRow) => ({
+			rowId,
+			physicalRow,
+			value: getSortComparableValue(physicalRow, columnIndex),
+		}));
+
+		nextOrder.sort((left, right) => {
+			const comparison = compareSortableEntries(left.value, right.value, sort.direction);
+			if (comparison !== 0) {
+				return comparison;
+			}
+			return left.physicalRow - right.physicalRow;
+		});
+
+		return nextOrder.map((entry) => entry.rowId);
+	});
+
+	const rowMetrics = createMemo(() =>
+		buildRowMetrics(
+			props.store.rowCount(),
+			props.rowHeight,
+			(visualRow) => {
+				const rowId = getRowIdAtVisualRow(visualRow);
+				if (rowId === null) return undefined;
+				return committedRowHeights().get(rowId);
+			},
+		),
+	);
+
 	const rowVirtualizer = createVirtualizer({
 		get count() {
 			return props.store.rowCount();
 		},
 		getScrollElement: () => viewportRef ?? null,
-		estimateSize: () => props.rowHeight,
+		estimateSize: (index) => rowMetrics().getRowHeight(index),
 		overscan: 3,
 	});
 
-	const visibleRows = createMemo(() =>
-		rowVirtualizer.getVirtualItems().map((item) => item.index),
+	createEffect(
+		on(rowMetrics, () => {
+			rowVirtualizer.measure();
+		}),
+	);
+
+	const virtualRows = createMemo(() =>
+		rowVirtualizer.getVirtualItems().map((item) => ({
+			index: item.index,
+			start: item.start,
+			size: item.size,
+		})),
 	);
 
 	const totalWidth = createMemo(() =>
@@ -360,6 +444,44 @@ export default function Grid(props: GridProps) {
 		return visualIndex >= 0 ? visualIndex : null;
 	}
 
+	function getCommittedColumnWidth(columnId: string): number {
+		return getColumnWidth(columnId, props.columns, committedColumnWidths());
+	}
+
+	function getCommittedRowHeight(rowId: number): number {
+		return committedRowHeights().get(rowId) ?? props.rowHeight;
+	}
+
+	function updateCommittedColumnWidth(columnId: string, width: number) {
+		if (props.columnSizing === undefined) {
+			props.store.setColumnWidth(columnId, width);
+		}
+		props.onColumnSizingChange?.({
+			...columnSizingRecord(),
+			[columnId]: width,
+		});
+	}
+
+	function updateCommittedRowHeight(rowId: number, height: number) {
+		if (props.rowSizing === undefined) {
+			props.store.setRowHeight(rowId, height);
+		}
+		props.onRowSizingChange?.({
+			...rowSizingRecord(),
+			[rowId]: height,
+		});
+	}
+
+	function commitColumnResize(columnId: string, width: number) {
+		updateCommittedColumnWidth(columnId, width);
+		props.onColumnResize?.(columnId, width);
+	}
+
+	function commitRowResize(rowId: number, height: number) {
+		updateCommittedRowHeight(rowId, height);
+		props.onRowResize?.(rowId, height);
+	}
+
 	function mapModelToVisualAddress(address: CellAddress): CellAddress | null {
 		const rowId = props.store.getRowIdAtPhysicalRow(address.row);
 		if (rowId === null) return null;
@@ -382,33 +504,6 @@ export default function Grid(props: GridProps) {
 
 		return accessed === undefined ? null : accessed;
 	}
-
-	const visualRowIds = createMemo<number[] | null>(() => {
-		if (!isViewSortActive()) return null;
-
-		const sort = currentSortState();
-		if (!sort) return null;
-
-		const columnIndex = props.columns.findIndex((column) => column.id === sort.columnId);
-		if (columnIndex < 0) return null;
-
-		const currentRowIds = props.store.rowIds();
-		const nextOrder = currentRowIds.map((rowId, physicalRow) => ({
-			rowId,
-			physicalRow,
-			value: getSortComparableValue(physicalRow, columnIndex),
-		}));
-
-		nextOrder.sort((left, right) => {
-			const comparison = compareSortableEntries(left.value, right.value, sort.direction);
-			if (comparison !== 0) {
-				return comparison;
-			}
-			return left.physicalRow - right.physicalRow;
-		});
-
-		return nextOrder.map((entry) => entry.rowId);
-	});
 
 	// ── Search ────────────────────────────────────────────────────────────
 
@@ -445,7 +540,7 @@ export default function Grid(props: GridProps) {
 	createEffect(
 		on(searchCurrentAddress, (addr) => {
 			if (!addr || !viewportRef) return;
-			const top = addr.row * props.rowHeight;
+			const top = rowMetrics().getRowTop(addr.row);
 			let left = 0;
 			for (let c = 0; c < addr.col; c++) {
 				left += untrack(columnWidths)[c] ?? DEFAULT_COL_WIDTH;
@@ -458,17 +553,36 @@ export default function Grid(props: GridProps) {
 		const editMode = props.store.editMode();
 		if (!editMode || editorSource() !== "cell") return null;
 
-		let left = rowGutterWidth();
-		for (let col = 0; col < editMode.address.col; col++) {
-			left += columnWidths()[col] ?? DEFAULT_COL_WIDTH;
-		}
-
 		return {
-			left,
-			top: editMode.address.row * props.rowHeight,
+			left: columnLeftOffsets()[editMode.address.col] ?? rowGutterWidth(),
+			top: rowMetrics().getRowTop(editMode.address.row),
 			width: columnWidths()[editMode.address.col] ?? DEFAULT_COL_WIDTH,
-			height: props.rowHeight,
+			height: rowMetrics().getRowHeight(editMode.address.row),
 		};
+	});
+	const activeResizeColumnId = createMemo(() => {
+		const session = resizeSession();
+		return session?.axis === "column" ? String(session.targetId) : null;
+	});
+	const activeResizeRow = createMemo(() => {
+		const session = resizeSession();
+		if (session?.axis !== "row") return null;
+		return getVisualRowForRowId(Number(session.targetId));
+	});
+	const columnResizeGuideLeft = createMemo(() => {
+		const session = resizeSession();
+		if (session?.axis !== "column") return null;
+		const columnIndex = props.columns.findIndex((column) => column.id === session.targetId);
+		if (columnIndex < 0) return null;
+		const left = columnLeftOffsets()[columnIndex] ?? rowGutterWidth();
+		return left + session.previewSize;
+	});
+	const rowResizeGuideTop = createMemo(() => {
+		const session = resizeSession();
+		if (session?.axis !== "row") return null;
+		const visualRow = getVisualRowForRowId(Number(session.targetId));
+		if (visualRow === null) return null;
+		return rowMetrics().getRowTop(visualRow) + session.previewSize;
 	});
 
 	const selectedAddress = createMemo(() => props.store.selection().anchor);
@@ -970,10 +1084,10 @@ export default function Grid(props: GridProps) {
 
 		if (x < 0 || y < 0) return null;
 
-		const row = Math.max(
-			0,
-			Math.min(props.store.rowCount() - 1, Math.floor(y / props.rowHeight)),
-		);
+		const row = Math.max(0, Math.min(
+			props.store.rowCount() - 1,
+			rowMetrics().getVisualRowAtOffset(y),
+		));
 		const col = getColumnIndexFromOffset(x);
 		return { row, col };
 	}
@@ -1054,6 +1168,10 @@ export default function Grid(props: GridProps) {
 	}
 
 	function handleMouseMove(event: MouseEvent) {
+		if (handleResizeSessionMove(event)) {
+			return;
+		}
+
 		// Fire external pointer-move callback if provided
 		if (props.onCellPointerMove) {
 			const target = getGridAddressFromViewportEvent(event);
@@ -1101,7 +1219,7 @@ export default function Grid(props: GridProps) {
 
 		const row = Math.max(0, Math.min(
 			props.store.rowCount() - 1,
-			Math.floor(y / props.rowHeight),
+			rowMetrics().getVisualRowAtOffset(y),
 		));
 		const col = getColumnIndexFromOffset(Math.max(0, x));
 
@@ -1297,6 +1415,8 @@ export default function Grid(props: GridProps) {
 	}
 
 	function handleMouseUp() {
+		finalizeResizeSession();
+
 		const activeFillDrag = fillDragState();
 		if (activeFillDrag) {
 			const mutations = buildFillMutations(
@@ -1853,9 +1973,105 @@ export default function Grid(props: GridProps) {
 		}
 	}
 
-	function handleColumnResize(columnId: string, width: number) {
-		props.store.setColumnWidth(columnId, width);
-		props.onColumnResize?.(columnId, width);
+	function handleColumnResizeStart(columnId: string, event: MouseEvent) {
+		if (event.button !== 0) return;
+		const column = props.columns.find((entry) => entry.id === columnId);
+		if (!column || column.resizable === false) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+		setContextMenu(null);
+
+		const startSize = getCommittedColumnWidth(columnId);
+		setResizeSession({
+			axis: "column",
+			targetId: columnId,
+			startPointerOffset: event.clientX,
+			startSize,
+			currentDelta: 0,
+			previewSize: startSize,
+			isActive: true,
+		});
+	}
+
+	function handleRowResizeStart(visualRow: number, event: MouseEvent) {
+		if (event.button !== 0) return;
+		const rowId = getRowIdAtVisualRow(visualRow);
+		if (rowId === null) return;
+
+		setContextMenu(null);
+		const startSize = getCommittedRowHeight(rowId);
+		setResizeSession({
+			axis: "row",
+			targetId: rowId,
+			startPointerOffset: event.clientY,
+			startSize,
+			currentDelta: 0,
+			previewSize: startSize,
+			isActive: true,
+		});
+	}
+
+	function handleResizeSessionMove(event: MouseEvent): boolean {
+		const session = resizeSession();
+		if (!session?.isActive) return false;
+
+		if (session.axis === "column") {
+			const column = props.columns.find((entry) => entry.id === session.targetId);
+			if (!column) return false;
+
+			const delta = event.clientX - session.startPointerOffset;
+			const previewSize = clampColumnWidth(column, session.startSize + delta);
+			setResizeSession({
+				...session,
+				currentDelta: delta,
+				previewSize,
+			});
+
+			if (props.resizeMode === "onChange") {
+				updateCommittedColumnWidth(column.id, previewSize);
+			}
+			return true;
+		}
+
+		const rowId = Number(session.targetId);
+		const delta = event.clientY - session.startPointerOffset;
+		const previewSize = Math.max(props.rowHeight, session.startSize + delta);
+		setResizeSession({
+			...session,
+			currentDelta: delta,
+			previewSize,
+		});
+
+		if (props.resizeMode === "onChange") {
+			updateCommittedRowHeight(rowId, previewSize);
+		}
+		return true;
+	}
+
+	function finalizeResizeSession() {
+		const session = resizeSession();
+		if (!session?.isActive) return;
+
+		if (session.previewSize !== session.startSize) {
+			if (session.axis === "column") {
+				const columnId = String(session.targetId);
+				if (props.resizeMode === "onEnd") {
+					commitColumnResize(columnId, session.previewSize);
+				} else {
+					props.onColumnResize?.(columnId, session.previewSize);
+				}
+			} else {
+				const rowId = Number(session.targetId);
+				if (props.resizeMode === "onEnd") {
+					commitRowResize(rowId, session.previewSize);
+				} else {
+					props.onRowResize?.(rowId, session.previewSize);
+				}
+			}
+		}
+
+		setResizeSession(null);
 	}
 
 	function handleFillHandleMouseDown(event: MouseEvent) {
@@ -1873,7 +2089,7 @@ export default function Grid(props: GridProps) {
 	}
 
 	createEffect(() => {
-		if (!isDraggingSelection() && !isReferenceDragging() && !fillDragState()) return;
+		if (!isDraggingSelection() && !isReferenceDragging() && !fillDragState() && !resizeSession()) return;
 
 		document.addEventListener("mousemove", handleMouseMove);
 		document.addEventListener("mouseup", handleMouseUp);
@@ -1919,7 +2135,7 @@ export default function Grid(props: GridProps) {
 				clearSelection: () => props.store.setSelection(emptySelection()),
 				scrollToCell: (row, col) => {
 					if (!viewportRef) return;
-					const top = row * props.rowHeight;
+					const top = rowMetrics().getRowTop(row);
 					let left = 0;
 					for (let c = 0; c < col; c++) {
 						left += columnWidths()[c] ?? DEFAULT_COL_WIDTH;
@@ -2079,16 +2295,18 @@ export default function Grid(props: GridProps) {
 			>
 					<GridHeader
 						columns={props.columns}
-						columnWidths={props.store.columnWidths()}
+						columnWidths={committedColumnWidths()}
 						totalWidth={totalWidth()}
 						sortState={currentSortState()}
 						showReferenceHeaders={props.showReferenceHeaders}
-					rowGutterWidth={rowGutterWidth()}
-					pinnedLeftOffsets={pinnedLeftOffsets()}
-					lastPinnedIndex={lastPinnedIndex()}
-					onColumnResize={handleColumnResize}
-					onColumnHeaderMouseDown={handleColumnHeaderMouseDown}
-				/>
+						rowGutterWidth={rowGutterWidth()}
+						pinnedLeftOffsets={pinnedLeftOffsets()}
+						lastPinnedIndex={lastPinnedIndex()}
+						activeResizeColumnId={activeResizeColumnId()}
+						onSort={handleSort}
+						onColumnResizeStart={handleColumnResizeStart}
+						onColumnHeaderMouseDown={handleColumnHeaderMouseDown}
+					/>
 
 				<div
 					class="se-canvas"
@@ -2105,21 +2323,23 @@ export default function Grid(props: GridProps) {
 							</div>
 						}
 					>
-							<GridBody
-								columns={props.columns}
-								columnWidths={props.store.columnWidths()}
-								rowHeight={props.rowHeight}
-								rowGutterWidth={rowGutterWidth()}
-								showReferenceHeaders={props.showReferenceHeaders}
-								getRowHeaderIndex={(visualRow) => getPhysicalRowForVisualRow(visualRow)}
-								getRowHeaderTooltip={(visualRow, backingRow) =>
-									isViewSortActive() ? `View row ${visualRow + 1}` : null
-								}
-								visibleRows={visibleRows()}
-								totalRows={props.store.rowCount()}
-								getDisplayValue={getDisplayCellValue}
-								getRawValue={getRawCellValue}
-								editingAddress={props.store.editMode()?.address ?? null}
+						<GridBody
+							columns={props.columns}
+							columnWidths={committedColumnWidths()}
+							rowMetrics={rowMetrics()}
+							rowGutterWidth={rowGutterWidth()}
+							showReferenceHeaders={props.showReferenceHeaders}
+							getRowHeaderIndex={(visualRow) => getPhysicalRowForVisualRow(visualRow)}
+							getRowHeaderTooltip={(visualRow) =>
+								isViewSortActive() ? `View row ${visualRow + 1}` : null
+							}
+							onRowResizeStart={handleRowResizeStart}
+							activeResizeRow={activeResizeRow()}
+							virtualRows={virtualRows()}
+							totalHeight={rowMetrics().getTotalHeight()}
+							getDisplayValue={getDisplayCellValue}
+							getRawValue={getRawCellValue}
+							editingAddress={props.store.editMode()?.address ?? null}
 							onCellMouseDown={handleCellMouseDown}
 							onCellMouseEnter={handleCellMouseEnter}
 							onRowHeaderMouseDown={handleRowHeaderMouseDown}
@@ -2131,6 +2351,20 @@ export default function Grid(props: GridProps) {
 							searchCurrentAddress={searchCurrentAddress()}
 						/>
 
+						<Show when={columnResizeGuideLeft() !== null}>
+							<div
+								class="se-resize-guide se-resize-guide--column"
+								style={{ left: `${columnResizeGuideLeft()!}px` }}
+							/>
+						</Show>
+
+						<Show when={rowResizeGuideTop() !== null}>
+							<div
+								class="se-resize-guide se-resize-guide--row"
+								style={{ top: `${rowResizeGuideTop()!}px`, left: `${rowGutterWidth()}px` }}
+							/>
+						</Show>
+
 						<SelectionOverlay
 							selection={props.store.selection()}
 							clipboardRange={clipboardRange()}
@@ -2139,7 +2373,7 @@ export default function Grid(props: GridProps) {
 							fillPreview={fillDragState()?.preview ?? null}
 							showFillHandle={showFillHandle()}
 							columnWidths={columnWidths()}
-							rowHeight={props.rowHeight}
+							rowMetrics={rowMetrics()}
 							scrollLeft={0}
 							scrollTop={0}
 							leftOffset={rowGutterWidth()}

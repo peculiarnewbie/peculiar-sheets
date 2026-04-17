@@ -149,6 +149,10 @@
 	white-space: nowrap;
 }
 
+.se-header-cell--resizing {
+	background: rgba(74, 111, 165, 0.12);
+}
+
 .se-header-cell__label {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -166,6 +170,10 @@
 }
 
 .se-resize-handle:hover {
+	background: #4a6fa5;
+}
+
+.se-resize-handle--active {
 	background: #4a6fa5;
 }
 
@@ -191,6 +199,43 @@
 	position: sticky;
 	left: 0;
 	z-index: 4;
+	overflow: hidden;
+}
+
+.se-row-header-cell--resizing {
+	background: rgba(74, 111, 165, 0.12);
+}
+
+.se-row-resize-handle {
+	position: absolute;
+	left: 0;
+	bottom: -2px;
+	width: 100%;
+	height: 5px;
+	cursor: row-resize;
+	z-index: 2;
+}
+
+.se-row-resize-handle:hover {
+	background: #4a6fa5;
+}
+
+.se-resize-guide {
+	position: absolute;
+	background: #4a6fa5;
+	pointer-events: none;
+	z-index: 8;
+}
+
+.se-resize-guide--column {
+	top: 0;
+	bottom: 0;
+	width: 1px;
+}
+
+.se-resize-guide--row {
+	right: 0;
+	height: 1px;
 }
 
 .se-cell {
