@@ -470,9 +470,6 @@ function DemoPlayground() {
     <section class="demos-section" id="demos">
       <div class="section-wrap">
         <h2 class="section-heading">Try it out</h2>
-        <p class="section-subheading">
-          Every demo below is live and interactive.
-        </p>
 
         <div class="demo-tabs-wrap">
           <div class="demo-tabs">

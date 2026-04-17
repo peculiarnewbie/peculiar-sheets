@@ -601,7 +601,7 @@ a:hover {
 
 .demo-code-toggle {
   position: absolute;
-  top: 0.625rem;
+  bottom: 0.625rem;
   right: 0.625rem;
   z-index: 40;
   padding: 0.3rem 0.7rem;
