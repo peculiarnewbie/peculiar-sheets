@@ -2303,7 +2303,6 @@ export default function Grid(props: GridProps) {
 						pinnedLeftOffsets={pinnedLeftOffsets()}
 						lastPinnedIndex={lastPinnedIndex()}
 						activeResizeColumnId={activeResizeColumnId()}
-						onSort={handleSort}
 						onColumnResizeStart={handleColumnResizeStart}
 						onColumnHeaderMouseDown={handleColumnHeaderMouseDown}
 					/>

@@ -14,7 +14,6 @@ interface GridHeaderProps {
 	pinnedLeftOffsets: number[];
 	lastPinnedIndex: number;
 	activeResizeColumnId: string | null;
-	onSort: (columnId: string) => void;
 	onColumnResizeStart: (columnId: string, event: MouseEvent) => void;
 	onColumnHeaderMouseDown?: (col: number, event: MouseEvent) => void;
 }
@@ -243,11 +242,6 @@ export default function GridHeader(props: GridHeaderProps) {
 									cursor: isSortable ? "pointer" : undefined,
 								}}
 								data-col-index={index()}
-								onClick={() => {
-									if (isSortable) {
-										props.onSort(col.id);
-									}
-								}}
 								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(index(), e)}
 							>
 								<span class="se-header-cell__label">
