@@ -369,7 +369,6 @@ a:hover {
   margin: 0;
   padding: 0;
   counter-reset: feature;
-  max-width: 920px;
 }
 
 .feature-row {
@@ -595,6 +594,63 @@ a:hover {
 }
 
 /* ── Demo sheet ───────────────────────────────────────────── */
+
+.demo-sheet-frame {
+  position: relative;
+  margin-top: 1.75rem;
+}
+
+.demo-code-toggle {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  z-index: 10;
+  padding: 0.3rem 0.7rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+
+.demo-code-toggle:hover,
+.demo-code-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent-20);
+  background: var(--accent-12);
+}
+
+.demo-code-view {
+  overflow: auto;
+  height: 100%;
+  padding: 1.25rem;
+  box-sizing: border-box;
+}
+
+.demo-code-view pre {
+  margin: 0;
+}
+
+.demo-code-view code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  tab-size: 2;
+  display: block;
+  --sh-keyword:    #c4a35a;
+  --sh-string:     #98c379;
+  --sh-class:      #e5c07b;
+  --sh-identifier: #e8e6e3;
+  --sh-property:   #abb2bf;
+  --sh-sign:       #7a8394;
+  --sh-entity:     #e8e6e3;
+  --sh-space:      inherit;
+}
 
 .demo-sheet-wrap {
   border: 1px solid var(--border);

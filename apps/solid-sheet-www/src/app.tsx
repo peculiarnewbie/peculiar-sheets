@@ -1,16 +1,43 @@
-import { createSignal, onMount, onCleanup, Switch, Match } from "solid-js";
+import { createSignal, createEffect, Show, Switch, Match } from "solid-js";
 import { highlight } from "sugar-high";
-import { createStore } from "solid-js/store";
-import HyperFormula from "hyperformula";
-import {
-  Sheet,
-  createWorkbookCoordinator,
-  type CellValue,
-  type CellMutation,
-  type ColumnDef,
-} from "peculiar-sheets";
 import "peculiar-sheets/styles";
 import "./styles.css";
+
+// ── Demo components (one file per demo) ─────────────────────
+import BasicSheet          from "./demos/basic";
+import FormulasSheet       from "./demos/formulas";
+import ClipboardSheet      from "./demos/clipboard";
+import AutofillSheet       from "./demos/autofill";
+import HistorySheet        from "./demos/history";
+import ReadonlySheet       from "./demos/readonly";
+import LargeSheet          from "./demos/large";
+import RowsSheet           from "./demos/rows";
+import SortViewSheet       from "./demos/sort-view";
+import SortMutationSheet   from "./demos/sort-mutation";
+import SortExternalSheet   from "./demos/sort-external";
+import SortMutationFormulasSheet from "./demos/sort-mutation-formulas";
+import FormulaRowsSheet    from "./demos/formula-rows";
+import FormulaRowDeleteSheet from "./demos/formula-row-delete";
+import CrossSheetDemo      from "./demos/cross-sheet";
+import CustomRenderingSheet from "./demos/custom-rendering";
+
+// ── Raw source strings for the code toggle ──────────────────
+import basicCode                from "./demos/basic?raw";
+import formulasCode             from "./demos/formulas?raw";
+import clipboardCode            from "./demos/clipboard?raw";
+import autofillCode             from "./demos/autofill?raw";
+import historyCode              from "./demos/history?raw";
+import readonlyCode             from "./demos/readonly?raw";
+import largeCode                from "./demos/large?raw";
+import rowsCode                 from "./demos/rows?raw";
+import sortViewCode             from "./demos/sort-view?raw";
+import sortMutationCode         from "./demos/sort-mutation?raw";
+import sortExternalCode         from "./demos/sort-external?raw";
+import sortMutationFormulasCode from "./demos/sort-mutation-formulas?raw";
+import formulaRowsCode          from "./demos/formula-rows?raw";
+import formulaRowDeleteCode     from "./demos/formula-row-delete?raw";
+import crossSheetCode           from "./demos/cross-sheet?raw";
+import customRenderingCode      from "./demos/custom-rendering?raw";
 
 // ── Install command ─────────────────────────────────────────
 
@@ -34,502 +61,6 @@ function InstallCommand() {
       <span class="install-copy-btn">{copied() ? "Copied!" : "Copy"}</span>
     </button>
   );
-}
-
-// ── Hero sheet (live formulas in the hero) ──────────────────
-
-// ── Sheet-only demo components ──────────────────────────────
-
-function BasicSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "Name", width: 140, editable: true },
-    { id: "b", header: "Age", width: 80, editable: true },
-    { id: "c", header: "City", width: 120, editable: true },
-    { id: "d", header: "Score", width: 100, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Alice", 30, "Portland", 88],
-    ["Bob", 25, "Seattle", 72],
-    ["Carol", 35, "Denver", 95],
-    ["Dave", 28, "Austin", 61],
-    ["Eve", 22, "Boston", 83],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function FormulasSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "A", width: 100, editable: true },
-    { id: "b", header: "B", width: 100, editable: true },
-    { id: "c", header: "C", width: 140, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    [10, 20, "=A1+B1"],
-    [30, 40, "=A2+B2"],
-    [50, 60, "=A3+B3"],
-    [null, null, "=SUM(C1:C3)"],
-  ];
-
-  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const sheetName = hf.addSheet("formulas");
-  const sheetId = hf.getSheetId(sheetName)!;
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      formulaEngine={{ instance: hf, sheetId, sheetName }}
-      showFormulaBar
-      showReferenceHeaders
-    />
-  );
-}
-
-function ClipboardSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "X", width: 100, editable: true },
-    { id: "b", header: "Y", width: 100, editable: true },
-    { id: "c", header: "Z", width: 100, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    [1, 2, 3],
-    [4, 5, 6],
-    [7, 8, 9],
-    [null, null, null],
-    [null, null, null],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function AutofillSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "Sequence", width: 120, editable: true },
-    { id: "b", header: "Labels", width: 120, editable: true },
-    { id: "c", header: "Values", width: 120, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    [1, "alpha", 100],
-    [2, "beta", 200],
-    [3, "gamma", 300],
-    [null, null, null],
-    [null, null, null],
-    [null, null, null],
-    [null, null, null],
-    [null, null, null],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function HistorySheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "Col A", width: 120, editable: true },
-    { id: "b", header: "Col B", width: 120, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["original", 100],
-    ["untouched", 200],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function ReadonlySheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "Locked", width: 120, editable: false },
-    { id: "b", header: "Editable", width: 120, editable: true },
-    { id: "c", header: "Also Locked", width: 120, editable: false },
-  ];
-
-  const data: CellValue[][] = [
-    ["no-edit", "can-edit", "no-edit"],
-    ["fixed", "free", "fixed"],
-    ["locked", "open", "locked"],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function LargeSheet() {
-  const COL_COUNT = 20;
-  const ROW_COUNT = 10_000;
-
-  const columns: ColumnDef[] = Array.from({ length: COL_COUNT }, (_, i) => ({
-    id: `col${i}`,
-    header: `Col ${i}`,
-    width: 100,
-    editable: true,
-  }));
-
-  const data: CellValue[][] = Array.from({ length: ROW_COUNT }, (_, row) =>
-    Array.from({ length: COL_COUNT }, (_, col) => row * COL_COUNT + col),
-  );
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function RowsSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "Name", width: 120, editable: true },
-    { id: "b", header: "Value", width: 120, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["alpha", 10],
-    ["beta", 20],
-    ["gamma", 30],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
-}
-
-function SortViewSheet() {
-  const columns: ColumnDef[] = [
-    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
-    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
-    { id: "city", header: "City", width: 140, editable: true, sortable: true },
-    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Alice", 30, "Portland", 88],
-    ["Bob", 25, "Seattle", 72],
-    ["Carol", 35, "Denver", 95],
-    ["Dave", 28, "Austin", 61],
-  ];
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      sortBehavior="view"
-      showReferenceHeaders
-    />
-  );
-}
-
-function SortMutationSheet() {
-  const columns: ColumnDef[] = [
-    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
-    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
-    { id: "city", header: "City", width: 140, editable: true, sortable: true },
-    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Alice", 30, "Portland", 88],
-    ["Bob", 25, "Seattle", 72],
-    ["Carol", 35, "Denver", 95],
-    ["Dave", 28, "Austin", 61],
-  ];
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      sortBehavior="mutation"
-      showReferenceHeaders
-    />
-  );
-}
-
-function SortExternalSheet() {
-  const columns: ColumnDef[] = [
-    { id: "name", header: "Name", width: 140, editable: true, sortable: true },
-    { id: "age", header: "Age", width: 100, editable: true, sortable: true },
-    { id: "city", header: "City", width: 140, editable: true, sortable: true },
-    { id: "score", header: "Score", width: 100, editable: true, sortable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Alice", 30, "Portland", 88],
-    ["Bob", 25, "Seattle", 72],
-    ["Carol", 35, "Denver", 95],
-    ["Dave", 28, "Austin", 61],
-  ];
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      sortBehavior="external"
-      showReferenceHeaders
-    />
-  );
-}
-
-function SortMutationFormulasSheet() {
-  const columns: ColumnDef[] = [
-    { id: "a", header: "A", width: 100, editable: true, sortable: true },
-    { id: "b", header: "B", width: 100, editable: true, sortable: true },
-    { id: "c", header: "C", width: 120, editable: true, sortable: true },
-  ];
-
-  const data: CellValue[][] = [
-    [1, 10, "=A1+B1"],
-    [3, 30, "=A2+B2"],
-    [2, 20, "=A3+B3"],
-  ];
-
-  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const sheetName = hf.addSheet("sort-mutation-formulas");
-  const sheetId = hf.getSheetId(sheetName)!;
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      formulaEngine={{ instance: hf, sheetId, sheetName }}
-      showFormulaBar
-      showReferenceHeaders
-      sortBehavior="mutation"
-    />
-  );
-}
-
-function FormulaRowsSheet() {
-  const columns: ColumnDef[] = [
-    { id: "team", header: "Team", width: 120, editable: true },
-    { id: "q1", header: "Q1", width: 85, editable: true },
-    { id: "q2", header: "Q2", width: 85, editable: true },
-    { id: "total", header: "Total", width: 95, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Engineering", 48, 52, "=B1+C1"],
-    ["Design", 32, 35, "=B2+C2"],
-    ["Marketing", 28, 31, "=B3+C3"],
-    [null, null, "Sum", "=SUM(D1:D3)"],
-    [null, null, null, null],
-    [null, null, null, null],
-  ];
-
-  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const sheetName = hf.addSheet("formula-rows");
-  const sheetId = hf.getSheetId(sheetName)!;
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      formulaEngine={{ instance: hf, sheetId, sheetName }}
-      showFormulaBar
-      showReferenceHeaders
-    />
-  );
-}
-
-function FormulaRowDeleteSheet() {
-  const columns: ColumnDef[] = [
-    { id: "team", header: "Team", width: 120, editable: true },
-    { id: "q1", header: "Q1", width: 85, editable: true },
-    { id: "q2", header: "Q2", width: 85, editable: true },
-    { id: "total", header: "Total", width: 110, editable: true },
-  ];
-
-  const data: CellValue[][] = [
-    ["Engineering", 48, 52, "=B1+C1"],
-    ["Design", 32, 35, "=B2+C2"],
-    ["Marketing", 28, 31, "=B3+C3"],
-    ["Ops", 5, 7, "=B4+C4"],
-    [null, null, "Sum", "=SUM(D1:D4)"],
-    ["RefToMarketing", null, null, "=B3"],
-    ["Pair", null, null, "=B3+B4"],
-  ];
-
-  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const sheetName = hf.addSheet("formula-row-delete");
-  const sheetId = hf.getSheetId(sheetName)!;
-
-  return (
-    <Sheet
-      data={data}
-      columns={columns}
-      formulaEngine={{ instance: hf, sheetId, sheetName }}
-      showFormulaBar
-      showReferenceHeaders
-    />
-  );
-}
-
-function CrossSheetDemo() {
-  const dataColumns: ColumnDef[] = [
-    { id: "label", header: "Label", width: 140, editable: true },
-    { id: "value", header: "Value", width: 100, editable: true },
-  ];
-
-  const summaryColumns: ColumnDef[] = [
-    { id: "metric", header: "Metric", width: 140, editable: true },
-    { id: "result", header: "Result", width: 180, editable: true },
-  ];
-
-  const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-  const coordinator = createWorkbookCoordinator({ engine: hf });
-  const dataWorkbook = coordinator.bindSheet({
-    sheetKey: "data",
-    formulaName: "Data",
-  });
-  const summaryWorkbook = coordinator.bindSheet({
-    sheetKey: "summary",
-    formulaName: "Summary",
-  });
-
-  const [sheets, setSheets] = createStore<Record<string, CellValue[][]>>({
-    data: [
-      ["Alpha", 10],
-      ["Beta", 20],
-      ["Gamma", 30],
-    ],
-    summary: [
-      ["Total", "=SUM(Data!B1:B3)"],
-      ["First", "=Data!A1"],
-      ["Mid", "=Data!B2"],
-      ["Draft", null],
-    ],
-  });
-
-  function applyMutation(sheetKey: string, mutation: CellMutation) {
-    const { row, col } = mutation.address;
-    setSheets(sheetKey, (prev) => {
-      const next = prev.map((r) => [...r]);
-      while (next.length <= row) next.push([]);
-      while (next[row]!.length <= col) next[row]!.push(null);
-      next[row]![col] = mutation.newValue;
-      return next;
-    });
-  }
-
-  onMount(() => {
-    const unsubscribe = coordinator.subscribe((change) => {
-      for (const snapshot of change.snapshots) {
-        setSheets(
-          snapshot.sheetKey,
-          snapshot.cells.map((row) => [...row]),
-        );
-      }
-    });
-    onCleanup(() => unsubscribe());
-  });
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        "grid-template-columns": "1fr 1fr",
-        gap: "12px",
-        height: "100%",
-      }}
-    >
-      <div style={{ overflow: "hidden" }}>
-        <Sheet
-          data={sheets.data}
-          columns={dataColumns}
-          workbook={dataWorkbook}
-          onCellEdit={(m) => applyMutation("data", m)}
-          onBatchEdit={(ms) => ms.forEach((m) => applyMutation("data", m))}
-        />
-      </div>
-      <div style={{ overflow: "hidden" }}>
-        <Sheet
-          data={sheets.summary}
-          columns={summaryColumns}
-          workbook={summaryWorkbook}
-          onCellEdit={(m) => applyMutation("summary", m)}
-          onBatchEdit={(ms) =>
-            ms.forEach((m) => applyMutation("summary", m))
-          }
-        />
-      </div>
-    </div>
-  );
-}
-
-// ── Custom Cells demo (column-level renderCell / formatValue / parseValue / getCellTitle) ──
-
-// Minimal NSLOCTEXT parser for the demo — matches the Unreal format:
-//   NSLOCTEXT("area", "id", "actual text")
-// Returns null if the raw value doesn't match the shape.
-interface LocParts {
-  area: string;
-  id: string;
-  text: string;
-}
-const NSLOC_RE =
-  /^NSLOCTEXT\(\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)$/;
-function parseNSLoc(raw: CellValue): LocParts | null {
-  if (typeof raw !== "string") return null;
-  const m = raw.match(NSLOC_RE);
-  if (!m) return null;
-  return { area: m[1] ?? "", id: m[2] ?? "", text: m[3] ?? "" };
-}
-function serializeNSLoc(parts: LocParts): string {
-  const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `NSLOCTEXT("${esc(parts.area)}","${esc(parts.id)}","${esc(parts.text)}")`;
-}
-
-function CustomRenderingSheet() {
-  const columns: ColumnDef[] = [
-    { id: "label", header: "Label", width: 160, editable: true },
-    {
-      id: "localized",
-      header: "Localized Text",
-      width: 220,
-      editable: true,
-      // Display only the inner human-readable text.
-      formatValue: (raw) => parseNSLoc(raw)?.text ?? (raw == null ? "" : String(raw)),
-      // On commit, rewrap using previousValue's area + id so structural metadata survives edits.
-      parseValue: (text, { previousValue }) => {
-        const prev = parseNSLoc(previousValue);
-        if (!prev) {
-          // Previous value wasn't a well-formed NSLOCTEXT — default to an empty wrapper.
-          return serializeNSLoc({ area: "menu", id: "unknown", text });
-        }
-        return serializeNSLoc({ ...prev, text });
-      },
-      // Hover shows the structural info.
-      getCellTitle: (raw) => {
-        const parts = parseNSLoc(raw);
-        return parts ? `area: ${parts.area} · id: ${parts.id}` : undefined;
-      },
-    },
-    {
-      id: "status",
-      header: "Status",
-      width: 140,
-      editable: true,
-      // No formatValue/parseValue — raw string works for editing.
-      // renderCell shows a colored pill.
-      renderCell: ({ value, isEditing }) => {
-        if (isEditing) return null;
-        const variant =
-          value === "active" || value === "pending" || value === "error"
-            ? value
-            : "unknown";
-        return (
-          <span class={`status-badge status-badge--${variant}`}>
-            {value == null ? "—" : String(value)}
-          </span>
-        );
-      },
-    },
-  ];
-
-  const data: CellValue[][] = [
-    ["Save Button", `NSLOCTEXT("menu","btn.save","Save")`, "active"],
-    ["Cancel Button", `NSLOCTEXT("menu","btn.cancel","Cancel")`, "pending"],
-    ["Delete Button", `NSLOCTEXT("menu","btn.delete","Delete")`, "error"],
-    ["File / Open", `NSLOCTEXT("menu","file.open","Open...")`, "active"],
-    ["File / Save As", `NSLOCTEXT("menu","file.saveas","Save As...")`, "pending"],
-  ];
-
-  return <Sheet data={data} columns={columns} />;
 }
 
 // ── Demo metadata ───────────────────────────────────────────
@@ -739,6 +270,25 @@ const DEMOS = [
 
 type DemoId = (typeof DEMOS)[number]["id"];
 
+const DEMO_CODE: Record<DemoId, string> = {
+  "basic":                  basicCode,
+  "formulas":               formulasCode,
+  "clipboard":              clipboardCode,
+  "autofill":               autofillCode,
+  "history":                historyCode,
+  "readonly":               readonlyCode,
+  "large":                  largeCode,
+  "rows":                   rowsCode,
+  "sort-view":              sortViewCode,
+  "sort-mutation":          sortMutationCode,
+  "sort-external":          sortExternalCode,
+  "sort-mutation-formulas": sortMutationFormulasCode,
+  "formula-rows":           formulaRowsCode,
+  "formula-row-delete":     formulaRowDeleteCode,
+  "cross-sheet":            crossSheetCode,
+  "custom-rendering":       customRenderingCode,
+};
+
 const GROUPS = [
   { name: "Basics", ids: ["basic", "readonly"] },
   { name: "Formulas", ids: ["formulas", "cross-sheet"] },
@@ -901,9 +451,13 @@ function FeaturesSection() {
 function DemoPlayground() {
   const [activeGroup, setActiveGroup] = createSignal<GroupName>(GROUPS[0].name);
   const [activeId, setActiveId] = createSignal<DemoId>(GROUPS[0].ids[0]);
+  const [showCode, setShowCode] = createSignal(false);
 
   const group = () => GROUPS.find((g) => g.name === activeGroup()) ?? GROUPS[0];
   const demo = () => DEMO_BY_ID.get(activeId()) ?? DEMOS[0];
+
+  // Reset code view whenever the active demo changes
+  createEffect(() => { activeId(); setShowCode(false); });
 
   const selectGroup = (name: GroupName) => {
     const g = GROUPS.find((gr) => gr.name === name);
@@ -961,9 +515,21 @@ function DemoPlayground() {
             </div>
           </div>
 
-          <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
-            <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
-              <Switch>
+          <div class="demo-sheet-frame">
+            <button
+              class={`demo-code-toggle${showCode() ? " active" : ""}`}
+              onClick={() => setShowCode((s) => !s)}
+              title={showCode() ? "Show live demo" : "Show source code"}
+            >
+              {showCode() ? "← Demo" : "</>"}
+            </button>
+
+            <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
+              <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
+                <Show
+                  when={showCode()}
+                  fallback={
+                    <Switch>
                 <Match when={activeId() === "basic"}>
                   <BasicSheet />
                 </Match>
@@ -1013,6 +579,13 @@ function DemoPlayground() {
                   <CustomRenderingSheet />
                 </Match>
               </Switch>
+                  }
+                >
+                  <div class="demo-code-view">
+                    <pre><code class="sh" innerHTML={highlight(DEMO_CODE[activeId()])} /></pre>
+                  </div>
+                </Show>
+              </div>
             </div>
           </div>
         </div>
