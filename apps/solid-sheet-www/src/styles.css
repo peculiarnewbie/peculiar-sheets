@@ -480,6 +480,27 @@ a:hover {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
+.demo-tabs-wrap-secondary {
+  margin-top: 0.6rem;
+}
+
+.demo-tabs-secondary {
+  padding: 0.2rem;
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.demo-tabs-secondary .demo-tab {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+
+.demo-tabs-secondary .demo-tab.active {
+  background: var(--accent-12);
+  box-shadow: none;
+}
+
 /* ── Demo content ─────────────────────────────────────────── */
 
 .demo-content {

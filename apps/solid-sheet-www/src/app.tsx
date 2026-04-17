@@ -764,6 +764,34 @@ const DEMOS = [
   },
 ] as const;
 
+type DemoId = (typeof DEMOS)[number]["id"];
+
+const GROUPS = [
+  { name: "Basics", ids: ["basic", "readonly"] },
+  { name: "Formulas", ids: ["formulas", "cross-sheet"] },
+  { name: "Editing", ids: ["clipboard", "autofill", "history"] },
+  { name: "Rows", ids: ["rows", "formula-rows", "formula-row-delete"] },
+  {
+    name: "Sorting",
+    ids: [
+      "sort-view",
+      "sort-mutation",
+      "sort-external",
+      "sort-mutation-formulas",
+    ],
+  },
+  { name: "Advanced", ids: ["large", "custom-rendering"] },
+] as const satisfies readonly {
+  readonly name: string;
+  readonly ids: readonly DemoId[];
+}[];
+
+type GroupName = (typeof GROUPS)[number]["name"];
+
+const DEMO_BY_ID = new Map<DemoId, (typeof DEMOS)[number]>(
+  DEMOS.map((d) => [d.id, d])
+);
+
 // ── Site header ─────────────────────────────────────────────
 
 function SiteHeader() {
@@ -818,16 +846,12 @@ function HeroSection() {
           </h1>
           <p class="hero-subtitle">
             Full spreadsheet UX for SolidJS — editing, formulas, clipboard,
-            autofill, undo/redo — powered by fine-grained reactivity and virtual
-            scrolling for 200K+ cells.
+            autofill, undo/redo — powered by fine-grained reactivity and built
+            to stay performant.
           </p>
           <InstallCommand />
           <div class="hero-stats">
-            <span>200K+ cells</span>
-            <span class="hero-stat-sep" aria-hidden="true">
-              ·
-            </span>
-            <span>400+ formulas</span>
+            <span>HyperFormula</span>
             <span class="hero-stat-sep" aria-hidden="true">
               ·
             </span>
@@ -904,8 +928,18 @@ function FeaturesSection() {
 // ── Demo playground ─────────────────────────────────────────
 
 function DemoPlayground() {
-  const [activeIdx, setActiveIdx] = createSignal(0);
-  const demo = () => DEMOS[activeIdx()];
+  const [activeGroup, setActiveGroup] = createSignal<GroupName>(GROUPS[0].name);
+  const [activeId, setActiveId] = createSignal<DemoId>(GROUPS[0].ids[0]);
+
+  const group = () => GROUPS.find((g) => g.name === activeGroup()) ?? GROUPS[0];
+  const demo = () => DEMO_BY_ID.get(activeId()) ?? DEMOS[0];
+
+  const selectGroup = (name: GroupName) => {
+    const g = GROUPS.find((gr) => gr.name === name);
+    if (!g) return;
+    setActiveGroup(name);
+    setActiveId(g.ids[0]);
+  };
 
   return (
     <section class="demos-section" id="demos">
@@ -917,14 +951,31 @@ function DemoPlayground() {
 
         <div class="demo-tabs-wrap">
           <div class="demo-tabs">
-            {DEMOS.map((d, i) => (
+            {GROUPS.map((g) => (
               <button
-                class={`demo-tab${activeIdx() === i ? " active" : ""}`}
-                onClick={() => setActiveIdx(i)}
+                class={`demo-tab${activeGroup() === g.name ? " active" : ""}`}
+                onClick={() => selectGroup(g.name)}
               >
-                {d.tab}
+                {g.name}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div class="demo-tabs-wrap demo-tabs-wrap-secondary">
+          <div class="demo-tabs demo-tabs-secondary">
+            {group().ids.map((id) => {
+              const d = DEMO_BY_ID.get(id);
+              if (!d) return null;
+              return (
+                <button
+                  class={`demo-tab${activeId() === id ? " active" : ""}`}
+                  onClick={() => setActiveId(id)}
+                >
+                  {d.tab}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -942,52 +993,52 @@ function DemoPlayground() {
           <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
             <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
               <Switch>
-                <Match when={activeIdx() === 0}>
+                <Match when={activeId() === "basic"}>
                   <BasicSheet />
                 </Match>
-                <Match when={activeIdx() === 1}>
+                <Match when={activeId() === "formulas"}>
                   <FormulasSheet />
                 </Match>
-                <Match when={activeIdx() === 2}>
+                <Match when={activeId() === "clipboard"}>
                   <ClipboardSheet />
                 </Match>
-                <Match when={activeIdx() === 3}>
+                <Match when={activeId() === "autofill"}>
                   <AutofillSheet />
                 </Match>
-                <Match when={activeIdx() === 4}>
+                <Match when={activeId() === "history"}>
                   <HistorySheet />
                 </Match>
-                <Match when={activeIdx() === 5}>
+                <Match when={activeId() === "readonly"}>
                   <ReadonlySheet />
                 </Match>
-                <Match when={activeIdx() === 6}>
+                <Match when={activeId() === "large"}>
                   <LargeSheet />
                 </Match>
-                <Match when={activeIdx() === 7}>
+                <Match when={activeId() === "rows"}>
                   <RowsSheet />
                 </Match>
-                <Match when={activeIdx() === 8}>
+                <Match when={activeId() === "sort-view"}>
                   <SortViewSheet />
                 </Match>
-                <Match when={activeIdx() === 9}>
+                <Match when={activeId() === "sort-mutation"}>
                   <SortMutationSheet />
                 </Match>
-                <Match when={activeIdx() === 10}>
+                <Match when={activeId() === "sort-external"}>
                   <SortExternalSheet />
                 </Match>
-                <Match when={activeIdx() === 11}>
+                <Match when={activeId() === "sort-mutation-formulas"}>
                   <SortMutationFormulasSheet />
                 </Match>
-                <Match when={activeIdx() === 12}>
+                <Match when={activeId() === "formula-rows"}>
                   <FormulaRowsSheet />
                 </Match>
-                <Match when={activeIdx() === 13}>
+                <Match when={activeId() === "formula-row-delete"}>
                   <FormulaRowDeleteSheet />
                 </Match>
-                <Match when={activeIdx() === 14}>
+                <Match when={activeId() === "cross-sheet"}>
                   <CrossSheetDemo />
                 </Match>
-                <Match when={activeIdx() === 15}>
+                <Match when={activeId() === "custom-rendering"}>
                   <CustomRenderingSheet />
                 </Match>
               </Switch>
