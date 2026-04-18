@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
-import type { CellRenderContext, CellValue } from "../types";
+import type { CellRenderContext, CellStyle, CellValue } from "../types";
 
 interface GridCellProps {
 	/** Raw cell value (pre-format). Passed to renderCell / title hooks. */
@@ -18,6 +18,11 @@ interface GridCellProps {
 	searchMatch?: boolean;
 	searchCurrent?: boolean;
 	customClass?: string;
+	/**
+	 * Optional inline style for the cell container. Merged with the grid's own
+	 * layout style — width/height/min-width/left always win to preserve layout.
+	 */
+	inlineStyle?: CellStyle;
 	/**
 	 * Optional title override.
 	 * - `undefined` → default to `formattedText || undefined`
@@ -57,6 +62,8 @@ export default function GridCell(props: GridCellProps) {
 			aria-readonly={props.readOnly || undefined}
 			title={resolveTitle(props.title, props.formattedText)}
 			style={{
+				// Host-provided styles first so the grid's layout overrides win.
+				...(props.inlineStyle ?? {}),
 				width: `${props.width}px`,
 				height: `${props.height}px`,
 				"min-width": `${props.width}px`,

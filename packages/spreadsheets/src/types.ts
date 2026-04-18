@@ -232,6 +232,20 @@ export interface ResizeSessionState {
 // Provided via SolidJS context so inner components can consume directly
 // without prop drilling through Sheet → Grid → GridBody → GridCell.
 
+/**
+ * Inline CSS applied to a single cell. Accepts any valid Solid CSS properties
+ * (camelCase or kebab-case keys). Commonly used for:
+ *
+ * - `backgroundColor`, `color` — fills and text color
+ * - `border`, `borderTop`, `borderRight`, `borderBottom`, `borderLeft` — per-side borders
+ * - `fontWeight`, `fontStyle`, `textAlign` — typography
+ *
+ * **Layout properties (`width`, `height`, `min-width`, `left`) are always
+ * overridden by the grid's own sizing.** Everything else wins over the
+ * built-in `.se-cell` stylesheet because inline styles beat class selectors.
+ */
+export type CellStyle = JSX.CSSProperties;
+
 export interface SheetCustomization {
 	/** Custom row header label. Return a string to override the default row number. */
 	getRowHeaderLabel?: (rowIndex: number) => string;
@@ -241,6 +255,13 @@ export interface SheetCustomization {
 	getRowHeaderClass?: (rowIndex: number) => string;
 	/** CSS class applied to each data cell at the given position. */
 	getCellClass?: (row: number, col: number) => string;
+	/**
+	 * Inline style applied to each data cell at the given position. Called for
+	 * every visible cell on every render, so keep the implementation cheap —
+	 * for range-based styling use {@link createRangeStyles} which compiles
+	 * rules into an O(rules) lookup.
+	 */
+	getCellStyle?: (row: number, col: number) => CellStyle | undefined;
 	/** Override the address label shown in the formula bar (e.g., "A1"). */
 	getAddressLabel?: (row: number, col: number) => string;
 	/**

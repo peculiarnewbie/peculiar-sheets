@@ -139,6 +139,12 @@ export default function GridBody(props: GridBodyProps) {
 											{...(titleOverride() !== undefined ? { title: titleOverride() as string } : {})}
 											{...(col.renderCell ? { renderCell: col.renderCell } : {})}
 											{...(customization?.getCellClass ? { customClass: customization.getCellClass(rowIdx, colIdx()) } : {})}
+											{...(customization?.getCellStyle
+												? (() => {
+														const s = customization.getCellStyle!(rowIdx(), colIdx());
+														return s ? { inlineStyle: s } : {};
+													})()
+												: {})}
 											onMouseDown={(e) => props.onCellMouseDown(addr(), e)}
 											onMouseEnter={(e) => props.onCellMouseEnter?.(addr(), e)}
 											onDblClick={() => props.onCellDblClick(addr())}

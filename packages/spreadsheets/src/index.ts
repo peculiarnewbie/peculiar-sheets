@@ -1,6 +1,7 @@
 export { Sheet } from "./Sheet";
 export { createWorkbookCoordinator } from "./workbook/coordinator";
 export { addressToA1, isFormulaValue, rangeToA1, shiftFormulaByDelta } from "./formula/references";
+export { createRangeStyles } from "./rangeStyles";
 export {
 	DEFAULT_COL_WIDTH,
 	DEFAULT_ROW_HEIGHT,
@@ -13,6 +14,7 @@ export type {
 	CellMutation,
 	CellRange,
 	CellRenderContext,
+	CellStyle,
 	CellValue,
 	ClipboardPayload,
 	ColumnDef,
@@ -32,6 +34,8 @@ export type {
 	SortDirection,
 	SortState,
 } from "./types";
+
+export type { RangeStyleRule, StyleTarget } from "./rangeStyles";
 
 export type {
 	WorkbookCoordinator,
