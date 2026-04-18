@@ -566,9 +566,13 @@ export default function Grid(props: GridProps) {
 		const widths = untrack(columnWidths);
 		const { row, col } = addr;
 
-		// Cell bounds within the scrollable canvas.
-		const cellTop = row * props.rowHeight;
-		const cellBottom = cellTop + props.rowHeight;
+		// Cell bounds within the scrollable canvas. Use rowMetrics so variable
+		// row heights (resized rows above `row`) are accounted for — otherwise
+		// the bottom edge is underestimated and the cell lands just off the
+		// viewport after arrow-down navigation.
+		const metrics = rowMetrics();
+		const cellTop = metrics.getRowTop(row);
+		const cellBottom = cellTop + metrics.getRowHeight(row);
 
 		let cellLeft = rowGutterWidth();
 		for (let c = 0; c < col; c++) {
