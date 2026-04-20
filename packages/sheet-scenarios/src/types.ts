@@ -122,6 +122,15 @@ export interface Driver {
 	getDisplayCellValue(row: number, col: number): Promise<CellValue>;
 	getMutations(): Promise<MutationSnapshot[]>;
 	clearMutations(): Promise<void>;
+
+	// Step-boundary hook
+	/**
+	 * Optional: called by `runScenario` once every step has completed (action
+	 * or assertion, pass or soft-fail). The DOM driver uses this to inject a
+	 * visible pause between steps so playback is legible; Stagehand leaves it
+	 * unimplemented so CI runs flat-out.
+	 */
+	afterStep?(step: Step): Promise<void>;
 }
 
 // ── Errors ──────────────────────────────────────────────────────────────────

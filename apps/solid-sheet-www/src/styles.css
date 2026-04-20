@@ -913,19 +913,23 @@ a:hover {
    SCENARIO REPLAY
    ══════════════════════════════════════════════════════════════ */
 
-/* Tri-state toggle — replaces the old binary .demo-code-toggle.
-   Rendered top-right inside .demo-sheet-wrap. */
+/* Tri-state toggle — sits above .demo-sheet-wrap, right-aligned in its own
+   row so it doesn't overlap the sheet content or compete with the replay
+   player docked inside the wrap. */
+.demo-view-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
 .demo-view-toggle {
-  position: absolute;
-  bottom: 0.625rem;
-  right: 0.625rem;
-  z-index: 40;
   display: inline-flex;
   gap: 2px;
   padding: 2px;
   background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 .demo-view-toggle__btn {
@@ -960,14 +964,69 @@ a:hover {
   width: 100%;
 }
 
-.demo-sheet-stage > :first-child {
+/* The sheet lives inside its own flex-grow slot so the click-shield overlay
+   can absolutely-position itself against the sheet area alone — not the whole
+   stage (the ScenarioPlayer docks underneath and must stay interactive). */
+.demo-sheet-stage__sheet-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.demo-sheet-stage__sheet-area > :first-child {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.demo-sheet-stage.replay-mode > :first-child {
-  /* Block user pointer interaction while the replay drives the sheet. */
+/* Transparent click-catcher layered over the live sheet while replay is
+   active. A single real user click (isTrusted events go here because the
+   DomDriver's synthetic events are dispatched directly on cell targets) drops
+   the shield and flips the view back to Live mode. */
+.demo-sheet-stage__shield {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  /* Give the shield a hover hint without changing the sheet visuals. */
+  transition: background 0.15s ease;
+}
+
+.demo-sheet-stage__shield:hover {
+  background: rgba(196, 163, 90, 0.04);
+}
+
+.demo-sheet-stage__shield:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.demo-sheet-stage__shield-hint {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translate(-50%, -6px);
+  padding: 0.3rem 0.7rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--accent);
+  background: var(--surface-strong);
+  border: 1px solid var(--accent-20, rgba(196, 163, 90, 0.35));
+  border-radius: 999px;
+  white-space: nowrap;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.demo-sheet-stage__shield:hover .demo-sheet-stage__shield-hint {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* Player controls bar — docks below the sheet while replay mode is active. */

@@ -230,6 +230,13 @@ export async function runScenario(
 		}
 
 		onEvent?.({ type: "step-end", index: i, step });
+
+		// Step-boundary hook. Runs after every step — action, pass, or
+		// soft-fail — so the DOM driver can pause for replay legibility.
+		// Lives outside the try/catch above so an abort thrown from the
+		// driver's pause (user dropped back to Live mode) bubbles cleanly
+		// to the caller without emitting a spurious "error" event.
+		await driver.afterStep?.(step);
 	}
 
 	onEvent?.({ type: "done" });

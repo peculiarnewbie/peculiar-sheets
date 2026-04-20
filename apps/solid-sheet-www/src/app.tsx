@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, Switch, Match } from "solid-js";
+import { batch, createSignal, Show, Switch, Match } from "solid-js";
 import { highlight } from "sugar-high";
 import "peculiar-sheets/styles";
 import "./styles.css";
@@ -475,27 +475,44 @@ type ViewMode = "live" | "code" | "replay";
 function DemoPlayground() {
   const [activeGroup, setActiveGroup] = createSignal<GroupName>(GROUPS[0].name);
   const [activeId, setActiveId] = createSignal<DemoId>(GROUPS[0].ids[0]);
-  const [viewMode, setViewMode] = createSignal<ViewMode>("live");
   const [replayHandle, setReplayHandle] = createSignal<ReplayHostHandle | null>(null);
+
+  const hasScenarios = () => (SCENARIOS[activeId()] ?? []).length > 0;
+  const scenarios = () => SCENARIOS[activeId()] ?? [];
+
+  // Default to Replay when the active demo ships scenarios, else Live. Replay
+  // acts as the demo's "trailer" — one click on the sheet drops back to Live.
+  const [viewMode, setViewMode] = createSignal<ViewMode>(
+    hasScenarios() ? "replay" : "live"
+  );
 
   const group = () => GROUPS.find((g) => g.name === activeGroup()) ?? GROUPS[0];
   const demo = () => DEMO_BY_ID.get(activeId()) ?? DEMOS[0];
 
-  // Reset to live view and drop stale replay handle whenever the active demo changes
-  createEffect(() => {
-    activeId();
-    setViewMode("live");
-    setReplayHandle(null);
-  });
-
-  const hasScenarios = () => (SCENARIOS[activeId()] ?? []).length > 0;
-  const scenarios = () => SCENARIOS[activeId()] ?? [];
+  // When the user picks a different demo, batch-update three things atomically:
+  //   1. drop the stale replay handle (the old ReplayHost is about to unmount)
+  //   2. switch activeId (which re-mounts the demo tree; a fresh ReplayHost,
+  //      if any, will populate replayHandle via onReplayReady during its render)
+  //   3. reset the view mode based on whether the new demo ships scenarios
+  //
+  // Why not use `createEffect(on(activeId, ...))`? That effect runs AFTER the
+  // render pass, meaning it would null out the freshly-mounted handle. Doing
+  // the work inline in the click handler — before setActiveId triggers the
+  // Match re-evaluation — avoids that ordering bug.
+  const selectDemo = (id: DemoId) => {
+    const nextHasScenarios = (SCENARIOS[id] ?? []).length > 0;
+    batch(() => {
+      setReplayHandle(null);
+      setActiveId(id);
+      setViewMode(nextHasScenarios ? "replay" : "live");
+    });
+  };
 
   const selectGroup = (name: GroupName) => {
     const g = GROUPS.find((gr) => gr.name === name);
     if (!g) return;
     setActiveGroup(name);
-    setActiveId(g.ids[0]);
+    selectDemo(g.ids[0]);
   };
 
   return (
@@ -524,7 +541,7 @@ function DemoPlayground() {
               return (
                 <button
                   class={`demo-tab${activeId() === id ? " active" : ""}`}
-                  onClick={() => setActiveId(id)}
+                  onClick={() => selectDemo(id)}
                 >
                   {d.tab}
                 </button>
@@ -545,7 +562,7 @@ function DemoPlayground() {
           </div>
 
           <div class="demo-sheet-frame">
-            <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
+            <div class="demo-view-toggle-row">
               <div class="demo-view-toggle" role="tablist" aria-label="View mode">
                 <button
                   type="button"
@@ -574,65 +591,82 @@ function DemoPlayground() {
                   {"</>"}
                 </button>
               </div>
+            </div>
 
+            <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
               <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
                 <Show
                   when={viewMode() === "code"}
                   fallback={
                     <div class="demo-sheet-stage" classList={{ "replay-mode": viewMode() === "replay" }}>
-                      <Switch>
-                        <Match when={activeId() === "basic"}>
-                          <BasicSheet onReplayReady={setReplayHandle} />
-                        </Match>
-                        <Match when={activeId() === "formulas"}>
-                          <FormulasSheet />
-                        </Match>
-                        <Match when={activeId() === "clipboard"}>
-                          <ClipboardSheet />
-                        </Match>
-                        <Match when={activeId() === "autofill"}>
-                          <AutofillSheet />
-                        </Match>
-                        <Match when={activeId() === "history"}>
-                          <HistorySheet />
-                        </Match>
-                        <Match when={activeId() === "readonly"}>
-                          <ReadonlySheet />
-                        </Match>
-                        <Match when={activeId() === "large"}>
-                          <LargeSheet />
-                        </Match>
-                        <Match when={activeId() === "rows"}>
-                          <RowsSheet />
-                        </Match>
-                        <Match when={activeId() === "sort-view"}>
-                          <SortViewSheet />
-                        </Match>
-                        <Match when={activeId() === "sort-mutation"}>
-                          <SortMutationSheet />
-                        </Match>
-                        <Match when={activeId() === "sort-external"}>
-                          <SortExternalSheet />
-                        </Match>
-                        <Match when={activeId() === "sort-mutation-formulas"}>
-                          <SortMutationFormulasSheet />
-                        </Match>
-                        <Match when={activeId() === "formula-rows"}>
-                          <FormulaRowsSheet />
-                        </Match>
-                        <Match when={activeId() === "formula-row-delete"}>
-                          <FormulaRowDeleteSheet />
-                        </Match>
-                        <Match when={activeId() === "cross-sheet"}>
-                          <CrossSheetDemo />
-                        </Match>
-                        <Match when={activeId() === "custom-rendering"}>
-                          <CustomRenderingSheet />
-                        </Match>
-                        <Match when={activeId() === "styling"}>
-                          <StylingSheet />
-                        </Match>
-                      </Switch>
+                      <div class="demo-sheet-stage__sheet-area">
+                        <Switch>
+                          <Match when={activeId() === "basic"}>
+                            <BasicSheet onReplayReady={setReplayHandle} />
+                          </Match>
+                          <Match when={activeId() === "formulas"}>
+                            <FormulasSheet />
+                          </Match>
+                          <Match when={activeId() === "clipboard"}>
+                            <ClipboardSheet />
+                          </Match>
+                          <Match when={activeId() === "autofill"}>
+                            <AutofillSheet />
+                          </Match>
+                          <Match when={activeId() === "history"}>
+                            <HistorySheet />
+                          </Match>
+                          <Match when={activeId() === "readonly"}>
+                            <ReadonlySheet />
+                          </Match>
+                          <Match when={activeId() === "large"}>
+                            <LargeSheet />
+                          </Match>
+                          <Match when={activeId() === "rows"}>
+                            <RowsSheet />
+                          </Match>
+                          <Match when={activeId() === "sort-view"}>
+                            <SortViewSheet />
+                          </Match>
+                          <Match when={activeId() === "sort-mutation"}>
+                            <SortMutationSheet />
+                          </Match>
+                          <Match when={activeId() === "sort-external"}>
+                            <SortExternalSheet />
+                          </Match>
+                          <Match when={activeId() === "sort-mutation-formulas"}>
+                            <SortMutationFormulasSheet />
+                          </Match>
+                          <Match when={activeId() === "formula-rows"}>
+                            <FormulaRowsSheet />
+                          </Match>
+                          <Match when={activeId() === "formula-row-delete"}>
+                            <FormulaRowDeleteSheet />
+                          </Match>
+                          <Match when={activeId() === "cross-sheet"}>
+                            <CrossSheetDemo />
+                          </Match>
+                          <Match when={activeId() === "custom-rendering"}>
+                            <CustomRenderingSheet />
+                          </Match>
+                          <Match when={activeId() === "styling"}>
+                            <StylingSheet />
+                          </Match>
+                        </Switch>
+                        <Show when={viewMode() === "replay" && hasScenarios()}>
+                          <button
+                            type="button"
+                            class="demo-sheet-stage__shield"
+                            aria-label="Exit replay and return to Live mode"
+                            title="Click anywhere to edit"
+                            onClick={() => setViewMode("live")}
+                          >
+                            <span class="demo-sheet-stage__shield-hint">
+                              Click to edit — switch to Live
+                            </span>
+                          </button>
+                        </Show>
+                      </div>
                       <Show when={viewMode() === "replay" && hasScenarios()}>
                         <ScenarioPlayer scenarios={scenarios()} host={replayHandle()} />
                       </Show>

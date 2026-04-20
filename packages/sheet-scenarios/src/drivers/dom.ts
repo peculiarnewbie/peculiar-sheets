@@ -8,7 +8,7 @@
  */
 
 import type { CellValue, SheetController } from "peculiar-sheets";
-import type { CellRef, Driver, MutationSnapshot } from "../types";
+import type { CellRef, Driver, MutationSnapshot, Step } from "../types";
 import type { MutationBuffer } from "../mutationBuffer";
 
 export interface DomDriverOptions {
@@ -19,7 +19,7 @@ export interface DomDriverOptions {
 	/**
 	 * Per-action delay in ms, applied after every action step. Gives the user
 	 * time to watch the replay; Grid reactive updates need only a frame but
-	 * animated playback looks better with a larger gap. Default: 180ms.
+	 * animated playback looks better with a larger gap. Default: 450ms.
 	 */
 	stepDelayMs?: number;
 	/**
@@ -28,9 +28,32 @@ export interface DomDriverOptions {
 	 * tween an overlay cursor to the correct spot.
 	 */
 	onPointerTarget?: (x: number, y: number) => void;
+	/**
+	 * Optional abort predicate. Checked at each action boundary; if it returns
+	 * `true`, the driver throws `ScenarioAbortError` so the runner unwinds
+	 * cleanly without firing more synthetic events against an unmounted host.
+	 */
+	isAborted?: () => boolean;
 }
 
 const FRAME_MS = 16;
+
+/** Thrown by the DOM driver when `isAborted()` returns true. Callers should
+ *  catch and swallow this; it's not a scenario failure. */
+export class ScenarioAbortError extends Error {
+	readonly _tag = "ScenarioAbortError" as const;
+	constructor() {
+		super("scenario aborted");
+		this.name = "ScenarioAbortError";
+	}
+}
+
+export function isScenarioAbortError(err: unknown): err is ScenarioAbortError {
+	return (
+		err instanceof ScenarioAbortError ||
+		(typeof err === "object" && err !== null && (err as { _tag?: string })._tag === "ScenarioAbortError")
+	);
+}
 
 export class DomDriver implements Driver {
 	readonly kind = "dom" as const;
@@ -38,7 +61,7 @@ export class DomDriver implements Driver {
 	private readonly stepDelay: number;
 
 	constructor(private readonly opts: DomDriverOptions) {
-		this.stepDelay = opts.stepDelayMs ?? 180;
+		this.stepDelay = opts.stepDelayMs ?? 450;
 	}
 
 	/** Called by custom steps that need the controller handle. */
@@ -162,9 +185,11 @@ export class DomDriver implements Driver {
 
 	async type(text: string, opts?: { confirm?: boolean }): Promise<void> {
 		for (const char of text) {
+			this.checkAbort();
 			await this.dispatchKey(char, char);
 		}
 		if (opts?.confirm ?? true) {
+			this.checkAbort();
 			await this.dispatchKey("Enter", "Enter");
 		}
 	}
@@ -186,7 +211,15 @@ export class DomDriver implements Driver {
 	}
 
 	async wait(ms: number): Promise<void> {
-		await sleep(ms);
+		// Chunk the wait so we can surrender quickly when aborted mid-sleep.
+		const chunk = 80;
+		let remaining = ms;
+		while (remaining > 0) {
+			this.checkAbort();
+			const step = Math.min(chunk, remaining);
+			await sleep(step);
+			remaining -= step;
+		}
 	}
 
 	// ── Reads ────────────────────────────────────────────────────────────
@@ -224,6 +257,25 @@ export class DomDriver implements Driver {
 	async clearMutations(): Promise<void> {
 		this.opts.buffer.clear();
 		await this.frame();
+	}
+
+	// ── Step-boundary hook ───────────────────────────────────────────────
+
+	/**
+	 * Called by `runScenario` after every step (action, pass, or soft-fail).
+	 *
+	 * Why here and not inside each action? Because assertion steps, `type`,
+	 * and `press` don't call `settle()` — and we want the user to *see* each
+	 * step transition. Centralising the visible pause here guarantees every
+	 * step, regardless of kind, gets the same legibility beat.
+	 *
+	 * Action methods still end with `settle()` (just a frame tick now) so the
+	 * grid has flushed before the runner reads state for the next step.
+	 */
+	async afterStep(_step: Step): Promise<void> {
+		this.checkAbort();
+		if (this.stepDelay > 0) await sleep(this.stepDelay);
+		this.checkAbort();
 	}
 
 	// ── Internals ────────────────────────────────────────────────────────
@@ -276,14 +328,23 @@ export class DomDriver implements Driver {
 	}
 
 	private async settle(): Promise<void> {
-		// Give the grid + Solid's fine-grained reactivity a frame to flush,
-		// then a visible pause for replay legibility.
+		// Give the grid + Solid's fine-grained reactivity a frame to flush
+		// before the runner reads state for the next step. The *visible*
+		// step-boundary pause lives in `afterStep()` so every step kind
+		// (actions, asserts, type, press) gets the same legibility beat.
+		this.checkAbort();
 		await this.frame();
-		if (this.stepDelay > 0) await sleep(this.stepDelay);
+		this.checkAbort();
 	}
 
 	private frame(): Promise<void> {
 		return new Promise((r) => setTimeout(r, FRAME_MS));
+	}
+
+	private checkAbort(): void {
+		if (this.opts.isAborted?.()) {
+			throw new ScenarioAbortError();
+		}
 	}
 }
 

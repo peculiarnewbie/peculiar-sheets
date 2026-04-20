@@ -31,7 +31,12 @@ export { AssertionError, StepError } from "./types";
 export { runScenario, type RunScenarioOptions } from "./runScenario";
 
 // DOM driver (safe to bundle into the showcase)
-export { DomDriver, type DomDriverOptions } from "./drivers/dom";
+export {
+	DomDriver,
+	type DomDriverOptions,
+	ScenarioAbortError,
+	isScenarioAbortError,
+} from "./drivers/dom";
 
 // Shared mutation buffer — used by both the e2e harness (apps/e2e) and the
 // showcase's replay host. Single implementation, two mount points.

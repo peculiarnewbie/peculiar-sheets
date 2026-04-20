@@ -16,6 +16,7 @@
 import { createEffect, createSignal, For, Show, createMemo, type JSX, onCleanup } from "solid-js";
 import {
 	DomDriver,
+	isScenarioAbortError,
 	runScenario,
 	type Scenario,
 	type ScenarioEvent,
@@ -29,6 +30,9 @@ export interface ScenarioPlayerProps {
 	scenarios: Scenario[];
 	/** Live handle from the surrounding `ReplayHost`. */
 	host: ReplayHostHandle | null;
+	/** Kick off the first scenario automatically once the host is ready.
+	 *  Defaults to `true` — Replay mode is the demo's "trailer". */
+	autoPlay?: boolean;
 }
 
 type PipState = "pending" | "pass" | "fail";
@@ -95,6 +99,11 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 	const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
 
 	let cursor: GhostCursorHandle | null = null;
+	// Flipped to true when the component unmounts mid-run (e.g., user clicked
+	// the shield to drop back to Live mode). The DomDriver checks this after
+	// every action and throws `ScenarioAbortError` so we stop dispatching
+	// synthetic events against a sheet the user is now steering themselves.
+	let aborted = false;
 
 	// Reset UI when the user picks a different scenario
 	createEffect(() => {
@@ -110,7 +119,23 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 	);
 
 	onCleanup(() => {
+		aborted = true;
 		cursor?.hide();
+	});
+
+	// Autoplay — once the host handle is available and we haven't run yet,
+	// launch the first scenario so Replay mode feels alive on first paint.
+	let hasAutoPlayed = false;
+	createEffect(() => {
+		if ((props.autoPlay ?? true) && props.host && !hasAutoPlayed && !isRunning()) {
+			hasAutoPlayed = true;
+			// Defer one frame so the sheet has painted before we start firing
+			// synthetic events against it.
+			queueMicrotask(() => {
+				if (aborted) return;
+				void play();
+			});
+		}
 	});
 
 	function handleEvent(event: ScenarioEvent): void {
@@ -147,7 +172,10 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 				setErrorMessage(`Step ${event.index}: ${event.message}`);
 				break;
 			case "done":
-				setCurrentStepIndex(null);
+				// Leave `currentStepIndex` + `caption` on the last step so the
+				// caption bar keeps reading "Step N: <last caption>" after the
+				// run finishes — nulling the index made it render "Step 1"
+				// alongside the last step's text, which was misleading.
 				break;
 		}
 	}
@@ -163,6 +191,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 			controller: props.host.controller,
 			buffer: props.host.buffer,
 			onPointerTarget: (x, y) => cursor?.moveTo(x, y),
+			isAborted: () => aborted,
 		});
 
 		try {
@@ -171,6 +200,9 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 				defaultAssertMode: "soft",
 			});
 		} catch (err) {
+			// Abort is the expected path when the user clicks the shield to
+			// drop back to Live — swallow silently.
+			if (isScenarioAbortError(err)) return;
 			// Action-step errors still throw (scenario structurally broken). Surface
 			// them in the caption bar instead of crashing the page.
 			setErrorMessage(err instanceof Error ? err.message : String(err));
