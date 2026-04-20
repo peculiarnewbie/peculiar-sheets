@@ -11,6 +11,12 @@ importers:
       '@browserbasehq/stagehand':
         specifier: ^3.2.0
         version: 3.2.0(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.0)(deepmerge@4.3.1)(zod@3.25.76)
+      peculiar-sheets:
+        specifier: workspace:*
+        version: link:packages/spreadsheets
+      sheet-scenarios:
+        specifier: workspace:*
+        version: link:packages/sheet-scenarios
 
   apps/e2e:
     dependencies:
@@ -23,6 +29,9 @@ importers:
       peculiar-sheets:
         specifier: workspace:*
         version: link:../../packages/spreadsheets
+      sheet-scenarios:
+        specifier: workspace:*
+        version: link:../../packages/sheet-scenarios
       solid-js:
         specifier: ^1.9.0
         version: 1.9.12
@@ -45,6 +54,9 @@ importers:
       peculiar-sheets:
         specifier: workspace:*
         version: link:../../packages/spreadsheets
+      sheet-scenarios:
+        specifier: workspace:*
+        version: link:../../packages/sheet-scenarios
       solid-js:
         specifier: ^1.9.11
         version: 1.9.12
@@ -70,6 +82,25 @@ importers:
       wrangler:
         specifier: ^4.0.0
         version: 4.80.0(@cloudflare/workers-types@4.20260405.1)(bufferutil@4.1.0)
+
+  packages/sheet-scenarios:
+    dependencies:
+      better-result:
+        specifier: ^2.8.2
+        version: 2.8.2
+      peculiar-sheets:
+        specifier: workspace:*
+        version: link:../spreadsheets
+      solid-js:
+        specifier: ^1.9.0
+        version: 1.9.12
+    devDependencies:
+      '@browserbasehq/stagehand':
+        specifier: ^3.2.0
+        version: 3.2.0(@cfworker/json-schema@4.1.1)(@opentelemetry/api@1.9.0)(deepmerge@4.3.1)(zod@3.25.76)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
 
   packages/spreadsheets:
     dependencies:

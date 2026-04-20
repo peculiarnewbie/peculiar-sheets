@@ -12,6 +12,7 @@
   "dependencies": {
     "hyperformula": "^3.0.0",
     "peculiar-sheets": "workspace:*",
+    "sheet-scenarios": "workspace:*",
     "solid-js": "^1.9.11",
     "sugar-high": "^1.1.0"
   },

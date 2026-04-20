@@ -1,0 +1,35 @@
+{
+	"name": "sheet-scenarios",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Declarative e2e scenarios for peculiar-sheets, runnable under Stagehand (CI) or DOM (showcase replay).",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./stagehand": {
+			"types": "./src/drivers/stagehand.ts",
+			"import": "./src/drivers/stagehand.ts",
+			"default": "./src/drivers/stagehand.ts"
+		},
+		"./scenarios": {
+			"types": "./src/scenarios/index.ts",
+			"import": "./src/scenarios/index.ts",
+			"default": "./src/scenarios/index.ts"
+		}
+	},
+	"peerDependencies": {
+		"peculiar-sheets": "workspace:*",
+		"solid-js": "^1.9.0"
+	},
+	"dependencies": {
+		"better-result": "^2.8.2"
+	},
+	"devDependencies": {
+		"@browserbasehq/stagehand": "^3.2.0",
+		"typescript": "^5.8.0"
+	}
+}

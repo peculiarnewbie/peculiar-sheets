@@ -907,3 +907,268 @@ a:hover {
   color: #94a3b8;
   border: 1px solid rgba(148, 163, 184, 0.4);
 }
+
+
+/* ══════════════════════════════════════════════════════════════
+   SCENARIO REPLAY
+   ══════════════════════════════════════════════════════════════ */
+
+/* Tri-state toggle — replaces the old binary .demo-code-toggle.
+   Rendered top-right inside .demo-sheet-wrap. */
+.demo-view-toggle {
+  position: absolute;
+  bottom: 0.625rem;
+  right: 0.625rem;
+  z-index: 40;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.demo-view-toggle__btn {
+  padding: 0.25rem 0.65rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.demo-view-toggle__btn:hover {
+  color: var(--accent);
+}
+
+.demo-view-toggle__btn.active {
+  color: var(--accent);
+  background: var(--accent-12);
+}
+
+/* Container for <Sheet> + <ScenarioPlayer> while replay is active. */
+.demo-sheet-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+.demo-sheet-stage > :first-child {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.demo-sheet-stage.replay-mode > :first-child {
+  /* Block user pointer interaction while the replay drives the sheet. */
+  pointer-events: none;
+}
+
+/* Player controls bar — docks below the sheet while replay mode is active. */
+.replay-player {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.55rem 0.75rem 0.625rem;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(20, 20, 32, 0.4), rgba(20, 20, 32, 0.7));
+  backdrop-filter: blur(6px);
+}
+
+.replay-player__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.replay-player__select {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
+  font-family: var(--body-font);
+  font-size: 0.78rem;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-badge);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.replay-player__select:hover,
+.replay-player__select:focus {
+  border-color: var(--accent-20);
+  outline: none;
+}
+
+.replay-player__select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.replay-player__play {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--bg-base);
+  background: var(--accent);
+  border: 1px solid var(--accent-deep);
+  border-radius: var(--radius-badge);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.replay-player__play:hover:not(:disabled) {
+  background: var(--accent-deep);
+}
+
+.replay-player__play:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.replay-player__play-label {
+  letter-spacing: 0.02em;
+}
+
+.replay-player__pips {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.25rem 0.55rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.68rem;
+}
+
+.replay-pip {
+  font-family: "JetBrains Mono", monospace;
+  line-height: 1;
+  font-size: 0.82rem;
+  transition: color 0.2s ease;
+}
+
+.replay-pip--pending { color: rgba(255, 255, 255, 0.2); }
+.replay-pip--pass    { color: #6ec46a; }
+.replay-pip--fail    { color: #e0604b; }
+
+.replay-player__counts {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  margin-left: 0.4rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid var(--border);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  color: var(--text-soft);
+}
+
+.replay-player__count {
+  font-weight: 600;
+}
+.replay-player__count--pass { color: #6ec46a; }
+.replay-player__count--fail { color: #e0604b; }
+.replay-player__count-total { color: var(--text-soft); }
+
+.replay-player__caption {
+  min-height: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--body-font);
+  font-size: 0.74rem;
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+.replay-player__caption-step {
+  padding: 0.1rem 0.45rem;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-12);
+  border-radius: 999px;
+}
+
+.replay-player__caption-text {
+  color: var(--text);
+}
+
+.replay-player__caption-hint {
+  color: var(--text-soft);
+  font-style: italic;
+}
+
+.replay-player__caption-error {
+  color: #e0604b;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+}
+
+/* Ghost cursor — follows the DomDriver through the page. Uses `position: fixed`
+   because coordinates come from `getBoundingClientRect()` (viewport-relative). */
+.replay-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 9999;
+  will-change: transform;
+}
+
+.replay-cursor__halo {
+  position: absolute;
+  top: -13px;
+  left: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(196, 163, 90, 0.35) 0%,
+    rgba(196, 163, 90, 0.12) 40%,
+    transparent 70%
+  );
+  animation: replay-cursor-pulse 1.4s ease-in-out infinite;
+}
+
+.replay-cursor__dot {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 2px rgba(20, 20, 32, 0.85),
+    0 0 12px rgba(196, 163, 90, 0.55);
+}
+
+@keyframes replay-cursor-pulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.6;
+  }
+}

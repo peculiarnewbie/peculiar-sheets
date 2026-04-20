@@ -3,6 +3,11 @@ import { highlight } from "sugar-high";
 import "peculiar-sheets/styles";
 import "./styles.css";
 
+// ── Scenario replay ─────────────────────────────────────────
+import { SCENARIOS } from "sheet-scenarios/scenarios";
+import { ScenarioPlayer } from "./player/ScenarioPlayer";
+import type { ReplayHostHandle } from "./player/ReplayHost";
+
 // ── Demo components (one file per demo) ─────────────────────
 import BasicSheet          from "./demos/basic";
 import FormulasSheet       from "./demos/formulas";
@@ -465,16 +470,26 @@ function FeaturesSection() {
 
 // ── Demo playground ─────────────────────────────────────────
 
+type ViewMode = "live" | "code" | "replay";
+
 function DemoPlayground() {
   const [activeGroup, setActiveGroup] = createSignal<GroupName>(GROUPS[0].name);
   const [activeId, setActiveId] = createSignal<DemoId>(GROUPS[0].ids[0]);
-  const [showCode, setShowCode] = createSignal(false);
+  const [viewMode, setViewMode] = createSignal<ViewMode>("live");
+  const [replayHandle, setReplayHandle] = createSignal<ReplayHostHandle | null>(null);
 
   const group = () => GROUPS.find((g) => g.name === activeGroup()) ?? GROUPS[0];
   const demo = () => DEMO_BY_ID.get(activeId()) ?? DEMOS[0];
 
-  // Reset code view whenever the active demo changes
-  createEffect(() => { activeId(); setShowCode(false); });
+  // Reset to live view and drop stale replay handle whenever the active demo changes
+  createEffect(() => {
+    activeId();
+    setViewMode("live");
+    setReplayHandle(null);
+  });
+
+  const hasScenarios = () => (SCENARIOS[activeId()] ?? []).length > 0;
+  const scenarios = () => SCENARIOS[activeId()] ?? [];
 
   const selectGroup = (name: GroupName) => {
     const g = GROUPS.find((gr) => gr.name === name);
@@ -531,71 +546,97 @@ function DemoPlayground() {
 
           <div class="demo-sheet-frame">
             <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
-              <button
-                class={`demo-code-toggle${showCode() ? " active" : ""}`}
-                onClick={() => setShowCode((s) => !s)}
-                title={showCode() ? "Show live demo" : "Show source code"}
-              >
-                {showCode() ? "← Demo" : "</>"}
-              </button>
+              <div class="demo-view-toggle" role="tablist" aria-label="View mode">
+                <button
+                  type="button"
+                  class={`demo-view-toggle__btn${viewMode() === "live" ? " active" : ""}`}
+                  onClick={() => setViewMode("live")}
+                  title="Live interactive demo"
+                >
+                  Live
+                </button>
+                <Show when={hasScenarios()}>
+                  <button
+                    type="button"
+                    class={`demo-view-toggle__btn${viewMode() === "replay" ? " active" : ""}`}
+                    onClick={() => setViewMode("replay")}
+                    title="Replay test scenarios"
+                  >
+                    Replay
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class={`demo-view-toggle__btn${viewMode() === "code" ? " active" : ""}`}
+                  onClick={() => setViewMode("code")}
+                  title="Source code"
+                >
+                  {"</>"}
+                </button>
+              </div>
 
               <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
                 <Show
-                  when={showCode()}
+                  when={viewMode() === "code"}
                   fallback={
-                    <Switch>
-                <Match when={activeId() === "basic"}>
-                  <BasicSheet />
-                </Match>
-                <Match when={activeId() === "formulas"}>
-                  <FormulasSheet />
-                </Match>
-                <Match when={activeId() === "clipboard"}>
-                  <ClipboardSheet />
-                </Match>
-                <Match when={activeId() === "autofill"}>
-                  <AutofillSheet />
-                </Match>
-                <Match when={activeId() === "history"}>
-                  <HistorySheet />
-                </Match>
-                <Match when={activeId() === "readonly"}>
-                  <ReadonlySheet />
-                </Match>
-                <Match when={activeId() === "large"}>
-                  <LargeSheet />
-                </Match>
-                <Match when={activeId() === "rows"}>
-                  <RowsSheet />
-                </Match>
-                <Match when={activeId() === "sort-view"}>
-                  <SortViewSheet />
-                </Match>
-                <Match when={activeId() === "sort-mutation"}>
-                  <SortMutationSheet />
-                </Match>
-                <Match when={activeId() === "sort-external"}>
-                  <SortExternalSheet />
-                </Match>
-                <Match when={activeId() === "sort-mutation-formulas"}>
-                  <SortMutationFormulasSheet />
-                </Match>
-                <Match when={activeId() === "formula-rows"}>
-                  <FormulaRowsSheet />
-                </Match>
-                <Match when={activeId() === "formula-row-delete"}>
-                  <FormulaRowDeleteSheet />
-                </Match>
-                <Match when={activeId() === "cross-sheet"}>
-                  <CrossSheetDemo />
-                </Match>
-                <Match when={activeId() === "custom-rendering"}>
-                  <CustomRenderingSheet />
-                </Match>
-                <Match when={activeId() === "styling"}>
-                  <StylingSheet />
-                </Match>
-              </Switch>
+                    <div class="demo-sheet-stage" classList={{ "replay-mode": viewMode() === "replay" }}>
+                      <Switch>
+                        <Match when={activeId() === "basic"}>
+                          <BasicSheet onReplayReady={setReplayHandle} />
+                        </Match>
+                        <Match when={activeId() === "formulas"}>
+                          <FormulasSheet />
+                        </Match>
+                        <Match when={activeId() === "clipboard"}>
+                          <ClipboardSheet />
+                        </Match>
+                        <Match when={activeId() === "autofill"}>
+                          <AutofillSheet />
+                        </Match>
+                        <Match when={activeId() === "history"}>
+                          <HistorySheet />
+                        </Match>
+                        <Match when={activeId() === "readonly"}>
+                          <ReadonlySheet />
+                        </Match>
+                        <Match when={activeId() === "large"}>
+                          <LargeSheet />
+                        </Match>
+                        <Match when={activeId() === "rows"}>
+                          <RowsSheet />
+                        </Match>
+                        <Match when={activeId() === "sort-view"}>
+                          <SortViewSheet />
+                        </Match>
+                        <Match when={activeId() === "sort-mutation"}>
+                          <SortMutationSheet />
+                        </Match>
+                        <Match when={activeId() === "sort-external"}>
+                          <SortExternalSheet />
+                        </Match>
+                        <Match when={activeId() === "sort-mutation-formulas"}>
+                          <SortMutationFormulasSheet />
+                        </Match>
+                        <Match when={activeId() === "formula-rows"}>
+                          <FormulaRowsSheet />
+                        </Match>
+                        <Match when={activeId() === "formula-row-delete"}>
+                          <FormulaRowDeleteSheet />
+                        </Match>
+                        <Match when={activeId() === "cross-sheet"}>
+                          <CrossSheetDemo />
+                        </Match>
+                        <Match when={activeId() === "custom-rendering"}>
+                          <CustomRenderingSheet />
+                        </Match>
+                        <Match when={activeId() === "styling"}>
+                          <StylingSheet />
+                        </Match>
+                      </Switch>
+                      <Show when={viewMode() === "replay" && hasScenarios()}>
+                        <ScenarioPlayer scenarios={scenarios()} host={replayHandle()} />
+                      </Show>
+                    </div>
                   }
                 >
                   <div class="demo-code-view">

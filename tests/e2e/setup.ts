@@ -94,7 +94,26 @@ export async function getMutations(_sh: Stagehand): Promise<CellMutation[]> {
 /** Clear the mutation log (useful between test cases sharing a route). */
 export async function clearMutations(_sh: Stagehand): Promise<void> {
 	await getPage().evaluate(() => {
-		(window as any).__MUTATIONS__ = [];
+		const win = window as unknown as {
+			__MUTATIONS__: unknown[];
+			__ROW_REORDERS__?: unknown[];
+			__HARNESS_CLEAR_MUTATIONS__?: () => void;
+		};
+		// Preferred path: call the harness's explicit flush hook so the shared
+		// mutation buffer (see packages/sheet-scenarios/src/mutationBuffer.ts)
+		// actually drops its state. Without this, the buffer's internal signal
+		// would re-sync the pre-clear log back onto `window.__MUTATIONS__`
+		// on the next reactive tick.
+		if (typeof win.__HARNESS_CLEAR_MUTATIONS__ === "function") {
+			win.__HARNESS_CLEAR_MUTATIONS__();
+			return;
+		}
+		// Fallback for routes that don't mount the Harness component
+		// (e.g. cross-sheet.tsx installs its own __MUTATIONS__ directly).
+		win.__MUTATIONS__ = [];
+		if (Array.isArray(win.__ROW_REORDERS__)) {
+			win.__ROW_REORDERS__ = [];
+		}
 	});
 }
 
