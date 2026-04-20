@@ -4,7 +4,10 @@ import "peculiar-sheets/styles";
 import "./styles.css";
 
 // ── Scenario replay ─────────────────────────────────────────
-import { SCENARIOS } from "sheet-scenarios/scenarios";
+// We use `getReplayScenariosFor` (not `SCENARIOS` directly) so the showcase
+// only surfaces meaty, demo-worthy scenarios. Tests in Bun still see every
+// scenario via `getScenariosFor` / `ALL_SCENARIOS`.
+import { getReplayScenariosFor } from "sheet-scenarios/scenarios";
 import { ScenarioPlayer } from "./player/ScenarioPlayer";
 import type { ReplayHostHandle } from "./player/ReplayHost";
 
@@ -477,8 +480,8 @@ function DemoPlayground() {
   const [activeId, setActiveId] = createSignal<DemoId>(GROUPS[0].ids[0]);
   const [replayHandle, setReplayHandle] = createSignal<ReplayHostHandle | null>(null);
 
-  const hasScenarios = () => (SCENARIOS[activeId()] ?? []).length > 0;
-  const scenarios = () => SCENARIOS[activeId()] ?? [];
+  const hasScenarios = () => getReplayScenariosFor(activeId()).length > 0;
+  const scenarios = () => getReplayScenariosFor(activeId());
 
   // Default to Replay when the active demo ships scenarios, else Live. Replay
   // acts as the demo's "trailer" — one click on the sheet drops back to Live.
@@ -500,7 +503,7 @@ function DemoPlayground() {
   // the work inline in the click handler — before setActiveId triggers the
   // Match re-evaluation — avoids that ordering bug.
   const selectDemo = (id: DemoId) => {
-    const nextHasScenarios = (SCENARIOS[id] ?? []).length > 0;
+    const nextHasScenarios = getReplayScenariosFor(id).length > 0;
     batch(() => {
       setReplayHandle(null);
       setActiveId(id);
@@ -553,46 +556,37 @@ function DemoPlayground() {
         <div class="demo-content">
           <div class="demo-meta">
             <h3 class="demo-title">{demo().title}</h3>
-            <p class="demo-desc">{demo().desc}</p>
-            <div class="demo-badges">
-              {demo().badges.map((b) => (
-                <span class="demo-badge">{b}</span>
-              ))}
+            <div class="demo-view-toggle" role="tablist" aria-label="View mode">
+              <button
+                type="button"
+                class={`demo-view-toggle__btn${viewMode() === "live" ? " active" : ""}`}
+                onClick={() => setViewMode("live")}
+                title="Live interactive demo"
+              >
+                Live
+              </button>
+              <Show when={hasScenarios()}>
+                <button
+                  type="button"
+                  class={`demo-view-toggle__btn${viewMode() === "replay" ? " active" : ""}`}
+                  onClick={() => setViewMode("replay")}
+                  title="Replay test scenarios"
+                >
+                  Replay
+                </button>
+              </Show>
+              <button
+                type="button"
+                class={`demo-view-toggle__btn${viewMode() === "code" ? " active" : ""}`}
+                onClick={() => setViewMode("code")}
+                title="Source code"
+              >
+                {"</>"}
+              </button>
             </div>
           </div>
 
           <div class="demo-sheet-frame">
-            <div class="demo-view-toggle-row">
-              <div class="demo-view-toggle" role="tablist" aria-label="View mode">
-                <button
-                  type="button"
-                  class={`demo-view-toggle__btn${viewMode() === "live" ? " active" : ""}`}
-                  onClick={() => setViewMode("live")}
-                  title="Live interactive demo"
-                >
-                  Live
-                </button>
-                <Show when={hasScenarios()}>
-                  <button
-                    type="button"
-                    class={`demo-view-toggle__btn${viewMode() === "replay" ? " active" : ""}`}
-                    onClick={() => setViewMode("replay")}
-                    title="Replay test scenarios"
-                  >
-                    Replay
-                  </button>
-                </Show>
-                <button
-                  type="button"
-                  class={`demo-view-toggle__btn${viewMode() === "code" ? " active" : ""}`}
-                  onClick={() => setViewMode("code")}
-                  title="Source code"
-                >
-                  {"</>"}
-                </button>
-              </div>
-            </div>
-
             <div class={`demo-sheet-wrap${demo().tall ? " tall" : ""}`}>
               <div class={`demo-sheet-inner${demo().tall ? " tall" : ""}`}>
                 <Show

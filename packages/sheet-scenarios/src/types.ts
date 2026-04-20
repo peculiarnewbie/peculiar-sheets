@@ -78,6 +78,16 @@ export interface Scenario {
 	route: `/${string}`;
 	/** Whether to clear the mutation log before running (matches the current `beforeEach`). */
 	beforeEach?: "clearMutations" | "none";
+	/**
+	 * Opt-out from the showcase Replay picker. CI still runs it — this flag
+	 * only hides the scenario from `getReplayScenariosFor(...)`. Set to `true`
+	 * when a scenario is a useful regression test but too narrow or awkward
+	 * to showcase (e.g. edge-case introspection, duplicate of another demo).
+	 *
+	 * The Replay picker also auto-culls scenarios with fewer than 2 action
+	 * steps — no need to flag those explicitly; they're filtered by length.
+	 */
+	skipInReplay?: boolean;
 	steps: Step[];
 }
 

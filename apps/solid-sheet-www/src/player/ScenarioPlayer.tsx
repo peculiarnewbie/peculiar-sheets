@@ -245,6 +245,28 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 						{isRunning() ? "Running" : "Play"}
 					</span>
 				</button>
+			</div>
+
+			{/*
+			 * Caption row holds: step chip + caption text (left), assertion pips
+			 * (right, pushed via margin-left: auto). Keeping the pips here — not
+			 * in the controls row — stops the Play button from sliding sideways
+			 * when the pip strip mounts mid-run.
+			 */}
+			<div class="replay-player__caption" aria-live="polite">
+				<Show
+					when={errorMessage()}
+					fallback={
+						<Show when={caption()} fallback={<span class="replay-player__caption-hint">Pick a scenario and press Play.</span>}>
+							<span class="replay-player__caption-step">
+								Step {((currentStepIndex() ?? 0) + 1)}
+							</span>
+							<span class="replay-player__caption-text">{caption()}</span>
+						</Show>
+					}
+				>
+					<span class="replay-player__caption-error">{errorMessage()}</span>
+				</Show>
 
 				<Show when={pips().length > 0}>
 					<div class="replay-player__pips" aria-label="assertion results">
@@ -270,22 +292,6 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 							<span class="replay-player__count-total">/ {pips().length}</span>
 						</span>
 					</div>
-				</Show>
-			</div>
-
-			<div class="replay-player__caption" aria-live="polite">
-				<Show
-					when={errorMessage()}
-					fallback={
-						<Show when={caption()} fallback={<span class="replay-player__caption-hint">Pick a scenario and press Play.</span>}>
-							<span class="replay-player__caption-step">
-								Step {((currentStepIndex() ?? 0) + 1)}
-							</span>
-							<span class="replay-player__caption-text">{caption()}</span>
-						</Show>
-					}
-				>
-					<span class="replay-player__caption-error">{errorMessage()}</span>
 				</Show>
 			</div>
 		</div>

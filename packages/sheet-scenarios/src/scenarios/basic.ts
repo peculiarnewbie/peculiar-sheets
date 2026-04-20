@@ -41,6 +41,10 @@ export const basicScenarios: Scenario[] = [
 		title: "moves selection with arrow keys",
 		demoId: DEMO_ID,
 		route: "/basic",
+		// Demo-skipped: selection movement is already visible in
+		// `enter-starts-editing-then-commits-moves-down`, which tells a richer
+		// story (editing + implicit advance). Keep the test for coverage.
+		skipInReplay: true,
 		steps: [
 			{ kind: "click", at: { row: 0, col: 0 }, caption: "Click A1" },
 			{ kind: "press", key: "ArrowRight", caption: "→ arrow key" },
@@ -54,6 +58,10 @@ export const basicScenarios: Scenario[] = [
 		title: "moves selection with Tab",
 		demoId: DEMO_ID,
 		route: "/basic",
+		// Demo-skipped: Tab navigation is a narrow nuance of selection movement,
+		// and the enter-commit flow already shows the interesting selection
+		// mechanic. Test remains for coverage.
+		skipInReplay: true,
 		steps: [
 			{ kind: "click", at: { row: 0, col: 0 }, caption: "Click A1" },
 			{ kind: "press", key: "Tab", caption: "Tab" },
@@ -113,6 +121,12 @@ export const basicScenarios: Scenario[] = [
 		title: "clears a cell with Delete key",
 		demoId: DEMO_ID,
 		route: "/basic",
+		// Demo-skipped: shape is test-first. The mid-scenario `clearMutations`
+		// custom step + `assertMutationCount` / `assertMutation` at the end are
+		// plumbing that doesn't translate to a viewer story. A purpose-built
+		// delete-key demo would be shorter (click → Delete → empty). Keep for
+		// coverage; revisit when we add a dedicated demo scenario.
+		skipInReplay: true,
 		steps: [
 			{ kind: "doubleClick", at: { row: 4, col: 3 }, caption: "Double-click E4" },
 			{ kind: "type", text: "999", confirm: true, caption: "Seed value: 999" },
@@ -155,6 +169,11 @@ export const basicScenarios: Scenario[] = [
 		title: "keeps left/right arrows inside the cell editor",
 		demoId: DEMO_ID,
 		route: "/basic",
+		// Demo-skipped: almost every step is a `custom` introspection — reads
+		// editor value + caret position via driver evaluate. Captions would
+		// read well but nothing interesting changes on screen, so it plays as
+		// a sequence of still frames. Pure regression test, not a demo.
+		skipInReplay: true,
 		steps: [
 			{ kind: "click", at: { row: 0, col: 0 }, caption: "Click A1" },
 			{ kind: "press", key: "Enter", caption: "Enter → starts editing (cursor at end)" },
