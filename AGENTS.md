@@ -41,6 +41,15 @@ Do not expose `Result`-heavy internals as the public component API unless there 
 - Do not use `null`/`false` to represent rich failure states when a `Result` would make the cause explicit.
 - For intentional no-op outcomes, prefer `Ok(...)` with an explicit outcome over ambiguous `null`.
 
+## TypeScript Hardening
+
+- With optional object properties, omit absent fields instead of setting them to `undefined`.
+- Avoid runtime non-null assertions (`!`) in production code. Prefer guards when absence is possible, and throw only for broken invariants.
+- Keep public APIs stable unless a breaking change is explicitly requested or agreed upon.
+- Introduce branded types gradually at internal boundaries. Do not brand public APIs first without a concrete reason.
+- Avoid repeated `(window as any)` casts in e2e tests. Prefer typed helper wrappers that centralize global assumptions.
+- Split large modules only around stable behavior seams. Avoid extraction for aesthetics alone.
+
 ## Traceability
 
 Use `Result.gen(...)` for multi-step workflows where short-circuiting and readable control flow help.

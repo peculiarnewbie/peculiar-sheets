@@ -1,11 +1,30 @@
 import { Stagehand } from "@browserbasehq/stagehand";
 import type { CellMutation, CellValue } from "peculiar-sheets";
 
+interface LocatorLike {
+	click(options?: { clickCount?: number }): Promise<void>;
+	textContent(): Promise<string | null>;
+	centroid(): Promise<{ x: number; y: number }>;
+}
+
+interface E2EPage {
+	goto(url: string): Promise<void>;
+	waitForSelector(selector: string): Promise<unknown>;
+	waitForTimeout(ms: number): Promise<void>;
+	evaluate<T>(fn: () => T | Promise<T>): Promise<T>;
+	evaluate<T, Arg>(fn: (arg: Arg) => T | Promise<T>, arg: Arg): Promise<T>;
+	locator(selector: string): LocatorLike;
+	type(value: string): Promise<void>;
+	keyPress(key: string): Promise<void>;
+	sendCDP(method: "Input.dispatchMouseEvent", params: Record<string, unknown>): Promise<void>;
+	dragAndDrop(startX: number, startY: number, targetX: number, targetY: number, options?: { steps?: number }): Promise<void>;
+}
+
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3141";
 
 let _stagehand: Stagehand | null = null;
 // Stagehand v3 Page — accessed via stagehand.context.activePage()
-let _page: any = null;
+let _page: E2EPage | null = null;
 // Promise-based lock so concurrent beforeAll hooks don't race on init
 let _initPromise: Promise<Stagehand> | null = null;
 
@@ -15,7 +34,7 @@ export async function getStagehand(): Promise<Stagehand> {
 		_initPromise = (async () => {
 			_stagehand = new Stagehand({ env: "LOCAL" });
 			await _stagehand.init();
-			_page = _stagehand.context.activePage();
+			_page = _stagehand.context.activePage() as E2EPage | null;
 			if (!_page) throw new Error("No active page after Stagehand init");
 
 			// Close once when the process exits — no per-file teardown needed
@@ -30,7 +49,7 @@ export async function getStagehand(): Promise<Stagehand> {
  * Get the active Stagehand v3 Page.
  * Must call getStagehand() first (e.g. in beforeAll).
  */
-export function getPage() {
+export function getPage(): E2EPage {
 	if (!_page) throw new Error("Page not initialized — call getStagehand() first");
 	return _page;
 }
@@ -47,7 +66,7 @@ export async function closeStagehand(): Promise<void> {
 // ── Polling helper ───────────────────────────────────────────────────────
 // Stagehand v3 has no page.waitForFunction(), so we poll with evaluate.
 
-async function poll(fn: () => any, timeoutMs = 10_000): Promise<void> {
+async function poll(fn: () => unknown, timeoutMs = 10_000): Promise<void> {
 	const page = getPage();
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
@@ -64,14 +83,14 @@ export async function navigateTo(_sh: Stagehand, route: string) {
 	await page.goto(`${BASE_URL}${route}`);
 	await page.waitForSelector('[data-testid="harness"]');
 	// Wait for SolidJS to hydrate and expose globals
-	await poll(() => (window as any).__SHEET_DATA__ !== undefined);
+	await poll(() => window.__SHEET_DATA__ !== undefined);
 }
 
 // ── Data helpers ──────────────────────────────────────────────────────────
 
 /** Read the current sheet data from the harness. */
 export async function getSheetData(_sh: Stagehand): Promise<CellValue[][]> {
-	return getPage().evaluate(() => (window as any).__SHEET_DATA__);
+	return getPage().evaluate(() => window.__SHEET_DATA__);
 }
 
 /** Read a single cell value from the harness. */
@@ -81,38 +100,33 @@ export async function getCellValue(
 	col: number,
 ): Promise<CellValue> {
 	return getPage().evaluate(
-		({ r, c }: { r: number; c: number }) => (window as any).__SHEET_DATA__[r]?.[c] ?? null,
+		({ r, c }: { r: number; c: number }) => window.__SHEET_DATA__[r]?.[c] ?? null,
 		{ r: row, c: col },
 	);
 }
 
 /** Get all recorded mutations. */
 export async function getMutations(_sh: Stagehand): Promise<CellMutation[]> {
-	return getPage().evaluate(() => (window as any).__MUTATIONS__);
+	return getPage().evaluate(() => window.__MUTATIONS__);
 }
 
 /** Clear the mutation log (useful between test cases sharing a route). */
 export async function clearMutations(_sh: Stagehand): Promise<void> {
 	await getPage().evaluate(() => {
-		const win = window as unknown as {
-			__MUTATIONS__: unknown[];
-			__ROW_REORDERS__?: unknown[];
-			__HARNESS_CLEAR_MUTATIONS__?: () => void;
-		};
 		// Preferred path: call the harness's explicit flush hook so the shared
 		// mutation buffer (see packages/sheet-scenarios/src/mutationBuffer.ts)
 		// actually drops its state. Without this, the buffer's internal signal
 		// would re-sync the pre-clear log back onto `window.__MUTATIONS__`
 		// on the next reactive tick.
-		if (typeof win.__HARNESS_CLEAR_MUTATIONS__ === "function") {
-			win.__HARNESS_CLEAR_MUTATIONS__();
+		if (typeof window.__HARNESS_CLEAR_MUTATIONS__ === "function") {
+			window.__HARNESS_CLEAR_MUTATIONS__();
 			return;
 		}
 		// Fallback for routes that don't mount the Harness component
 		// (e.g. cross-sheet.tsx installs its own __MUTATIONS__ directly).
-		win.__MUTATIONS__ = [];
-		if (Array.isArray(win.__ROW_REORDERS__)) {
-			win.__ROW_REORDERS__ = [];
+		window.__MUTATIONS__ = [];
+		if (Array.isArray(window.__ROW_REORDERS__)) {
+			window.__ROW_REORDERS__ = [];
 		}
 	});
 }
@@ -295,7 +309,7 @@ export async function focusGrid(): Promise<void> {
 
 /** Get the current row count from the harness data. */
 export async function getRowCount(_sh: Stagehand): Promise<number> {
-	return getPage().evaluate(() => (window as any).__SHEET_DATA__.length);
+	return getPage().evaluate(() => window.__SHEET_DATA__.length);
 }
 
 /**

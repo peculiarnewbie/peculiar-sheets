@@ -11,6 +11,7 @@ import type {
 	RowReorderMutation,
 	Selection,
 	SheetController,
+	SheetProps,
 	SortBehavior,
 	SortDirection,
 	SortState,
@@ -62,33 +63,28 @@ interface GridProps {
 	workbook?: WorkbookSheetBinding | undefined;
 	showFormulaBar: boolean;
 	showReferenceHeaders: boolean;
-	onSelectionChange?: ((selection: Selection) => void) | undefined;
-	onCellEdit?: ((mutation: CellMutation) => void) | undefined;
-	onBatchEdit?: ((mutations: CellMutation[]) => void) | undefined;
-	onEditModeChange?: ((state: { address: CellAddress; initialValue: CellValue } | null) => void) | undefined;
-	onClipboard?: ((payload: {
-		action: "copy" | "cut" | "paste";
-		range: { start: CellAddress; end: CellAddress };
-		text: string;
-		cells: CellValue[][];
-	}) => void) | undefined;
+	onSelectionChange?: SheetProps["onSelectionChange"] | undefined;
+	onCellEdit?: SheetProps["onCellEdit"] | undefined;
+	onBatchEdit?: SheetProps["onBatchEdit"] | undefined;
+	onEditModeChange?: SheetProps["onEditModeChange"] | undefined;
+	onClipboard?: SheetProps["onClipboard"] | undefined;
 	resizeMode: ResizeMode;
 	columnSizing?: Record<string, number> | undefined;
 	onColumnSizingChange?: ((next: Record<string, number>) => void) | undefined;
 	rowSizing?: Record<number, number> | undefined;
 	onRowSizingChange?: ((next: Record<number, number>) => void) | undefined;
-	onColumnResize?: ((columnId: string, width: number) => void) | undefined;
-	onRowResize?: ((rowId: number, height: number) => void) | undefined;
-	onSort?: ((columnId: string, direction: SortDirection | null) => void) | undefined;
-	onSortChange?: ((state: SortState | null) => void) | undefined;
-	onRowInsert?: ((atIndex: number, count: number) => void) | undefined;
-	onRowDelete?: ((atIndex: number, count: number) => void) | undefined;
-	onRowReorder?: ((mutation: RowReorderMutation) => void) | undefined;
-	onCellPointerDown?: ((address: CellAddress, event: MouseEvent) => boolean) | undefined;
-	onCellPointerMove?: ((address: CellAddress, event: MouseEvent) => boolean) | undefined;
-	controllerRef?: ((controller: SheetController) => void) | undefined;
+	onColumnResize?: SheetProps["onColumnResize"] | undefined;
+	onRowResize?: SheetProps["onRowResize"] | undefined;
+	onSort?: SheetProps["onSort"] | undefined;
+	onSortChange?: SheetProps["onSortChange"] | undefined;
+	onRowInsert?: SheetProps["onRowInsert"] | undefined;
+	onRowDelete?: SheetProps["onRowDelete"] | undefined;
+	onRowReorder?: SheetProps["onRowReorder"] | undefined;
+	onCellPointerDown?: SheetProps["onCellPointerDown"] | undefined;
+	onCellPointerMove?: SheetProps["onCellPointerMove"] | undefined;
+	controllerRef?: SheetProps["ref"] | undefined;
 	sortBehavior: SortBehavior;
-	sortState?: SortState | null;
+	sortState?: SortState | null | undefined;
 	defaultSortState: SortState | null;
 }
 

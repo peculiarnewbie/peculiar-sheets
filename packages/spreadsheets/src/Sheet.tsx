@@ -18,9 +18,16 @@ export function Sheet(props: SheetProps) {
 	const columns = () => props.columns;
 	const workbookInternals = () =>
 		props.workbook ? getWorkbookCoordinatorInternals(props.workbook.coordinator) : null;
+	const requireWorkbookInternals = () => {
+		const internals = workbookInternals();
+		if (!internals) {
+			throw new Error("Workbook internals are only available when `workbook` is set.");
+		}
+		return internals;
+	};
 	const resolvedFormulaEngine = () =>
 		props.workbook
-			? workbookInternals()!.getFormulaEngineConfig(props.workbook)
+			? requireWorkbookInternals().getFormulaEngineConfig(props.workbook)
 			: props.formulaEngine;
 	const formulaBridgeResult = createFormulaBridge(resolvedFormulaEngine());
 	if (Result.isError(formulaBridgeResult)) {
@@ -65,17 +72,18 @@ export function Sheet(props: SheetProps) {
 
 	onMount(() => {
 		if (props.workbook) {
-			workbookInternals()!.attachDataGetter(props.workbook.sheetKey, workbookDataGetter);
+			requireWorkbookInternals().attachDataGetter(props.workbook.sheetKey, workbookDataGetter);
 		}
 		syncFormulaBridge();
 	});
 
 	onCleanup(() => {
 		if (props.workbook) {
+			const internals = requireWorkbookInternals();
 			if (attachedController) {
-				workbookInternals()!.detachController(props.workbook.sheetKey, attachedController);
+				internals.detachController(props.workbook.sheetKey, attachedController);
 			}
-			workbookInternals()!.detachDataGetter(props.workbook.sheetKey, workbookDataGetter);
+			internals.detachDataGetter(props.workbook.sheetKey, workbookDataGetter);
 		}
 		formulaBridge?.dispose();
 	});
@@ -94,7 +102,7 @@ export function Sheet(props: SheetProps) {
 				onBatchEdit={props.onBatchEdit}
 				onEditModeChange={(state) => {
 					if (props.workbook) {
-						workbookInternals()!.handleEditModeChange(props.workbook.sheetKey, state);
+						requireWorkbookInternals().handleEditModeChange(props.workbook.sheetKey, state);
 					}
 					props.onEditModeChange?.(state);
 				}}
@@ -113,24 +121,25 @@ export function Sheet(props: SheetProps) {
 				onRowReorder={props.onRowReorder}
 				onCellPointerDown={(address, event) => {
 					const handledByWorkbook = props.workbook
-						? workbookInternals()!.handleCellPointerDown(props.workbook.sheetKey, address, event)
+						? requireWorkbookInternals().handleCellPointerDown(props.workbook.sheetKey, address, event)
 						: false;
 					if (handledByWorkbook) return true;
 					return props.onCellPointerDown?.(address, event) ?? false;
 				}}
 				onCellPointerMove={(address, event) => {
 					const handledByWorkbook = props.workbook
-						? workbookInternals()!.handleCellPointerMove(props.workbook.sheetKey, address, event)
+						? requireWorkbookInternals().handleCellPointerMove(props.workbook.sheetKey, address, event)
 						: false;
 					if (handledByWorkbook) return true;
 					return props.onCellPointerMove?.(address, event) ?? false;
 				}}
 				controllerRef={(controller) => {
 					if (props.workbook) {
+						const internals = requireWorkbookInternals();
 						if (attachedController && attachedController !== controller) {
-							workbookInternals()!.detachController(props.workbook.sheetKey, attachedController);
+							internals.detachController(props.workbook.sheetKey, attachedController);
 						}
-						workbookInternals()!.attachController(props.workbook.sheetKey, controller);
+						internals.attachController(props.workbook.sheetKey, controller);
 						attachedController = controller;
 					}
 					props.ref?.(controller);

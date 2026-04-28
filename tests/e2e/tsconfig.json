@@ -8,5 +8,5 @@
 		"skipLibCheck": true,
 		"types": ["bun-types"]
 	},
-	"include": ["."]
+	"include": [".", "../../apps/e2e/src/global.d.ts"]
 }
