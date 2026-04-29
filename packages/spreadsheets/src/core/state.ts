@@ -79,6 +79,8 @@ export interface SheetStore {
 	setRowHeight(rowId: RowId, height: number): void;
 	resizeGrid(rowCount: number, colCount: number): void;
 	restoreSnapshot(cells: CellValue[][], rowIds: RowId[]): void;
+	/** Adopt host-provided row IDs without touching cell data. */
+	adoptRowIds(ids: RowId[]): void;
 	insertRows(atIndex: PhysicalRowIndex, count: number): void;
 	deleteRows(atIndex: PhysicalRowIndex, count: number): CellValue[][];
 	getRowIdAtPhysicalRow(row: PhysicalRowIndex): RowId | null;
@@ -117,19 +119,45 @@ export interface SheetStore {
 export function createSheetStore(
 	initialData: CellValue[][],
 	columns: ColumnDef[],
+	hostRowIds?: readonly RowId[],
 ): SheetStore {
 	const rowCount = initialData.length;
 	const colCount = columns.length;
+
+	// Validate host-provided row IDs
+	if (hostRowIds) {
+		if (hostRowIds.length !== rowCount) {
+			throw new Error(
+				`rowIds length (${hostRowIds.length}) must match data length (${rowCount})`,
+			);
+		}
+		const seen = new Set<number>();
+		for (const id of hostRowIds) {
+			const n = toNumber(id);
+			if (seen.has(n)) {
+				throw new Error(`Duplicate rowId found: ${String(id)}`);
+			}
+			seen.add(n);
+		}
+	}
 
 	// Deep copy initial data to avoid shared references
 	const initialCells = initialData.map((row) => [...row]);
 
 	const [cells, setCells] = createStore<CellValue[][]>(initialCells);
 	const [dimensions, setDimensions] = createSignal({ rowCount, colCount });
-	const [rowIds, setRowIds] = createSignal<RowId[]>(
-		Array.from({ length: rowCount }, (_, index) => rowId(index)),
-	);
-	const [nextRowId, setNextRowId] = createSignal(rowCount);
+
+	// Use host-provided rowIds or auto-generate
+	const initialRowIds: RowId[] = hostRowIds
+		? [...hostRowIds]
+		: Array.from({ length: rowCount }, (_, index) => rowId(index));
+	const [rowIds, setRowIds] = createSignal<RowId[]>(initialRowIds);
+
+	// nextRowId starts at the max of all known IDs (host-provided or auto-generated)
+	const maxExistingId = initialRowIds.length > 0
+		? Math.max(...initialRowIds.map(toNumber))
+		: -1;
+	const [nextRowId, setNextRowId] = createSignal(maxExistingId + 1);
 	const [selection, setSelection] = createSignal<Selection>(
 		rowCount > 0 && colCount > 0 ? selectCell({ row: visualRow(0), col: columnIdx(0) }) : emptySelection(),
 	);
@@ -429,6 +457,19 @@ export function createSheetStore(
 			bumpDataRevision();
 		},
 
+		adoptRowIds(ids: RowId[]) {
+			if (ids.length !== dimensions().rowCount) {
+				throw new Error(
+					`adoptRowIds: length (${ids.length}) must match rowCount (${dimensions().rowCount})`,
+				);
+			}
+			setRowIds([...ids]);
+			// Update nextRowId to be past the max known ID
+			const maxId = ids.length > 0 ? Math.max(...ids.map(toNumber)) : -1;
+			setNextRowId(Math.max(nextRowId(), maxId + 1));
+			bumpDataRevision();
+		},
+
 		insertRows(atIndex: PhysicalRowIndex, count: number) {
 			_insertRows(toNumber(atIndex), count);
 		},
@@ -619,12 +660,13 @@ export function createReconciler(
 	store: SheetStore,
 	getData: () => CellValue[][],
 	getColumns: () => ColumnDef[],
+	getRowIds?: () => readonly RowId[] | undefined,
 	onExternalChange?: () => void,
 ): void {
 	createEffect(
 		on(
-			[getData, getColumns],
-			([data, columns]) => {
+			[getData, getColumns, getRowIds ?? (() => undefined)],
+			([data, columns, hostRowIds]) => {
 				const newRowCount = data.length;
 				const newColCount = columns.length;
 				let didChange = false;
@@ -687,6 +729,19 @@ export function createReconciler(
 
 				if (didChange) {
 					onExternalChange?.();
+				}
+
+				// ── Row ID synchronisation ────────────────────────────
+				// When the host provides rowIds, adopt them if they differ
+				// from the store's current identity mapping.
+				if (hostRowIds) {
+					const currentRowIds = store.rowIds();
+					if (
+						hostRowIds.length !== currentRowIds.length ||
+						hostRowIds.some((id, i) => id !== currentRowIds[i])
+					) {
+						store.adoptRowIds([...hostRowIds]);
+					}
 				}
 			},
 		),

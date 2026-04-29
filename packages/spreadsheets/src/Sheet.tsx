@@ -56,7 +56,7 @@ export function Sheet(props: SheetProps) {
 
 	// ── Create Store ───────────────────────────────────────────────────────
 
-	const store = createSheetStore(props.data, props.columns);
+	const store = createSheetStore(props.data, props.columns, props.rowIds);
 	const workbookDataGetter = () => store.cells.map((row) => [...row]);
 
 	// ── Data Reconciliation ────────────────────────────────────────────────
@@ -65,6 +65,7 @@ export function Sheet(props: SheetProps) {
 		store,
 		() => props.data,
 		() => props.columns,
+		() => props.rowIds,
 		() => {
 			syncFormulaBridge();
 		},

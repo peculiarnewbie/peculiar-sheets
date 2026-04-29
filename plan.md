@@ -108,7 +108,7 @@ Consumer changes:
 
 ---
 
-## 5. Host-provided `rowIds` prop
+## 5. ✅ Host-provided `rowIds` prop
 
 ### Why
 `CellMutation` already carries `rowId?: RowId`, but the store auto-generates
@@ -116,33 +116,28 @@ synthetic row IDs (`rowId(0)`...`rowId(n-1)`). Consumers with domain-meaningful
 row identity (data table row names, persisted session state) want mutations to
 carry stable, cross-session row keys. Synthetic IDs drift across rehydration.
 
-### What to do
+### Done
 
-Add `rowIds?: readonly RowId[]` to `SheetProps`:
+Added `rowIds?: readonly RowId[]` to `SheetProps`:
 
 - When provided, `createSheetStore` uses these IDs instead of auto-generating.
+  Duplicates throw. Length mismatch vs `data` throws.
 - When omitted (current behavior), auto-generate as before.
-- Length must match `data.length` on init; mismatch is a thrown error
-  (programmer misuse / broken invariant).
-- On reconciliation: when `rowIds` prop changes, the store adopts the new
-  identity mapping and rebuilds physical-to-visual lookups. This naturally
-  handles row insert/delete/rename propagated from the host.
-- Row insert operations in the Grid should generate new IDs (via
-  `nextRowId` counter) even when `rowIds` is host-provided, keeping new-row
-  identity deterministic.
-
-### Edge cases
-- If `rowIds` has duplicates, throw on init.
-- `rowIds` length changing due to host-side row operations is the normal
-  reconciliation path; the reconciler already handles dimension changes.
-- View sorting must continue to work — visual row order is derived from
-  sort state, not from `rowIds` physical order.
+- `nextRowId` counter initialises past the max of all provided IDs, so
+  Grid-initiated row inserts generate fresh IDs even when host-provided
+  `rowIds` are in use.
+- `createReconciler` accepts optional `getRowIds` getter. When the host
+  changes `rowIds`, the store adopts the new identity mapping via the new
+  `adoptRowIds` method — no cell data is touched.
+- Reconciler syncs `rowIds` after data reconciliation but before the
+  `onExternalChange` callback, ensuring formula engine sees consistent state.
 
 ### Files
-- `packages/spreadsheets/src/types.ts` — add `rowIds` to `SheetProps`
-- `packages/spreadsheets/src/core/state.ts` — update `createSheetStore`
-- `packages/spreadsheets/src/core/state.ts` — update `createReconciler`
-- `packages/spreadsheets/src/Sheet.tsx` — plumb prop through
+- `packages/spreadsheets/src/types.ts` — added `rowIds` to `SheetProps`
+- `packages/spreadsheets/src/core/state.ts` — updated `createSheetStore`
+  (validation, host ID adoption, counter seeding), added `adoptRowIds`
+  method, updated `createReconciler` (rowIds tracking + sync)
+- `packages/spreadsheets/src/Sheet.tsx` — plumbed `rowIds` prop through
 
 ---
 
@@ -190,15 +185,10 @@ These suggestions from the original feedback are intentionally not included:
 | 2. Export runtime validation helpers | ✅ Done |
 | 3. Allow `Promise<void>` on callbacks | ✅ Done |
 | 4. Unified `onOperation` callback | ✅ Done |
-| 5. Host-provided `rowIds` prop | ⬜ Todo |
+| 5. Host-provided `rowIds` prop | ✅ Done |
 | 6. Export tagged error classes | ✅ Done |
 
-## Order of implementation
-
-1. ✅ **Types & exports** (items 1, 2, 3, 6) — pure additions, no breakage.
-2. ✅ **Unified `onOperation`** (item 4) — breaking change, done.
-3. ⬜ **Host `rowIds`** (item 5) — touches store init and reconciliation, most
-   invasive change. Ready to start.
+All six items complete for v0.8.0.
 
 ## Migration notes for consumers
 

@@ -363,6 +363,17 @@ export interface SheetProps {
 	 */
 	onCellPointerMove?: (address: VisualCellAddress, event: MouseEvent) => boolean;
 
+	/**
+	 * Host-provided row IDs. When set, these replace the auto-generated
+	 * synthetic keys. Length must match `data.length` on init (mismatch
+	 * throws). Duplicates also throw.
+	 *
+	 * Row insert operations in the Grid still generate new IDs from an
+	 * internal counter; the host receives these through `onOperation`
+	 * with the mutation\'s `rowId` field.
+	 */
+	rowIds?: readonly RowId[];
+
 	/** Imperative handle callback — receives the controller on mount. */
 	ref?: (controller: SheetController) => void;
 
