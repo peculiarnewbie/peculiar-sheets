@@ -854,7 +854,7 @@ export function createWorkbookCoordinator(
 					receivedFormulaName: binding.formulaName,
 					message: `Workbook binding mismatch for "${binding.sheetKey}": expected formula name "${runtime.formulaName}", received "${binding.formulaName}".`,
 				});
-				throw new Error(error.message);
+				throw error;
 			}
 
 			return {
@@ -1005,7 +1005,7 @@ export function createWorkbookCoordinator(
 					message: `Workbook formula name "${definition.formulaName}" is already used by sheet "${duplicateByName}".`,
 				});
 				trace.err(errorTraceContext(error));
-				throw new Error(error.message);
+				throw error;
 			}
 
 			const sheetIdResult = tryEnsureSheetId(definition.formulaName);

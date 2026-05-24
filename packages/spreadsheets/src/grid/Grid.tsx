@@ -1716,9 +1716,12 @@ export default function Grid(props: GridProps) {
 				shortcut: "Ctrl+V",
 				disabled: isReadOnly,
 				action: () => {
-					navigator.clipboard.readText().then(
+					void navigator.clipboard.readText().then(
 						(text) => handlePaste(text),
-						() => { /* clipboard access denied */ },
+						() => {
+							// Clipboard access denied — silently fail as per security best practices
+							// This is expected in secure contexts and sandboxed environments
+						},
 					);
 				},
 			},

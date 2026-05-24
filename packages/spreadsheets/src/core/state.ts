@@ -264,8 +264,10 @@ export function createSheetStore(
 		setCells(
 			produce((draft) => {
 				for (let r = 0; r < data.length; r++) {
-					const row = data[r]!;
-					const targetRow = draft[atIndex + r]!;
+					const row = data[r];
+				if (!row) throw new Error(`Invalid data row at index ${r}`);
+					const targetRow = draft[atIndex + r];
+				if (!targetRow) throw new Error(`Invalid draft target at index ${atIndex + r}`);
 					for (let c = 0; c < row.length; c++) {
 						targetRow[c] = row[c] ?? null;
 					}
@@ -313,7 +315,11 @@ export function createSheetStore(
 		if (nextOrder.some((id) => !currentIndexByRowId.has(id))) return;
 
 		const nextCells = nextOrder.map((id) => {
-			const currentIndex = currentIndexByRowId.get(id)!;
+			const currentIndex = currentIndexByRowId.get(id);
+			// Validate currentIndex exists (should never happen due to earlier check)
+			if (currentIndex === undefined) {
+				throw new Error(`Invalid row mapping for rowId: ${id}`);
+			}
 			const row = cells[toNumber(currentIndex)];
 			return row ? [...row] : new Array(dimensions().colCount).fill(null) as CellValue[];
 		});
@@ -351,7 +357,11 @@ export function createSheetStore(
 					while (draft.length <= row) {
 						draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
 					}
-					const draftRow = draft[row]!;
+					// Guard: draft[row] should exist (guaranteed by while loop above)
+					const draftRow = draft[row];
+					if (!draftRow) {
+						throw new Error(`Invalid draft state at row ${row}`);
+					}
 					// Ensure column exists
 					while (draftRow.length <= col) {
 						draftRow.push(null);
@@ -370,7 +380,11 @@ export function createSheetStore(
 						while (draft.length <= m.row) {
 							draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
 						}
-						const draftRow = draft[m.row]!;
+						const draftRow = draft[m.row];
+						// Guard: draft[m.row] should exist (guaranteed by while loop above)
+						if (!draftRow) {
+							throw new Error(`Invalid draft state at row ${m.row}`);
+						}
 						while (draftRow.length <= m.col) {
 							draftRow.push(null);
 						}
@@ -416,7 +430,8 @@ export function createSheetStore(
 					}
 					// Ensure each row has the right number of columns
 					for (let i = 0; i < draft.length; i++) {
-						const row = draft[i]!;
+						const row = draft[i];
+						if (!row) throw new Error(`Invalid draft row at index ${i}`);
 						while (row.length < newColCount) {
 							row.push(null);
 						}
