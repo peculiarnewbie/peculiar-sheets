@@ -1,5 +1,7 @@
 export { Sheet } from "./Sheet";
 export { createWorkbookCoordinator } from "./workbook/coordinator";
+export type { HyperFormulaWorkbookLike } from "./workbook/hf-interface";
+export type { WorkbookSheetRuntime } from "./workbook/registry";
 export {
 	addressToA1,
 	columnIndexToLetters,

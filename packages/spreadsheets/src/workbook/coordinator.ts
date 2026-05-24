@@ -1,17 +1,16 @@
 import type { CellRange, CellValue, EditModeState, FormulaEngineConfig, SheetController, VisualCellAddress } from "../types";
-import { normalizeRange } from "../core/selection";
-import { addressToA1 } from "../formula/references";
-import { type FormulaSheetId, type PhysicalRowIndex, formulaSheetId, toNumber } from "../core/brands";
+import type {
+	WorkbookCoordinator,
+	WorkbookCoordinatorOptions,
+	WorkbookReferenceResult,
+	WorkbookSheetBinding,
+	WorkbookStructuralOrigin,
+	WorkbookStructuralResult,
+} from "./types";
+import type { HyperFormulaWorkbookLike } from "./hf-interface";
 import {
 	WorkbookBindingMismatchError,
-	WorkbookDuplicateFormulaNameError,
-	WorkbookHistoryError,
 	WorkbookReferenceInsertError,
-	WorkbookSheetNotRegisteredError,
-	WorkbookSnapshotBuildError,
-	WorkbookSnapshotRestoreError,
-	WorkbookStructuralOperationError,
-	type WorkbookCoordinatorError,
 } from "../internal/errors";
 import {
 	Result,
@@ -19,62 +18,27 @@ import {
 	getErrorMessage,
 	isApplied,
 	noop,
-	type ResultLike,
 } from "../internal/result";
 import { errorTraceContext, withTraceContext } from "../internal/trace";
-import type {
-	WorkbookCoordinator,
-	WorkbookCoordinatorOptions,
-	WorkbookHistoryResult,
-	WorkbookReferenceResult,
-	WorkbookSheetBinding,
-	WorkbookStructuralChange,
-	WorkbookStructuralOrigin,
-	WorkbookStructuralResult,
-} from "./types";
+import { toNumber } from "../core/brands";
+import { normalizeRange } from "../core/selection";
+import { addressToA1 } from "../formula/references";
 
-interface HyperFormulaWorkbookLike {
-	addSheet(name?: string): string;
-	getSheetId(name: string): number | undefined;
-	getSheetName(sheetId: number): string | undefined;
-	simpleCellRangeToString(
-		range: {
-			start: { sheet: number; row: number; col: number };
-			end: { sheet: number; row: number; col: number };
-		},
-		contextSheetId: number,
-	): string | undefined;
-	setSheetContent(sheetId: number, values: unknown[][]): unknown;
-	getSheetSerialized(sheetId: number): unknown[][];
-	addRows(sheetId: number, ...indexes: [number, number][]): unknown;
-	isItPossibleToAddRows(sheetId: number, ...indexes: [number, number][]): boolean;
-	removeRows(sheetId: number, ...indexes: [number, number][]): unknown;
-	isItPossibleToRemoveRows(sheetId: number, ...indexes: [number, number][]): boolean;
-	setRowOrder(sheetId: number, newRowOrder: number[]): unknown;
-	isItPossibleToSetRowOrder(sheetId: number, newRowOrder: number[]): boolean;
+import { createSheetRegistry, type SheetRegistry } from "./registry";
+import { createStructuralEngine } from "./structural-engine";
+import { createHistoryManager } from "./history";
+import { createReferenceSession } from "./references";
+
+// ── Registry access helper ──────────────────────────────────────────────────
+
+function registryAccess(registry: SheetRegistry) {
+	return {
+		iterSheetRuntimes: () => registry.iterSheetRuntimes(),
+		tryGetSheetRuntime: (k: string) => registry.tryGetSheetRuntime(k),
+	};
 }
 
-interface WorkbookHistoryEntry {
-	origin: WorkbookStructuralOrigin;
-	before: WorkbookStructuralChange["snapshots"];
-	after: WorkbookStructuralChange["snapshots"];
-}
-
-interface WorkbookSheetRuntime {
-	sheetKey: string;
-	formulaName: string;
-	sheetId: FormulaSheetId;
-	controller: SheetController | null;
-	getCells: (() => CellValue[][]) | null;
-	lastKnownCells: CellValue[][];
-}
-
-interface ReferenceSession {
-	sourceSheetKey: string;
-	targetSheetKey: string;
-	anchor: VisualCellAddress;
-	didDrag: boolean;
-}
+// ── Symbol for internal access ──────────────────────────────────────────────
 
 export interface WorkbookCoordinatorInternals {
 	getFormulaEngineConfig(binding: WorkbookSheetBinding): FormulaEngineConfig;
@@ -93,376 +57,59 @@ type WorkbookCoordinatorWithInternals = WorkbookCoordinator & {
 	[workbookCoordinatorInternals]: WorkbookCoordinatorInternals;
 };
 
-type StructuralOpResult = WorkbookStructuralResult;
-type ReferenceInsertResult = WorkbookReferenceResult;
-type HistoryResult = WorkbookHistoryResult;
-type SnapshotResult = ResultLike<WorkbookStructuralChange["snapshots"], WorkbookCoordinatorError>;
-type RuntimeResult = ResultLike<WorkbookSheetRuntime, WorkbookCoordinatorError>;
-
-function cloneCells(cells: CellValue[][]): CellValue[][] {
-	return cells.map((row) => [...row]);
-}
-
-function normalizeEngineValue(value: CellValue): CellValue {
-	if (typeof value !== "string") return value;
-
-	const trimmed = value.trim();
-	if (!trimmed.startsWith("=")) return value;
-
-	let rest = trimmed.slice(1);
-	while (rest.startsWith("=")) {
-		rest = rest.slice(1);
-	}
-
-	return `=${rest}`;
-}
-
-function normalizeSnapshotValue(value: unknown): CellValue {
-	if (value === undefined) return null;
-	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-		return value;
-	}
-	return String(value);
-}
-
-function normalizeSnapshotRows(rows: unknown[][]): CellValue[][] {
-	// Determine the expected column count so empty rows (e.g. from
-	// HyperFormula's addRows which serialises blank rows as []) are
-	// padded to the correct width.  Without padding, downstream
-	// reconciliation loops that iterate `row.length` will skip the
-	// blank row entirely and leave stale data in the store.
-	const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0);
-	return rows.map((row) => {
-		const normalized = row.map((value) => normalizeSnapshotValue(value));
-		while (normalized.length < maxCols) {
-			normalized.push(null);
-		}
-		return normalized;
-	});
-}
-
-function normalizeSheetContent(cells: CellValue[][]): CellValue[][] {
-	return cells.map((row) => row.map((value) => normalizeEngineValue(value)));
-}
-
-function formatReferenceText(referenceText: string, range: CellRange): string {
-	if (range.start.row !== range.end.row || range.start.col !== range.end.col) {
-		return referenceText;
-	}
-
-	const cellRef = addressToA1(range.start);
-	if (referenceText === `${cellRef}:${cellRef}`) {
-		return cellRef;
-	}
-	if (referenceText.endsWith(`!${cellRef}:${cellRef}`)) {
-		return referenceText.slice(0, -(`:${cellRef}`).length);
-	}
-	return referenceText;
-}
-
-function toPublicReferenceResult(result: ReferenceInsertResult): boolean {
-	return Result.isOk(result) && isApplied(result.value);
-}
-
-function originTraceContext(origin: WorkbookStructuralOrigin): Record<string, unknown> {
-	switch (origin.type) {
-		case "insertRows":
-		case "deleteRows":
-			return {
-				sheetKey: origin.sheetKey,
-				atIndex: origin.atIndex,
-				count: origin.count,
-			};
-		case "setRowOrder":
-			return {
-				sheetKey: origin.sheetKey,
-				indexOrder: [...origin.indexOrder],
-			};
-		case "undo":
-		case "redo":
-			return {
-				operation: origin.type,
-			};
-	}
-}
-
 export function getWorkbookCoordinatorInternals(
 	coordinator: WorkbookCoordinator,
 ): WorkbookCoordinatorInternals {
 	return (coordinator as WorkbookCoordinatorWithInternals)[workbookCoordinatorInternals];
 }
 
+// ── Utilities ───────────────────────────────────────────────────────────────
+
+function formatReferenceText(referenceText: string, range: CellRange): string {
+	if (range.start.row !== range.end.row || range.start.col !== range.end.col) {
+		return referenceText;
+	}
+	const cellRef = addressToA1(range.start);
+	if (referenceText === `${cellRef}:${cellRef}`) return cellRef;
+	if (referenceText.endsWith(`!${cellRef}:${cellRef}`)) {
+		return referenceText.slice(0, -(`:${cellRef}`).length);
+	}
+	return referenceText;
+}
+
+function toPublicReferenceResult(result: WorkbookReferenceResult): boolean {
+	return Result.isOk(result) && isApplied(result.value);
+}
+
+// ── Factory ─────────────────────────────────────────────────────────────────
+
 export function createWorkbookCoordinator(
 	options: WorkbookCoordinatorOptions,
 ): WorkbookCoordinator {
 	const hf = options.engine as HyperFormulaWorkbookLike;
-	const sheets = new Map<string, WorkbookSheetRuntime>();
-	const sheetKeysByFormulaName = new Map<string, string>();
-	const listeners = new Set<(change: WorkbookStructuralChange) => void>();
-	const history: WorkbookHistoryEntry[] = [];
-	let historyIndex = 0;
-	let referenceSession: ReferenceSession | null = null;
+
+	const registry = createSheetRegistry(hf);
+	const structural = createStructuralEngine(hf);
+	const history = createHistoryManager();
+	const references = createReferenceSession();
+
+	const access = registryAccess(registry);
+
 	let cleanupReferenceSession: (() => void) | null = null;
 
-	function tryEnsureSheetId(formulaName: string): ResultLike<FormulaSheetId, WorkbookCoordinatorError> {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "ensureSheetId",
-			phase: "binding",
-			context: { formulaName },
-		});
-		trace.start();
-
-		const existingIdResult = Result.try({
-			try: () => hf.getSheetId(formulaName),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "getSheetId",
-				formulaName,
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-		if (Result.isError(existingIdResult)) {
-			trace.err(errorTraceContext(existingIdResult.error));
-			return existingIdResult;
-		}
-		if (existingIdResult.value !== undefined) {
-			trace.ok({ sheetId: existingIdResult.value });
-			return Result.ok(formulaSheetId(existingIdResult.value));
-		}
-
-		const addedNameResult = Result.try({
-			try: () => hf.addSheet(formulaName),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "addSheet",
-				formulaName,
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-		if (Result.isError(addedNameResult)) {
-			trace.err(errorTraceContext(addedNameResult.error));
-			return addedNameResult;
-		}
-
-		const addedIdResult = Result.try({
-			try: () => hf.getSheetId(addedNameResult.value),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "getAddedSheetId",
-				formulaName,
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-		if (Result.isError(addedIdResult)) {
-			trace.err(errorTraceContext(addedIdResult.error));
-			return addedIdResult;
-		}
-		if (addedIdResult.value === undefined) {
-			const error = new WorkbookStructuralOperationError({
-				operation: "ensureSheetId",
-				formulaName,
-				message: `Failed to create workbook sheet "${formulaName}".`,
-			});
-			trace.err(errorTraceContext(error));
-			return Result.err(error);
-		}
-
-		trace.ok({ sheetId: addedIdResult.value });
-		return Result.ok(formulaSheetId(addedIdResult.value));
-	}
-
-	function getSheetRuntime(sheetKey: string): WorkbookSheetRuntime {
-		const runtime = sheets.get(sheetKey);
-		if (!runtime) {
-			throw new Error(`Workbook sheet "${sheetKey}" is not registered.`);
-		}
-		return runtime;
-	}
-
-	function tryGetSheetRuntime(sheetKey: string): RuntimeResult {
-		const runtime = sheets.get(sheetKey);
-		if (!runtime) {
-			return Result.err(new WorkbookSheetNotRegisteredError({
-				sheetKey,
-				message: `Workbook sheet "${sheetKey}" is not registered.`,
-			}));
-		}
-		return Result.ok(runtime);
-	}
-
-	function tryBuildSnapshots(): SnapshotResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "buildSnapshots",
-			phase: "snapshot",
-		});
-		trace.start({ sheetCount: sheets.size });
-
-		const snapshots: WorkbookStructuralChange["snapshots"] = [];
-		for (const runtime of sheets.values()) {
-			const serializedResult = Result.try({
-				try: () => hf.getSheetSerialized(toNumber(runtime.sheetId)),
-				catch: (cause) => new WorkbookSnapshotBuildError({
-					sheetKey: runtime.sheetKey,
-					sheetId: runtime.sheetId,
-					message: getErrorMessage(cause),
-					cause,
-				}),
-			});
-			if (Result.isError(serializedResult)) {
-				trace.err({
-					...errorTraceContext(serializedResult.error),
-					sheetKey: runtime.sheetKey,
-					sheetId: runtime.sheetId,
-				});
-				return serializedResult;
-			}
-
-			const cells = normalizeSnapshotRows(serializedResult.value);
-			runtime.lastKnownCells = cloneCells(cells);
-			snapshots.push({
-				sheetKey: runtime.sheetKey,
-				cells,
-			});
-		}
-
-		trace.ok({ sheetCount: snapshots.length });
-		return Result.ok(snapshots);
-	}
-
-	function emitChange(
-		origin: WorkbookStructuralOrigin,
-		snapshots: WorkbookStructuralChange["snapshots"],
-	): WorkbookStructuralChange {
-		const change = { origin, snapshots };
-		for (const listener of listeners) {
-			const listenerResult = Result.try({
-				try: () => listener(change),
-				catch: (cause) => new WorkbookStructuralOperationError({
-					operation: "emitChange",
-					...originTraceContext(origin),
-					message: getErrorMessage(cause),
-					cause,
-				}),
-			});
-			if (Result.isError(listenerResult)) {
-				withTraceContext({
-					module: "workbook-coordinator",
-					operation: "emitChange",
-					phase: "listener",
-					context: originTraceContext(origin),
-				}).err(errorTraceContext(listenerResult.error));
-			}
-		}
-		return change;
-	}
-
-	function trySyncRegisteredSheetsToEngine(): ResultLike<void, WorkbookCoordinatorError> {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "syncRegisteredSheetsToEngine",
-			phase: "sync",
-		});
-		trace.start({ sheetCount: sheets.size });
-
-		for (const runtime of sheets.values()) {
-			const cells = runtime.getCells ? runtime.getCells() : runtime.lastKnownCells;
-			const normalized = normalizeSheetContent(cells);
-			const setResult = Result.try({
-				try: () => {
-					hf.setSheetContent(toNumber(runtime.sheetId), normalized);
-				},
-				catch: (cause) => new WorkbookStructuralOperationError({
-					operation: "syncRegisteredSheetsToEngine",
-					sheetKey: runtime.sheetKey,
-					formulaName: runtime.formulaName,
-					sheetId: runtime.sheetId,
-					message: getErrorMessage(cause),
-					cause,
-				}),
-			});
-			if (Result.isError(setResult)) {
-				trace.err({
-					...errorTraceContext(setResult.error),
-					sheetKey: runtime.sheetKey,
-					sheetId: runtime.sheetId,
-				});
-				return setResult;
-			}
-			runtime.lastKnownCells = cloneCells(normalized);
-		}
-
-		trace.ok({ sheetCount: sheets.size });
-		return Result.ok();
-	}
-
-	function pushHistoryEntry(entry: WorkbookHistoryEntry) {
-		history.splice(historyIndex);
-		history.push(entry);
-		historyIndex = history.length;
-	}
-
-	function tryApplyStructuralOperation(
-		origin: WorkbookStructuralOrigin,
-		apply: () => void,
-	): StructuralOpResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: origin.type,
-			phase: "structural",
-			context: originTraceContext(origin),
-		});
-		trace.start();
-
-		const result = Result.gen(function* () {
-			yield* trySyncRegisteredSheetsToEngine();
-			const before = yield* tryBuildSnapshots();
-			yield* Result.try({
-				try: () => {
-					apply();
-				},
-				catch: (cause) => new WorkbookStructuralOperationError({
-					operation: origin.type,
-					...originTraceContext(origin),
-					message: getErrorMessage(cause),
-					cause,
-				}),
-			});
-			const after = yield* tryBuildSnapshots();
-			pushHistoryEntry({ origin, before, after });
-			return Result.ok(applied(emitChange(origin, after)));
-		});
-
-		if (Result.isError(result)) {
-			trace.err(errorTraceContext(result.error));
-			return result;
-		}
-
-		trace.ok();
-		return result;
-	}
-
-	function findActiveReferenceSource(excludedSheetKey: string): WorkbookSheetRuntime | null {
-		for (const runtime of sheets.values()) {
-			if (runtime.sheetKey === excludedSheetKey) continue;
-			if (runtime.controller?.canInsertReference()) {
-				return runtime;
-			}
-		}
-		return null;
+	function clearReferenceHighlights() {
+		references.clearReferenceHighlights(access);
+		cleanupReferenceSession?.();
 	}
 
 	function installReferenceSessionCleanup() {
 		if (cleanupReferenceSession || typeof document === "undefined") return;
-
 		const handleMouseUp = () => {
-			if (referenceSession?.didDrag) {
+			if (references.currentSession?.didDrag) {
 				clearReferenceHighlights();
 			}
-			referenceSession = null;
+			references.currentSession = null;
 		};
-
 		document.addEventListener("mouseup", handleMouseUp);
 		cleanupReferenceSession = () => {
 			document.removeEventListener("mouseup", handleMouseUp);
@@ -470,19 +117,11 @@ export function createWorkbookCoordinator(
 		};
 	}
 
-	function clearReferenceHighlights() {
-		for (const runtime of sheets.values()) {
-			runtime.controller?.setReferenceHighlight(null);
-		}
-		referenceSession = null;
-		cleanupReferenceSession?.();
-	}
-
 	function tryInsertReference(
 		sourceSheetKey: string,
 		targetSheetKey: string,
 		range: CellRange,
-	): ReferenceInsertResult {
+	): WorkbookReferenceResult {
 		const trace = withTraceContext({
 			module: "workbook-coordinator",
 			operation: "insertReference",
@@ -492,13 +131,14 @@ export function createWorkbookCoordinator(
 		trace.start();
 
 		const result = Result.gen(function* () {
-			const source = yield* tryGetSheetRuntime(sourceSheetKey);
-			const target = yield* tryGetSheetRuntime(targetSheetKey);
+			const source = yield* access.tryGetSheetRuntime(sourceSheetKey);
+			const target = yield* access.tryGetSheetRuntime(targetSheetKey);
 			const sourceController = source.controller;
 			const targetController = target.controller;
+			const currentSession = references.currentSession;
 			const isActiveReferenceSession =
-				referenceSession?.sourceSheetKey === sourceSheetKey &&
-				referenceSession?.targetSheetKey === targetSheetKey;
+				currentSession?.sourceSheetKey === sourceSheetKey &&
+				currentSession?.targetSheetKey === targetSheetKey;
 
 			if (!sourceController || !targetController) {
 				return Result.ok(noop("missing-controller"));
@@ -522,14 +162,12 @@ export function createWorkbookCoordinator(
 					cause,
 				}),
 			});
-			if (Result.isError(referenceResult)) {
-				return referenceResult;
-			}
+			if (Result.isError(referenceResult)) return referenceResult;
 			if (!referenceResult.value) {
 				return Result.ok(noop("reference-unavailable"));
 			}
-			const referenceText = formatReferenceText(referenceResult.value, normalized);
 
+			const referenceText = formatReferenceText(referenceResult.value, normalized);
 			const applyReferenceResult = Result.try({
 				try: () => {
 					sourceController.insertReferenceText(referenceText);
@@ -543,9 +181,7 @@ export function createWorkbookCoordinator(
 					cause,
 				}),
 			});
-			if (Result.isError(applyReferenceResult)) {
-				return applyReferenceResult;
-			}
+			if (Result.isError(applyReferenceResult)) return applyReferenceResult;
 
 			return Result.ok(applied(true));
 		});
@@ -563,300 +199,17 @@ export function createWorkbookCoordinator(
 		return result;
 	}
 
-	function tryRestoreSnapshots(
-		origin: WorkbookStructuralOrigin,
-		snapshots: WorkbookStructuralChange["snapshots"],
-	): ResultLike<WorkbookStructuralChange, WorkbookCoordinatorError> {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "restoreSnapshots",
-			phase: "snapshot",
-			context: originTraceContext(origin),
-		});
-		trace.start({ snapshotCount: snapshots.length });
-
-		for (const snapshot of snapshots) {
-			const runtimeResult = tryGetSheetRuntime(snapshot.sheetKey);
-			if (Result.isError(runtimeResult)) {
-				trace.err(errorTraceContext(runtimeResult.error));
-				return runtimeResult;
-			}
-
-			const runtime = runtimeResult.value;
-			const setResult = Result.try({
-				try: () => {
-					hf.setSheetContent(toNumber(runtime.sheetId), normalizeSheetContent(snapshot.cells));
-				},
-				catch: (cause) => new WorkbookSnapshotRestoreError({
-					sheetKey: snapshot.sheetKey,
-					sheetId: runtime.sheetId,
-					message: getErrorMessage(cause),
-					cause,
-				}),
-			});
-			if (Result.isError(setResult)) {
-				trace.err(errorTraceContext(setResult.error));
-				return setResult;
-			}
-			runtime.lastKnownCells = cloneCells(snapshot.cells);
-		}
-
-		const rebuiltSnapshots = tryBuildSnapshots();
-		if (Result.isError(rebuiltSnapshots)) {
-			trace.err(errorTraceContext(rebuiltSnapshots.error));
-			return rebuiltSnapshots;
-		}
-
-		const change = emitChange(origin, rebuiltSnapshots.value);
-		trace.ok({ snapshotCount: rebuiltSnapshots.value.length });
-		return Result.ok(change);
-	}
-
-	function tryInsertRows(sheetKey: string, atIndex: PhysicalRowIndex, count: number): StructuralOpResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "insertRows",
-			phase: "structural",
-			context: { sheetKey, atIndex, count },
-		});
-		trace.start();
-
-		if (count <= 0) {
-			trace.noop({ reason: "invalid-count" });
-			return Result.ok(noop("invalid-count"));
-		}
-
-		const runtimeResult = tryGetSheetRuntime(sheetKey);
-		if (Result.isError(runtimeResult)) {
-			trace.err(errorTraceContext(runtimeResult.error));
-			return runtimeResult;
-		}
-
-		const runtime = runtimeResult.value;
-		const syncResult = trySyncRegisteredSheetsToEngine();
-		if (Result.isError(syncResult)) {
-			trace.err(errorTraceContext(syncResult.error));
-			return syncResult;
-		}
-		const canAddRowsResult = Result.try({
-			try: () => hf.isItPossibleToAddRows(toNumber(runtime.sheetId), [toNumber(atIndex), count]),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "insertRows",
-				sheetKey,
-				formulaName: runtime.formulaName,
-				sheetId: runtime.sheetId,
-				atIndex,
-				count,
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-		if (Result.isError(canAddRowsResult)) {
-			trace.err(errorTraceContext(canAddRowsResult.error));
-			return canAddRowsResult;
-		}
-		if (!canAddRowsResult.value) {
-			trace.noop({ reason: "engine-rejected" });
-			return Result.ok(noop("engine-rejected"));
-		}
-
-		return tryApplyStructuralOperation(
-			{ type: "insertRows", sheetKey, atIndex, count },
-			() => {
-				hf.addRows(toNumber(runtime.sheetId), [toNumber(atIndex), count]);
-			},
-		);
-	}
-
-	function tryDeleteRows(sheetKey: string, atIndex: PhysicalRowIndex, count: number): StructuralOpResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "deleteRows",
-			phase: "structural",
-			context: { sheetKey, atIndex, count },
-		});
-		trace.start();
-
-		if (count <= 0) {
-			trace.noop({ reason: "invalid-count" });
-			return Result.ok(noop("invalid-count"));
-		}
-
-		const runtimeResult = tryGetSheetRuntime(sheetKey);
-		if (Result.isError(runtimeResult)) {
-			trace.err(errorTraceContext(runtimeResult.error));
-			return runtimeResult;
-		}
-
-		const runtime = runtimeResult.value;
-		const syncResult = trySyncRegisteredSheetsToEngine();
-		if (Result.isError(syncResult)) {
-			trace.err(errorTraceContext(syncResult.error));
-			return syncResult;
-		}
-		const canRemoveRowsResult = Result.try({
-			try: () => hf.isItPossibleToRemoveRows(toNumber(runtime.sheetId), [toNumber(atIndex), count]),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "deleteRows",
-				sheetKey,
-				formulaName: runtime.formulaName,
-				sheetId: runtime.sheetId,
-				atIndex,
-				count,
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-		if (Result.isError(canRemoveRowsResult)) {
-			trace.err(errorTraceContext(canRemoveRowsResult.error));
-			return canRemoveRowsResult;
-		}
-		if (!canRemoveRowsResult.value) {
-			trace.noop({ reason: "engine-rejected" });
-			return Result.ok(noop("engine-rejected"));
-		}
-
-		return tryApplyStructuralOperation(
-			{ type: "deleteRows", sheetKey, atIndex, count },
-			() => {
-				hf.removeRows(toNumber(runtime.sheetId), [toNumber(atIndex), count]);
-			},
-		);
-	}
-
-	function trySetRowOrder(sheetKey: string, indexOrder: PhysicalRowIndex[]): StructuralOpResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "setRowOrder",
-			phase: "structural",
-			context: { sheetKey, indexOrder: [...indexOrder] },
-		});
-		trace.start();
-
-		const runtimeResult = tryGetSheetRuntime(sheetKey);
-		if (Result.isError(runtimeResult)) {
-			trace.err(errorTraceContext(runtimeResult.error));
-			return runtimeResult;
-		}
-
-		const runtime = runtimeResult.value;
-		const syncResult = trySyncRegisteredSheetsToEngine();
-		if (Result.isError(syncResult)) {
-			trace.err(errorTraceContext(syncResult.error));
-			return syncResult;
-		}
-		const canSetRowOrderResult = Result.try({
-			try: () => hf.isItPossibleToSetRowOrder(toNumber(runtime.sheetId), indexOrder.map(toNumber)),
-			catch: (cause) => new WorkbookStructuralOperationError({
-				operation: "setRowOrder",
-				sheetKey,
-				formulaName: runtime.formulaName,
-				sheetId: runtime.sheetId,
-				indexOrder: [...indexOrder],
-				message: getErrorMessage(cause),
-				cause,
-			}),
-		});
-
-		if (Result.isError(canSetRowOrderResult)) {
-			trace.err(errorTraceContext(canSetRowOrderResult.error));
-			return canSetRowOrderResult;
-		}
-		if (!canSetRowOrderResult.value) {
-			trace.noop({ reason: "engine-rejected" });
-			return Result.ok(noop("engine-rejected"));
-		}
-
-		return tryApplyStructuralOperation(
-			{ type: "setRowOrder", sheetKey, indexOrder: [...indexOrder] },
-			() => {
-				hf.setRowOrder(toNumber(runtime.sheetId), indexOrder.map(toNumber));
-			},
-		);
-	}
-
-	function tryUndo(): HistoryResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "undo",
-			phase: "history",
-		});
-		trace.start();
-
-		if (historyIndex <= 0) {
-			trace.noop({ reason: "history-empty" });
-			return Result.ok(noop("history-empty"));
-		}
-
-		const nextIndex = historyIndex - 1;
-		const entry = history[nextIndex];
-		if (!entry) {
-			const error = new WorkbookHistoryError({
-				operation: "undo",
-				message: "Undo history entry is missing.",
-			});
-			trace.err(errorTraceContext(error));
-			return Result.err(error);
-		}
-
-		const restoreResult = tryRestoreSnapshots({ type: "undo" }, entry.before);
-		if (Result.isError(restoreResult)) {
-			trace.err(errorTraceContext(restoreResult.error));
-			return restoreResult;
-		}
-
-		historyIndex = nextIndex;
-		trace.ok();
-		return Result.ok(applied(restoreResult.value));
-	}
-
-	function tryRedo(): HistoryResult {
-		const trace = withTraceContext({
-			module: "workbook-coordinator",
-			operation: "redo",
-			phase: "history",
-		});
-		trace.start();
-
-		if (historyIndex >= history.length) {
-			trace.noop({ reason: "history-empty" });
-			return Result.ok(noop("history-empty"));
-		}
-
-		const entry = history[historyIndex];
-		if (!entry) {
-			const error = new WorkbookHistoryError({
-				operation: "redo",
-				message: "Redo history entry is missing.",
-			});
-			trace.err(errorTraceContext(error));
-			return Result.err(error);
-		}
-
-		const restoreResult = tryRestoreSnapshots({ type: "redo" }, entry.after);
-		if (Result.isError(restoreResult)) {
-			trace.err(errorTraceContext(restoreResult.error));
-			return restoreResult;
-		}
-
-		historyIndex += 1;
-		trace.ok();
-		return Result.ok(applied(restoreResult.value));
-	}
-
 	const internals: WorkbookCoordinatorInternals = {
 		getFormulaEngineConfig(binding) {
-			const runtime = getSheetRuntime(binding.sheetKey);
+			const runtime = registry.getSheetRuntime(binding.sheetKey);
 			if (runtime.formulaName !== binding.formulaName) {
-				const error = new WorkbookBindingMismatchError({
+				throw new WorkbookBindingMismatchError({
 					sheetKey: binding.sheetKey,
 					expectedFormulaName: runtime.formulaName,
 					receivedFormulaName: binding.formulaName,
 					message: `Workbook binding mismatch for "${binding.sheetKey}": expected formula name "${runtime.formulaName}", received "${binding.formulaName}".`,
 				});
-				throw error;
 			}
-
 			return {
 				instance: hf,
 				sheetId: runtime.sheetId,
@@ -865,7 +218,7 @@ export function createWorkbookCoordinator(
 		},
 
 		attachController(sheetKey, controller) {
-			getSheetRuntime(sheetKey).controller = controller;
+			registry.attachController(sheetKey, controller);
 			withTraceContext({
 				module: "workbook-coordinator",
 				operation: "attachController",
@@ -875,12 +228,9 @@ export function createWorkbookCoordinator(
 		},
 
 		detachController(sheetKey, controller) {
-			const runtime = getSheetRuntime(sheetKey);
-			if (runtime.controller === controller) {
-				runtime.controller?.setReferenceHighlight(null);
-				runtime.controller = null;
-			}
-			if (referenceSession?.sourceSheetKey === sheetKey || referenceSession?.targetSheetKey === sheetKey) {
+			registry.detachController(sheetKey, controller);
+			const currentSession = references.currentSession;
+			if (currentSession?.sourceSheetKey === sheetKey || currentSession?.targetSheetKey === sheetKey) {
 				clearReferenceHighlights();
 			}
 			withTraceContext({
@@ -892,47 +242,25 @@ export function createWorkbookCoordinator(
 		},
 
 		attachDataGetter(sheetKey, getCells) {
-			const runtime = getSheetRuntime(sheetKey);
-			runtime.getCells = getCells;
-			runtime.lastKnownCells = cloneCells(getCells());
-			withTraceContext({
-				module: "workbook-coordinator",
-				operation: "attachDataGetter",
-				phase: "lifecycle",
-				context: { sheetKey },
-			}).ok();
+			registry.attachDataGetter(sheetKey, getCells);
 		},
 
 		detachDataGetter(sheetKey, getCells) {
-			const runtime = getSheetRuntime(sheetKey);
-			if (runtime.getCells === getCells) {
-				runtime.lastKnownCells = cloneCells(getCells());
-				runtime.getCells = null;
-			}
-			withTraceContext({
-				module: "workbook-coordinator",
-				operation: "detachDataGetter",
-				phase: "lifecycle",
-				context: { sheetKey },
-			}).ok();
+			registry.detachDataGetter(sheetKey, getCells);
 		},
 
 		handleCellPointerDown(sheetKey, address, event) {
 			if (event.button === 2) return false;
-
-			const source = findActiveReferenceSource(sheetKey);
+			const source = references.findActiveReferenceSource(sheetKey, access);
 			if (!source) return false;
-
 			event.preventDefault();
 			event.stopPropagation();
-
 			const inserted = tryInsertReference(source.sheetKey, sheetKey, {
 				start: address,
 				end: address,
 			});
 			if (!toPublicReferenceResult(inserted)) return false;
-
-			referenceSession = {
+			references.currentSession = {
 				sourceSheetKey: source.sheetKey,
 				targetSheetKey: sheetKey,
 				anchor: address,
@@ -943,104 +271,61 @@ export function createWorkbookCoordinator(
 		},
 
 		handleCellPointerMove(sheetKey, address, event) {
-			if (!referenceSession || referenceSession.targetSheetKey !== sheetKey) return false;
+			const currentSession = references.currentSession;
+			if (!currentSession || currentSession.targetSheetKey !== sheetKey) return false;
 			if ((event.buttons & 1) === 0) return false;
-
-			const { sourceSheetKey, anchor } = referenceSession;
+			const { sourceSheetKey, anchor } = currentSession;
 			const inserted = tryInsertReference(sourceSheetKey, sheetKey, {
 				start: anchor,
 				end: address,
 			});
 			if (toPublicReferenceResult(inserted)) {
-				referenceSession.didDrag = true;
+				references.currentSession = { ...currentSession, didDrag: true };
 				return true;
 			}
-
 			return false;
 		},
 
 		handleEditModeChange(sheetKey, state) {
 			if (!state) {
 				clearReferenceHighlights();
-				if (referenceSession?.sourceSheetKey === sheetKey) {
-					referenceSession = null;
+				const currentSession = references.currentSession;
+				if (currentSession?.sourceSheetKey === sheetKey) {
+					references.currentSession = null;
 				}
 			}
 		},
 	};
 
+	// Wires structural operations to history recording
+	function applyStructuralOp(
+		origin: WorkbookStructuralOrigin,
+		engineApply: () => void,
+	): WorkbookStructuralResult {
+		return structural.tryApplyStructuralOperation(
+			origin,
+			engineApply,
+			(entry) => history.pushHistoryEntry(entry),
+			access,
+		);
+	}
+
 	const coordinator: WorkbookCoordinatorWithInternals = {
 		bindSheet(definition) {
-			const trace = withTraceContext({
-				module: "workbook-coordinator",
-				operation: "bindSheet",
-				phase: "binding",
-				context: { sheetKey: definition.sheetKey, formulaName: definition.formulaName },
-			});
-			trace.start();
-
-			const existing = sheets.get(definition.sheetKey);
-			if (existing) {
-				if (existing.formulaName !== definition.formulaName) {
-					const error = new Error(
-						`Workbook sheet "${definition.sheetKey}" is already bound to formula name "${existing.formulaName}".`,
-					);
-					trace.err(errorTraceContext(error));
-					throw error;
-				}
-				trace.ok({ reused: true, sheetId: existing.sheetId });
-				return {
-					coordinator,
-					sheetKey: definition.sheetKey,
-					formulaName: definition.formulaName,
-				};
-			}
-
-			const duplicateByName = sheetKeysByFormulaName.get(definition.formulaName);
-			if (duplicateByName && duplicateByName !== definition.sheetKey) {
-				const error = new WorkbookDuplicateFormulaNameError({
-					sheetKey: definition.sheetKey,
-					formulaName: definition.formulaName,
-					existingSheetKey: duplicateByName,
-					message: `Workbook formula name "${definition.formulaName}" is already used by sheet "${duplicateByName}".`,
-				});
-				trace.err(errorTraceContext(error));
-				throw error;
-			}
-
-			const sheetIdResult = tryEnsureSheetId(definition.formulaName);
-			if (Result.isError(sheetIdResult)) {
-				trace.err(errorTraceContext(sheetIdResult.error));
-				throw new Error(sheetIdResult.error.message);
-			}
-
-			sheets.set(definition.sheetKey, {
-				sheetKey: definition.sheetKey,
-				formulaName: definition.formulaName,
-				sheetId: sheetIdResult.value,
-				controller: null,
-				getCells: null,
-				lastKnownCells: [],
-			});
-			sheetKeysByFormulaName.set(definition.formulaName, definition.sheetKey);
-			trace.ok({ sheetId: sheetIdResult.value });
-
+			const binding = registry.bindSheet(definition, coordinator);
 			return {
-				coordinator,
-				sheetKey: definition.sheetKey,
-				formulaName: definition.formulaName,
+				coordinator: binding.coordinator as WorkbookCoordinator,
+				sheetKey: binding.sheetKey,
+				formulaName: binding.formulaName,
 			};
 		},
 
 		subscribe(listener) {
-			listeners.add(listener);
-			return () => {
-				listeners.delete(listener);
-			};
+			return structural.subscribe(listener);
 		},
 
 		getController(sheetKey) {
-			return sheets.get(sheetKey)?.controller ?? null;
+			return registry.getController(sheetKey);
 		},
 
 		insertReference(sourceSheetKey, targetSheetKey, range) {
@@ -1048,37 +333,68 @@ export function createWorkbookCoordinator(
 		},
 
 		setReferenceHighlight(sheetKey, range) {
-			getSheetRuntime(sheetKey).controller?.setReferenceHighlight(range);
+			references.setReferenceHighlight(sheetKey, range, access);
 		},
 
 		clearReferenceHighlights,
 
 		insertRows(sheetKey, atIndex, count) {
-			return tryInsertRows(sheetKey, atIndex, count);
+			if (count <= 0) {
+				withTraceContext({
+					module: "workbook-coordinator",
+					operation: "insertRows",
+					phase: "structural",
+					context: { sheetKey, atIndex, count },
+				}).noop({ reason: "invalid-count" });
+				return Result.ok(noop("invalid-count"));
+			}
+			return applyStructuralOp(
+				{ type: "insertRows", sheetKey, atIndex, count },
+				() => { hf.addRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), [toNumber(atIndex), count]); },
+			);
 		},
 
 		deleteRows(sheetKey, atIndex, count) {
-			return tryDeleteRows(sheetKey, atIndex, count);
+			if (count <= 0) {
+				withTraceContext({
+					module: "workbook-coordinator",
+					operation: "deleteRows",
+					phase: "structural",
+					context: { sheetKey, atIndex, count },
+				}).noop({ reason: "invalid-count" });
+				return Result.ok(noop("invalid-count"));
+			}
+			return applyStructuralOp(
+				{ type: "deleteRows", sheetKey, atIndex, count },
+				() => { hf.removeRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), [toNumber(atIndex), count]); },
+			);
 		},
 
 		setRowOrder(sheetKey, indexOrder) {
-			return trySetRowOrder(sheetKey, indexOrder);
+			return applyStructuralOp(
+				{ type: "setRowOrder", sheetKey, indexOrder: [...indexOrder] },
+				() => { hf.setRowOrder(toNumber(registry.getSheetRuntime(sheetKey).sheetId), indexOrder.map(toNumber)); },
+			);
 		},
 
 		undo() {
-			return tryUndo();
+			return history.undo((origin, snapshots) =>
+				structural.tryRestoreSnapshots(origin, snapshots, access),
+			);
 		},
 
 		redo() {
-			return tryRedo();
+			return history.redo((origin, snapshots) =>
+				structural.tryRestoreSnapshots(origin, snapshots, access),
+			);
 		},
 
 		canUndo() {
-			return historyIndex > 0;
+			return history.canUndo();
 		},
 
 		canRedo() {
-			return historyIndex < history.length;
+			return history.canRedo();
 		},
 
 		[workbookCoordinatorInternals]: internals,
@@ -1086,3 +402,21 @@ export function createWorkbookCoordinator(
 
 	return coordinator;
 }
+
+// Re-export for backward compatibility
+export type {
+	WorkbookCoordinator,
+	WorkbookCoordinatorOptions,
+	WorkbookHistoryResult,
+	WorkbookReferenceResult,
+	WorkbookSheetBinding,
+	WorkbookStructuralChange,
+	WorkbookStructuralOrigin,
+	WorkbookStructuralResult,
+} from "./types";
+export type {
+	WorkbookSheetRuntime,
+} from "./registry";
+export type {
+	HyperFormulaWorkbookLike,
+} from "./hf-interface";
