@@ -89,6 +89,7 @@ export type {
 	VisualRowIndex,
 } from "./core/brands";
 export {
+	autoRowId,
 	columnIdx,
 	formulaSheetId,
 	physicalRow,
@@ -96,6 +97,11 @@ export {
 	toNumber,
 	visualRow,
 } from "./core/brands";
+export {
+	PROVISIONAL_ROW_ID_PREFIX,
+	isProvisionalRowId,
+	validateRowIds,
+} from "./core/row-identity";
 
 export type {
 	WorkbookCoordinator,

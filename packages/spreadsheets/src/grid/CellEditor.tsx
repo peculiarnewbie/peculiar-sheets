@@ -9,7 +9,7 @@ interface CellEditorProps {
 	inputRef?: (element: HTMLInputElement) => void;
 	onInput: (value: string) => void;
 	onSelectionChange: (start: number, end: number) => void;
-	onCommit: () => void;
+	onCommit: (options?: { refocus?: boolean }) => void;
 	onCancel: () => void;
 	onTab: (shift: boolean) => void;
 	onEnter: (shift: boolean) => void;
@@ -24,12 +24,12 @@ export default function CellEditor(props: CellEditorProps) {
 		if (event.key === "Enter") {
 			event.preventDefault();
 			event.stopPropagation();
-			props.onCommit();
+			props.onCommit({ refocus: false });
 			props.onEnter(event.shiftKey);
 		} else if (event.key === "Tab") {
 			event.preventDefault();
 			event.stopPropagation();
-			props.onCommit();
+			props.onCommit({ refocus: false });
 			props.onTab(event.shiftKey);
 		} else if (event.key === "Escape") {
 			event.preventDefault();
@@ -43,7 +43,7 @@ export default function CellEditor(props: CellEditorProps) {
 			event.stopPropagation();
 			const direction = event.key === "ArrowUp" ? "up"
 				: "down";
-			props.onCommit();
+			props.onCommit({ refocus: false });
 			props.onArrowNav(direction);
 		} else if (
 			event.key === "ArrowLeft" ||

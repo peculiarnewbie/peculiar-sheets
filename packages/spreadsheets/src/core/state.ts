@@ -11,12 +11,18 @@ import type {
 import {
 	type PhysicalRowIndex,
 	type RowId,
+	autoRowId,
 	columnIdx,
 	physicalRow,
 	rowId,
 	toNumber,
 	visualRow,
 } from "./brands";
+import {
+	allocateProvisionalRowIds,
+	reconcileByRowIdentity,
+	validateRowIds,
+} from "./row-identity";
 import { emptySelection, selectCell } from "./selection";
 import {
 	isFormulaValue,
@@ -81,6 +87,15 @@ export interface SheetStore {
 	restoreSnapshot(cells: CellValue[][], rowIds: RowId[]): void;
 	/** Adopt host-provided row IDs without touching cell data. */
 	adoptRowIds(ids: RowId[]): void;
+	/** Reconcile store to host data; used by reconciler and unit tests. */
+	reconcileFromHost(
+		data: CellValue[][],
+		columns: ColumnDef[],
+		hostRowIds?: readonly RowId[],
+		context?: { lastHostRowCount: number },
+	): { didChange: boolean; lastHostRowCount: number };
+	/** True when the host supplies `rowIds` (domain keys); grid inserts use provisional keys until fold. */
+	hasHostRowIds(): boolean;
 	insertRows(atIndex: PhysicalRowIndex, count: number): void;
 	deleteRows(atIndex: PhysicalRowIndex, count: number): CellValue[][];
 	getRowIdAtPhysicalRow(row: PhysicalRowIndex): RowId | null;
@@ -124,21 +139,8 @@ export function createSheetStore(
 	const rowCount = initialData.length;
 	const colCount = columns.length;
 
-	// Validate host-provided row IDs
 	if (hostRowIds) {
-		if (hostRowIds.length !== rowCount) {
-			throw new Error(
-				`rowIds length (${hostRowIds.length}) must match data length (${rowCount})`,
-			);
-		}
-		const seen = new Set<number>();
-		for (const id of hostRowIds) {
-			const n = toNumber(id);
-			if (seen.has(n)) {
-				throw new Error(`Duplicate rowId found: ${String(id)}`);
-			}
-			seen.add(n);
-		}
+		validateRowIds(hostRowIds, rowCount);
 	}
 
 	// Deep copy initial data to avoid shared references
@@ -147,17 +149,14 @@ export function createSheetStore(
 	const [cells, setCells] = createStore<CellValue[][]>(initialCells);
 	const [dimensions, setDimensions] = createSignal({ rowCount, colCount });
 
-	// Use host-provided rowIds or auto-generate
 	const initialRowIds: RowId[] = hostRowIds
 		? [...hostRowIds]
-		: Array.from({ length: rowCount }, (_, index) => rowId(index));
+		: Array.from({ length: rowCount }, (_, index) => autoRowId(index));
 	const [rowIds, setRowIds] = createSignal<RowId[]>(initialRowIds);
 
-	// nextRowId starts at the max of all known IDs (host-provided or auto-generated)
-	const maxExistingId = initialRowIds.length > 0
-		? Math.max(...initialRowIds.map(toNumber))
-		: -1;
-	const [nextRowId, setNextRowId] = createSignal(maxExistingId + 1);
+	const [hostProvidesRowIds] = createSignal(hostRowIds !== undefined);
+	const [nextAutoRowId, setNextAutoRowId] = createSignal(rowCount);
+	const [nextProvisionalCounter, setNextProvisionalCounter] = createSignal(0);
 	const [selection, setSelection] = createSignal<Selection>(
 		rowCount > 0 && colCount > 0 ? selectCell({ row: visualRow(0), col: columnIdx(0) }) : emptySelection(),
 	);
@@ -174,14 +173,34 @@ export function createSheetStore(
 		setDataRevision((value) => value + 1);
 	}
 
+	function allocateNewRowIds(count: number, explicitIds?: RowId[]): RowId[] {
+		if (explicitIds) {
+			if (explicitIds.length !== count) {
+				throw new Error(`allocateNewRowIds: expected ${count} ids, got ${explicitIds.length}`);
+			}
+			return [...explicitIds];
+		}
+		if (hostProvidesRowIds()) {
+			const start = nextProvisionalCounter();
+			setNextProvisionalCounter(start + count);
+			return allocateProvisionalRowIds(count, start);
+		}
+		const startId = nextAutoRowId();
+		setNextAutoRowId(startId + count);
+		return Array.from({ length: count }, (_, index) => rowId(String(startId + index)));
+	}
+
 	/** Internal: splice empty rows into the cells array and update dimensions. */
-	function _insertRows(atIndex: number, count: number) {
+	function _insertRows(
+		atIndex: number,
+		count: number,
+		explicitIds?: RowId[],
+		trackPending = true,
+	) {
 		const currentRowCount = dimensions().rowCount;
 		const cc = dimensions().colCount;
 		const insertAt = Math.max(0, Math.min(atIndex, currentRowCount));
-		const startId = nextRowId();
-		const newRowIds = Array.from({ length: count }, (_, index) => rowId(startId + index));
-		setNextRowId((value) => value + count);
+		const newRowIds = allocateNewRowIds(count, explicitIds);
 
 		setDimensions({ rowCount: currentRowCount + count, colCount: cc });
 		setCells(
@@ -209,12 +228,14 @@ export function createSheetStore(
 			next.splice(insertAt, 0, ...newRowIds);
 			return next;
 		});
-		setHasPendingRowOp(true);
+		if (trackPending) {
+			setHasPendingRowOp(true);
+		}
 		bumpDataRevision();
 	}
 
 	/** Internal: splice rows out of the cells array, update dimensions, return removed data. */
-	function _deleteRows(atIndex: number, count: number): CellValue[][] {
+	function _deleteRows(atIndex: number, count: number, trackPending = true): CellValue[][] {
 		const currentRowCount = dimensions().rowCount;
 		const cc = dimensions().colCount;
 		const deleteAt = Math.max(0, Math.min(atIndex, currentRowCount));
@@ -251,10 +272,16 @@ export function createSheetStore(
 			next.splice(deleteAt, actualCount);
 			return next;
 		});
-		setHasPendingRowOp(true);
+		if (trackPending) {
+			setHasPendingRowOp(true);
+		}
 		bumpDataRevision();
 
 		return removedData;
+	}
+
+	function _insertRowsWithIds(atIndex: number, ids: RowId[], trackPending = true) {
+		_insertRows(atIndex, ids.length, ids, trackPending);
 	}
 
 	/** Internal: insert rows and fill them with given data. */
@@ -447,11 +474,7 @@ export function createSheetStore(
 
 				const next = [...prev];
 				const additional = newRowCount - prev.length;
-				const startId = nextRowId();
-				for (let i = 0; i < additional; i++) {
-					next.push(rowId(startId + i));
-				}
-				setNextRowId(startId + additional);
+				next.push(...allocateNewRowIds(additional));
 				return next;
 			});
 			bumpDataRevision();
@@ -479,10 +502,217 @@ export function createSheetStore(
 				);
 			}
 			setRowIds([...ids]);
-			// Update nextRowId to be past the max known ID
-			const maxId = ids.length > 0 ? Math.max(...ids.map(toNumber)) : -1;
-			setNextRowId(Math.max(nextRowId(), maxId + 1));
 			bumpDataRevision();
+		},
+
+		hasHostRowIds: () => hostProvidesRowIds(),
+
+		reconcileFromHost(
+			data: CellValue[][],
+			columns: ColumnDef[],
+			hostRowIds?: readonly RowId[],
+			context?: { lastHostRowCount: number },
+		) {
+			const newRowCount = data.length;
+			const newColCount = columns.length;
+			let lastHostRowCount = context?.lastHostRowCount ?? newRowCount;
+			let didChange = false;
+
+			if (hostRowIds) {
+				validateRowIds(hostRowIds, newRowCount);
+			}
+
+			const useIdentity = hostRowIds !== undefined;
+
+			// ── Row-operation guard ──────────────────────────────────
+			const pending = hasPendingRowOp();
+			if (pending) {
+				const storeRowCount = dimensions().rowCount;
+				const storeColCount = dimensions().colCount;
+				if (useIdentity) {
+					const hostShrunk = newRowCount < lastHostRowCount;
+					if (hostShrunk) {
+						setHasPendingRowOp(false);
+					} else if (newRowCount < storeRowCount) {
+						// Host has not mirrored a grid-initiated insert yet.
+						lastHostRowCount = newRowCount;
+						return { didChange: false, lastHostRowCount };
+					} else if (newRowCount === storeRowCount && newColCount === storeColCount) {
+						const storeIds = rowIds();
+						const idsMatch =
+							hostRowIds !== undefined &&
+							hostRowIds.every((id, index) => id === storeIds[index]);
+						setHasPendingRowOp(false);
+						if (idsMatch) {
+							lastHostRowCount = newRowCount;
+							return { didChange: false, lastHostRowCount };
+						}
+					} else if (newRowCount > storeRowCount) {
+						lastHostRowCount = newRowCount;
+						return { didChange: false, lastHostRowCount };
+					}
+				} else if (newRowCount === storeRowCount && newColCount === storeColCount) {
+					setHasPendingRowOp(false);
+					lastHostRowCount = newRowCount;
+					return { didChange: false, lastHostRowCount };
+				} else if (newRowCount < lastHostRowCount) {
+					setHasPendingRowOp(false);
+				} else {
+					lastHostRowCount = newRowCount;
+					return { didChange: false, lastHostRowCount };
+				}
+			}
+
+			if (useIdentity) {
+				const identityTarget = {
+					rowIds,
+					rowCount: () => dimensions().rowCount,
+					colCount: () => dimensions().colCount,
+					cells,
+					getPhysicalRowForRowId,
+					deleteRowsAt: (atIndex: number, count: number) => {
+						_deleteRows(atIndex, count, false);
+					},
+					insertRowsWithIds: (atIndex: number, ids: RowId[]) => {
+						_insertRowsWithIds(atIndex, ids, false);
+					},
+					reorderRows,
+					setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
+						if (mutations.length === 0) return;
+						setCells(
+							produce((draft) => {
+								for (const m of mutations) {
+									while (draft.length <= m.row) {
+										draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
+									}
+									const draftRow = draft[m.row];
+									if (!draftRow) {
+										throw new Error(`Invalid draft state at row ${m.row}`);
+									}
+									while (draftRow.length <= m.col) {
+										draftRow.push(null);
+									}
+									draftRow[m.col] = m.value;
+								}
+							}),
+						);
+						bumpDataRevision();
+					},
+					resizeColumns(colCount: number) {
+						setDimensions({ rowCount: dimensions().rowCount, colCount });
+						setCells(
+							produce((draft) => {
+								for (let i = 0; i < draft.length; i++) {
+									const row = draft[i];
+									if (!row) throw new Error(`Invalid draft row at index ${i}`);
+									while (row.length < colCount) {
+										row.push(null);
+									}
+								}
+							}),
+						);
+						bumpDataRevision();
+					},
+				};
+
+				if (reconcileByRowIdentity(identityTarget, data, hostRowIds, newColCount)) {
+					didChange = true;
+				}
+
+				for (const col of columns) {
+					if (!colWidths().has(col.id)) {
+						setColWidths((prev) => {
+							const next = new Map(prev);
+							next.set(col.id, col.width ?? 120);
+							return next;
+						});
+					}
+				}
+
+				lastHostRowCount = newRowCount;
+				return { didChange, lastHostRowCount };
+			}
+
+			// ── Index-based reconciliation (numeric row IDs) ───────────
+			if (newRowCount !== dimensions().rowCount || newColCount !== dimensions().colCount) {
+				setDimensions({ rowCount: newRowCount, colCount: newColCount });
+				setCells(
+					produce((draft) => {
+						while (draft.length < newRowCount) {
+							draft.push(new Array(newColCount).fill(null) as CellValue[]);
+						}
+						if (draft.length > newRowCount) {
+							draft.length = newRowCount;
+						}
+						for (let i = 0; i < draft.length; i++) {
+							const row = draft[i];
+							if (!row) throw new Error(`Invalid draft row at index ${i}`);
+							while (row.length < newColCount) {
+								row.push(null);
+							}
+						}
+					}),
+				);
+				setRowIds((prev) => {
+					if (prev.length === newRowCount) return prev;
+					if (prev.length > newRowCount) {
+						return prev.slice(0, newRowCount);
+					}
+					const next = [...prev];
+					next.push(...allocateNewRowIds(newRowCount - prev.length));
+					return next;
+				});
+				didChange = true;
+			}
+
+			for (const col of columns) {
+				if (!colWidths().has(col.id)) {
+					setColWidths((prev) => {
+						const next = new Map(prev);
+						next.set(col.id, col.width ?? 120);
+						return next;
+					});
+				}
+			}
+
+			const mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }> = [];
+			for (let r = 0; r < data.length; r++) {
+				const dataRow = data[r];
+				if (!dataRow) continue;
+				const colEnd = Math.max(dataRow.length, newColCount);
+				for (let c = 0; c < colEnd; c++) {
+					const externalValue = (c < dataRow.length ? dataRow[c] : null) ?? null;
+					const internalValue = cells[r]?.[c] ?? null;
+					if (externalValue !== internalValue) {
+						mutations.push({ row: physicalRow(r), col: c, value: externalValue });
+					}
+				}
+			}
+
+			if (mutations.length > 0) {
+				setCells(
+					produce((draft) => {
+						for (const m of mutations) {
+							while (draft.length <= m.row) {
+								draft.push(new Array(newColCount).fill(null) as CellValue[]);
+							}
+							const draftRow = draft[m.row];
+							if (!draftRow) {
+								throw new Error(`Invalid draft state at row ${m.row}`);
+							}
+							while (draftRow.length <= m.col) {
+								draftRow.push(null);
+							}
+							draftRow[m.col] = m.value;
+						}
+					}),
+				);
+				bumpDataRevision();
+				didChange = true;
+			}
+
+			lastHostRowCount = newRowCount;
+			return { didChange, lastHostRowCount };
 		},
 
 		insertRows(atIndex: PhysicalRowIndex, count: number) {
@@ -678,85 +908,19 @@ export function createReconciler(
 	getRowIds?: () => readonly RowId[] | undefined,
 	onExternalChange?: () => void,
 ): void {
+	let lastHostRowCount = getData().length;
+
 	createEffect(
 		on(
 			[getData, getColumns, getRowIds ?? (() => undefined)],
 			([data, columns, hostRowIds]) => {
-				const newRowCount = data.length;
-				const newColCount = columns.length;
-				let didChange = false;
+				const result = store.reconcileFromHost(data, columns, hostRowIds, {
+					lastHostRowCount,
+				});
+				lastHostRowCount = result.lastHostRowCount;
 
-				// ── Row-operation guard ──────────────────────────────────
-				// If an internal insertRows/deleteRows just ran, the store
-				// dimensions may differ from the host data.  Don't let the
-				// reconciler destroy those internal changes.
-				const pending = store.hasPendingRowOp();
-				if (pending) {
-					if (newRowCount === store.rowCount() && newColCount === store.colCount()) {
-						// Host mirrored the row op (dimensions match).
-						// Skip cell reconciliation — host data has stale formula
-						// strings while the store has correctly rewritten ones.
-						// Do NOT call onExternalChange — HF was already synced
-						// from Grid.tsx after the row operation.
-						store.clearPendingRowOp();
-						return;
-					}
-					// Host hasn't mirrored yet (dimensions still differ).
-					// Skip the entire pass — don't resize, don't overwrite cells.
-					return;
-				}
-
-				// Resize grid if dimensions changed
-				if (newRowCount !== store.rowCount() || newColCount !== store.colCount()) {
-					store.resizeGrid(newRowCount, newColCount);
-					didChange = true;
-				}
-
-				// Update column widths for new columns
-				for (const col of columns) {
-					if (!store.columnWidths().has(col.id)) {
-						store.setColumnWidth(col.id, col.width ?? 120);
-					}
-				}
-
-				// Reconcile cell data — host values overwrite internal state
-				const mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }> = [];
-				for (let r = 0; r < data.length; r++) {
-					const dataRow = data[r];
-					if (!dataRow) continue;
-					// Iterate over ALL columns so short/empty external rows
-					// (e.g. [] from HyperFormula's addRows) correctly null-out
-					// stale internal values.
-					const colEnd = Math.max(dataRow.length, newColCount);
-					for (let c = 0; c < colEnd; c++) {
-						const externalValue = (c < dataRow.length ? dataRow[c] : null) ?? null;
-						const internalValue = store.cells[r]?.[c] ?? null;
-						if (externalValue !== internalValue) {
-							mutations.push({ row: physicalRow(r), col: c, value: externalValue });
-						}
-					}
-				}
-
-				if (mutations.length > 0) {
-					store.setCells(mutations);
-					didChange = true;
-				}
-
-				if (didChange) {
+				if (result.didChange) {
 					onExternalChange?.();
-				}
-
-				// ── Row ID synchronisation ────────────────────────────
-				// When the host provides rowIds, adopt them if they differ
-				// from the store's current identity mapping.
-				if (hostRowIds) {
-					const currentRowIds = store.rowIds();
-					if (
-						hostRowIds.length !== currentRowIds.length ||
-						hostRowIds.some((id, i) => id !== currentRowIds[i])
-					) {
-						store.adoptRowIds([...hostRowIds]);
-					}
 				}
 			},
 		),

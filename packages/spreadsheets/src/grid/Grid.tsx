@@ -238,7 +238,7 @@ export default function Grid(props: GridProps) {
 	);
 	const committedRowHeights = createMemo(() =>
 		props.rowSizing
-			? recordToMap<RowId>(props.rowSizing, (key) => rowId(Number(key)))
+			? recordToMap<RowId>(props.rowSizing, (key) => rowId(key))
 			: props.store.rowHeights(),
 	);
 	const columnSizingRecord = createMemo(() =>
@@ -423,7 +423,7 @@ export default function Grid(props: GridProps) {
 		}
 		props.onRowSizingChange?.({
 			...rowSizingRecord(),
-			[toNumber(id)]: height,
+			[id]: height,
 		});
 	}
 
@@ -747,20 +747,20 @@ export default function Grid(props: GridProps) {
 
 	function remapAddressForRowOrder(
 		address: VisualCellAddress,
-		oldOrder: number[],
-		newOrder: number[],
+		oldOrder: RowId[],
+		newOrder: RowId[],
 	): VisualCellAddress | null {
-		const rowId = oldOrder[address.row];
-		if (rowId === undefined) return null;
-		const nextRow = newOrder.indexOf(rowId);
+		const id = oldOrder[toNumber(address.row)];
+		if (id === undefined) return null;
+		const nextRow = newOrder.indexOf(id);
 		if (nextRow < 0) return null;
 		return { row: visualRow(nextRow), col: address.col };
 	}
 
 	function remapSelectionForRowOrder(
 		selection: Selection,
-		oldOrder: number[],
-		newOrder: number[],
+		oldOrder: RowId[],
+		newOrder: RowId[],
 	): Selection | null {
 		const nextRanges = selection.ranges
 			.map((range) => {
@@ -789,8 +789,8 @@ export default function Grid(props: GridProps) {
 
 	function remapEditModeForRowOrder(
 		mode: ReturnType<SheetStore["editMode"]>,
-		oldOrder: number[],
-		newOrder: number[],
+		oldOrder: RowId[],
+		newOrder: RowId[],
 	): ReturnType<SheetStore["editMode"]> {
 		if (!mode) return mode;
 		const nextAddress = remapAddressForRowOrder(mode.address, oldOrder, newOrder);
@@ -801,7 +801,7 @@ export default function Grid(props: GridProps) {
 		};
 	}
 
-	let previousRenderedRowOrder: number[] | null = null;
+	let previousRenderedRowOrder: RowId[] | null = null;
 
 	createEffect(() => {
 		const nextRenderedOrder = [...(visualRowIds() ?? props.store.rowIds())];
@@ -1076,7 +1076,13 @@ export default function Grid(props: GridProps) {
 		});
 	}
 
-	function handleEditorCommit() {
+	function focusGridAfterNavigate() {
+		queueMicrotask(() => {
+			gridRef?.focus();
+		});
+	}
+
+	function handleEditorCommit(options?: { refocus?: boolean }) {
 		const editMode = props.store.editMode();
 		if (!editMode) return;
 		const physicalRow = getPhysicalRowForVisualRow(editMode.address.row);
@@ -1103,7 +1109,9 @@ export default function Grid(props: GridProps) {
 			props.onOperation?.({ type: "cell-edit", mutation });
 		}
 
-		focusGrid();
+		if (options?.refocus !== false) {
+			focusGrid();
+		}
 	}
 
 	function handleEditCancel() {
@@ -1115,17 +1123,21 @@ export default function Grid(props: GridProps) {
 
 	function handleEditTab(shift: boolean) {
 		handleNavigateAfterEdit(shift ? "left" : "right");
+		focusGridAfterNavigate();
 	}
 
 	function handleEditEnter(shift: boolean) {
 		if (isFormulaText(editorText())) {
+			focusGridAfterNavigate();
 			return;
 		}
 		handleNavigateAfterEdit(shift ? "up" : "down");
+		focusGridAfterNavigate();
 	}
 
 	function handleEditArrowNav(direction: "up" | "down" | "left" | "right") {
 		handleNavigateAfterEdit(direction);
+		focusGridAfterNavigate();
 	}
 
 	function handleNavigateAfterEdit(direction: "up" | "down" | "left" | "right") {
@@ -1241,6 +1253,8 @@ export default function Grid(props: GridProps) {
 			captureViewportRect();
 			setIsDraggingSelection(true);
 		}
+
+		focusGrid();
 	}
 
 	function handleCellMouseEnter(addr: VisualCellAddress, event: MouseEvent) {
@@ -1969,6 +1983,7 @@ export default function Grid(props: GridProps) {
 					{ rowCount: props.store.rowCount(), colCount: props.store.colCount() },
 				);
 				props.store.setSelection(next);
+				focusGridAfterNavigate();
 				break;
 			}
 
@@ -2498,6 +2513,7 @@ export default function Grid(props: GridProps) {
 					onBlur={handleFormulaBarBlur}
 					onCommit={handleEditorCommit}
 					onCancel={handleEditCancel}
+					onTab={handleEditTab}
 					onSelectionChange={(start, end) => setEditorSelection(start, end)}
 				/>
 			</Show>

@@ -148,6 +148,20 @@ export const basicScenarios: Scenario[] = [
 	// ── Keyboard navigation ─────────────────────────────────────────────
 
 	{
+		id: "basic/tab-commits-edit-and-moves-right",
+		title: "commits edit on Tab and moves selection right",
+		demoId: DEMO_ID,
+		route: "/basic",
+		steps: [
+			{ kind: "click", at: { row: 0, col: 0 }, caption: "Click A1" },
+			{ kind: "type", text: "Zara", confirm: false, caption: "Type 'Zara'" },
+			{ kind: "press", key: "Tab", caption: "Tab → commit + move to B1" },
+			{ kind: "assertCellValue", at: { row: 0, col: 0 }, value: "Zara" },
+			{ kind: "assertSelection", anchor: { row: 0, col: 1 }, caption: "Selection at B1" },
+		],
+	},
+
+	{
 		id: "basic/enter-starts-editing-then-commits-moves-down",
 		title: "starts editing on Enter, commits and moves down on second Enter",
 		demoId: DEMO_ID,

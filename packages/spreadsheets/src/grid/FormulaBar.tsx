@@ -4,8 +4,9 @@ interface FormulaBarProps {
 	onInput: (value: string) => void;
 	onFocus: () => void;
 	onBlur: () => void;
-	onCommit: () => void;
+	onCommit: (options?: { refocus?: boolean }) => void;
 	onCancel: () => void;
+	onTab: (shift: boolean) => void;
 	onSelectionChange: (start: number, end: number) => void;
 	inputRef?: (element: HTMLInputElement) => void;
 }
@@ -16,6 +17,14 @@ export default function FormulaBar(props: FormulaBarProps) {
 			event.preventDefault();
 			event.stopPropagation();
 			props.onCommit();
+			return;
+		}
+
+		if (event.key === "Tab") {
+			event.preventDefault();
+			event.stopPropagation();
+			props.onCommit({ refocus: false });
+			props.onTab(event.shiftKey);
 			return;
 		}
 

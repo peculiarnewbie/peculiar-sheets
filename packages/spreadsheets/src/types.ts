@@ -364,13 +364,16 @@ export interface SheetProps {
 	onCellPointerMove?: (address: VisualCellAddress, event: MouseEvent) => boolean;
 
 	/**
-	 * Host-provided row IDs. When set, these replace the auto-generated
-	 * synthetic keys. Length must match `data.length` on init (mismatch
-	 * throws). Duplicates also throw.
+	 * Host-provided row IDs (e.g. DataTable row names). When omitted, the
+	 * sheet auto-generates `"0"`, `"1"`, … Length must match `data.length`
+	 * (mismatch throws). Duplicates also throw.
 	 *
-	 * Row insert operations in the Grid still generate new IDs from an
-	 * internal counter; the host receives these through `onOperation`
-	 * with the mutation\'s `rowId` field.
+	 * When set, reconciliation is identity-based: rows are matched by key
+	 * rather than index, so discard, reorder, and async host inserts stay
+	 * in sync without remounting the sheet.
+	 *
+	 * Grid-initiated inserts allocate provisional keys (`__ps_pending_N`)
+	 * until the host fold supplies the final key via this prop.
 	 */
 	rowIds?: readonly RowId[];
 

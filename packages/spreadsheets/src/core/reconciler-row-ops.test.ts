@@ -5,9 +5,9 @@
  * scheduler). Since `createReconciler` is implemented as a reactive effect, it
  * cannot be exercised as a unit test.
  *
- * The reconciler / row-operation interaction (Bug C — "reconciler destroys
- * internally-inserted rows") MUST be tested at the E2E level.
- * See: tests/e2e/formula-rows.test.ts
+ * The reconciler / row-operation interaction (Bug C — pending row ops blocking
+ * host shrink on discard) is covered in `createReconciler` via `lastHostRowCount`.
+ * Solid effects cannot run here — see tests/e2e/formula-rows.test.ts for E2E.
  *
  * This file contains STRUCTURAL unit tests for the reconciler-adjacent logic
  * that CAN run without SolidJS effects — specifically, that `resizeGrid` does

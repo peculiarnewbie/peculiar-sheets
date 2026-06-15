@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { rowId } from "./brands";
 import {
 	canRedo,
 	canUndo,
@@ -139,20 +140,20 @@ describe("history", () => {
 		let h = createHistory();
 		h = pushRowResizeHistory(
 			h,
-			{ rowId: 42, oldHeight: 28, newHeight: 56 },
+			{ rowId: rowId("42"), oldHeight: 28, newHeight: 56 },
 			sel0,
 			sel1,
 		);
 
 		const undoResult = undo(h)!;
 		expect(undoResult.rowResize).toEqual({
-			rowId: 42,
+			rowId: rowId("42"),
 			height: 28,
 		});
 
 		const redoResult = redo(undoResult.history)!;
 		expect(redoResult.rowResize).toEqual({
-			rowId: 42,
+			rowId: rowId("42"),
 			height: 56,
 		});
 	});
