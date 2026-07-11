@@ -324,17 +324,15 @@ export default function Grid(props: GridProps) {
 		return nextOrder.map((entry) => entry.rowId);
 	});
 
-	const rowMetrics = createMemo(() =>
-		buildRowMetrics(
-			props.store.rowCount(),
-			props.rowHeight,
-			(visualRow) => {
-				const rowId = getRowIdAtVisualRow(visualRow);
-				if (rowId === null) return undefined;
-				return committedRowHeights().get(rowId);
-			},
-		),
-	);
+	const rowMetrics = createMemo(() => {
+		const heightOverrides = new Map<number, number>();
+		for (const [id, height] of committedRowHeights()) {
+			const visual = getVisualRowForRowId(id);
+			if (visual === null) continue;
+			heightOverrides.set(toNumber(visual), height);
+		}
+		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
+	});
 
 	const rowVirtualizer = createVirtualizer({
 		get count() {

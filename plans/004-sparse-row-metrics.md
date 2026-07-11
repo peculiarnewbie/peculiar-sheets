@@ -82,12 +82,12 @@ Update the `rowMetrics` memo in `Grid.tsx` to pass row-height overrides keyed by
 
 ## Done criteria
 
-- [ ] A grid with no custom row heights uses O(1) row-metric storage regardless of row count.
-- [ ] Sparse custom heights produce identical heights, tops, totals, and row lookup results to existing tests.
-- [ ] Row height overrides remain attached to stable row IDs after view sorting.
-- [ ] No public prop or controller signature changes.
-- [ ] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
-- [ ] Plan 004 is marked DONE.
+- [x] A grid with no custom row heights uses O(1) row-metric storage regardless of row count.
+- [x] Sparse custom heights produce identical heights, tops, totals, and row lookup results to existing tests.
+- [x] Row height overrides remain attached to stable row IDs after view sorting.
+- [x] No public prop or controller signature changes.
+- [x] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
+- [x] Plan 004 is marked DONE.
 
 ## STOP conditions
 
