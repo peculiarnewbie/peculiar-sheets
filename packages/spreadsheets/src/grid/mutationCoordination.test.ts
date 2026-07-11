@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { columnIdx, physicalRow, rowId, formulaSheetId } from "../core/brands";
-import type { UndoRedoResult } from "../core/state";
+import { columnIdx, physicalRow, rowId, formulaSheetId, visualRow } from "../core/brands";
+import { createSheetStore, type HistoryTransitionTransaction } from "../core/state";
+import { selectCell } from "../core/selection";
 import { FormulaEngineSyncError } from "../internal/errors";
 import {
 	Result,
@@ -9,11 +10,11 @@ import {
 	isNoop,
 	noop,
 } from "../internal/result";
-import type { CellMutation, CellValue, SheetOperation } from "../types";
+import type { CellMutation, CellValue, ColumnDef, SheetOperation } from "../types";
 import {
 	buildCellsAfterMutations,
 	coordinateBatchMutations,
-	coordinateHistoryTransition,
+	coordinateHistoryCommand,
 	type FormulaSyncPort,
 	type MutationCoordinationResult,
 } from "./mutationCoordination";
@@ -67,6 +68,7 @@ function syncError(): FormulaEngineSyncError {
 function createFakeFormula(options?: {
 	syncAll?: FormulaSyncPort["syncAll"];
 	setRowOrder?: FormulaSyncPort["setRowOrder"];
+	failUntil?: number;
 }): {
 	port: FormulaSyncPort;
 	syncAllCalls: CellValue[][][];
@@ -74,12 +76,17 @@ function createFakeFormula(options?: {
 } {
 	const syncAllCalls: CellValue[][][] = [];
 	const setRowOrderCalls: number[][] = [];
+	let syncAttempts = 0;
 	return {
 		syncAllCalls,
 		setRowOrderCalls,
 		port: {
 			syncAll: (cells) => {
 				syncAllCalls.push(cells.map((row) => [...row]));
+				syncAttempts += 1;
+				if (options?.failUntil !== undefined && syncAttempts <= options.failUntil) {
+					return Result.err(syncError());
+				}
 				return options?.syncAll?.(cells) ?? Result.ok(applied(0));
 			},
 			setRowOrder: (indexOrder) => {
@@ -89,6 +96,8 @@ function createFakeFormula(options?: {
 		},
 	};
 }
+
+const columns: ColumnDef[] = [{ id: "A", header: "A", width: 100 }];
 
 describe("buildCellsAfterMutations", () => {
 	it("overlays proposed values without mutating the source grid", () => {
@@ -225,108 +234,230 @@ describe("coordinateBatchMutations", () => {
 	});
 });
 
-describe("coordinateHistoryTransition", () => {
+describe("coordinateHistoryCommand", () => {
 	it("syncs current cells once and emits batch-edit after successful mutation undo", () => {
+		const store = createSheetStore([["old"]], columns);
+		store.setSelection(selectCell({ row: visualRow(0), col: columnIdx(0) }));
+		const edit = mutation(0, 0, "old", "new");
+		store.setCells([{ row: physicalRow(0), col: 0, value: "new" }]);
+		store.pushMutations([edit], store.selection(), store.selection());
+
 		const formula = createFakeFormula();
 		const operations: SheetOperation[] = [];
-		const cells: CellValue[][] = [["restored"]];
-		const mutations = [mutation(0, 0, "new", "restored")];
-		const transition: UndoRedoResult = { mutations };
 
-		const result = coordinateHistoryTransition(
-			{
-				getCells: () => cells,
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			transition,
-		);
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
 
 		expectApplied(result);
-		expect(formula.syncAllCalls).toEqual([[["restored"]]]);
-		expect(operations).toEqual([{ type: "batch-edit", mutations }]);
+		expect(store.cells[0]?.[0]).toBe("old");
+		expect(store.canUndo()).toBe(false);
+		expect(store.canRedo()).toBe(true);
+		expect(formula.syncAllCalls).toEqual([[["old"]]]);
+		expect(operations).toEqual([
+			{
+				type: "batch-edit",
+				mutations: [mutation(0, 0, "new", "old")],
+			},
+		]);
 	});
 
-	it("routes structural row-insert transitions through full sync then host notify", () => {
-		const formula = createFakeFormula();
-		const operations: SheetOperation[] = [];
-		const cells: CellValue[][] = [["a"], ["b"], ["c"]];
-
-		const result = coordinateHistoryTransition(
-			{
-				getCells: () => cells,
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			{
-				mutations: [],
-				rowChange: { type: "insertRows", atIndex: 1, count: 1 },
-			},
+	it("routes structural row-insert undo through full sync then host notify", () => {
+		const store = createSheetStore([["a"], ["b"]], columns);
+		store.insertRows(physicalRow(1), 1);
+		store.pushRowOperation(
+			{ type: "insertRows", atIndex: 1, count: 1 },
+			store.selection(),
+			store.selection(),
 		);
 
+		const formula = createFakeFormula();
+		const operations: SheetOperation[] = [];
+
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+
 		expectApplied(result);
-		expect(formula.syncAllCalls).toEqual([cells]);
-		expect(operations).toEqual([{ type: "row-insert", atIndex: 1, count: 1 }]);
+		expect(store.rowCount()).toBe(2);
+		expect(formula.syncAllCalls).toHaveLength(1);
+		expect(operations).toEqual([{ type: "row-delete", atIndex: 1, count: 1 }]);
 	});
 
-	it("routes row-reorder transitions through setRowOrder then host notify", () => {
-		const formula = createFakeFormula();
-		const operations: SheetOperation[] = [];
-		const rowReorder = {
-			columnId: "A",
-			direction: "asc" as const,
-			oldOrder: [rowId("0"), rowId("1")],
-			newOrder: [rowId("1"), rowId("0")],
-			indexOrder: [physicalRow(1), physicalRow(0)],
-			source: "undo" as const,
-		};
-
-		const result = coordinateHistoryTransition(
+	it("routes row-reorder undo through setRowOrder then host notify", () => {
+		const store = createSheetStore([["a"], ["b"]], columns, [rowId("r0"), rowId("r1")]);
+		store.reorderRows([rowId("r1"), rowId("r0")]);
+		store.pushRowReorder(
 			{
-				getCells: () => [["a"], ["b"]],
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
+				columnId: "A",
+				direction: "asc",
+				oldOrder: [rowId("r0"), rowId("r1")],
+				newOrder: [rowId("r1"), rowId("r0")],
 			},
-			{ mutations: [], rowReorder },
+			store.selection(),
+			store.selection(),
 		);
 
+		const formula = createFakeFormula();
+		const operations: SheetOperation[] = [];
+
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+
 		expectApplied(result);
+		expect(store.rowIds()).toEqual([rowId("r0"), rowId("r1")]);
 		expect(formula.setRowOrderCalls).toEqual([[1, 0]]);
-		expect(operations).toEqual([{ type: "row-reorder", mutation: rowReorder }]);
+		expect(operations).toHaveLength(1);
+		expect(operations[0]?.type).toBe("row-reorder");
 	});
 
-	it("suppresses host operation when formula sync fails after history already applied", () => {
+	it("rolls back cells and history when formula sync fails on undo", () => {
+		const store = createSheetStore([["old"]], columns);
+		const edit = mutation(0, 0, "old", "new");
+		store.setCells([{ row: physicalRow(0), col: 0, value: "new" }]);
+		store.pushMutations([edit], store.selection(), store.selection());
+
 		const formula = createFakeFormula({
 			syncAll: () => Result.err(syncError()),
 		});
 		const operations: SheetOperation[] = [];
-		const mutations = [mutation(0, 0, "new", "restored")];
 
-		const result = coordinateHistoryTransition(
-			{
-				getCells: () => [["restored"]],
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			{ mutations },
-		);
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
 
 		expectError(result);
+		expect(store.cells[0]?.[0]).toBe("new");
+		expect(store.canUndo()).toBe(true);
+		expect(store.canRedo()).toBe(false);
 		expect(operations).toEqual([]);
 	});
 
-	it("no-ops when the history transition carries no work", () => {
+	it("rolls back structural undo when formula sync fails", () => {
+		const store = createSheetStore([["a"], ["b"], ["c"]], columns);
+		const previousCells = store.cells.map((row) => [...row]);
+		const removedData = store.deleteRows(physicalRow(1), 1);
+		store.pushRowOperation(
+			{ type: "deleteRows", atIndex: 1, count: 1, removedData, previousCells },
+			store.selection(),
+			store.selection(),
+		);
+
+		const formula = createFakeFormula({
+			syncAll: () => Result.err(syncError()),
+		});
+		const operations: SheetOperation[] = [];
+		const preIds = [...store.rowIds()];
+
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+
+		expectError(result);
+		expect(store.rowCount()).toBe(2);
+		expect(store.cells.map((row) => [...row])).toEqual([["a"], ["c"]]);
+		expect(store.rowIds()).toEqual(preIds);
+		expect(store.canUndo()).toBe(true);
+		expect(store.canRedo()).toBe(false);
+		expect(operations).toEqual([]);
+	});
+
+	it("retries successfully after clearing an injected formula failure", () => {
+		const store = createSheetStore([["old"]], columns);
+		const edit = mutation(0, 0, "old", "new");
+		store.setCells([{ row: physicalRow(0), col: 0, value: "new" }]);
+		store.pushMutations([edit], store.selection(), store.selection());
+
+		const formula = createFakeFormula({ failUntil: 1 });
+		const operations: SheetOperation[] = [];
+
+		const failed = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+		expectError(failed);
+		expect(store.cells[0]?.[0]).toBe("new");
+		expect(store.canUndo()).toBe(true);
+		expect(operations).toEqual([]);
+
+		const succeeded = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+		expectApplied(succeeded);
+		expect(store.cells[0]?.[0]).toBe("old");
+		expect(store.canUndo()).toBe(false);
+		expect(store.canRedo()).toBe(true);
+		expect(operations).toHaveLength(1);
+	});
+
+	it("rolls back redo when formula sync fails, then succeeds on retry", () => {
+		const store = createSheetStore([["old"]], columns);
+		const edit = mutation(0, 0, "old", "new");
+		store.setCells([{ row: physicalRow(0), col: 0, value: "new" }]);
+		store.pushMutations([edit], store.selection(), store.selection());
+		store.undo();
+
+		expect(store.cells[0]?.[0]).toBe("old");
+		expect(store.canRedo()).toBe(true);
+
+		const formula = createFakeFormula({ failUntil: 1 });
+		const operations: SheetOperation[] = [];
+
+		const failed = coordinateHistoryCommand({
+			beginTransition: () => store.beginRedo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+		expectError(failed);
+		expect(store.cells[0]?.[0]).toBe("old");
+		expect(store.canRedo()).toBe(true);
+		expect(operations).toEqual([]);
+
+		const succeeded = coordinateHistoryCommand({
+			beginTransition: () => store.beginRedo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
+		expectApplied(succeeded);
+		expect(store.cells[0]?.[0]).toBe("new");
+		expect(store.canUndo()).toBe(true);
+		expect(store.canRedo()).toBe(false);
+		expect(operations).toHaveLength(1);
+	});
+
+	it("no-ops when beginTransition returns null", () => {
 		const formula = createFakeFormula();
 		const operations: SheetOperation[] = [];
 
-		const result = coordinateHistoryTransition(
-			{
-				getCells: () => [],
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			{ mutations: [] },
-		);
+		const result = coordinateHistoryCommand({
+			beginTransition: () => null,
+			getCells: () => [],
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
+		});
 
 		expectNoop(result, "no-transition");
 		expect(formula.syncAllCalls).toEqual([]);
@@ -334,100 +465,55 @@ describe("coordinateHistoryTransition", () => {
 	});
 
 	it("notifies resize adapters without formula sync", () => {
+		const store = createSheetStore([["a"]], columns);
+		store.setColumnWidth("A", 120);
+		store.pushColumnResize(
+			{ columnId: "A", oldWidth: 100, newWidth: 120 },
+			store.selection(),
+			store.selection(),
+		);
+
 		const formula = createFakeFormula();
 		const columnResizes: Array<{ columnId: string; width: number }> = [];
-		const rowResizes: Array<{ rowId: string; height: number }> = [];
 
-		const result = coordinateHistoryTransition(
-			{
-				getCells: () => [],
-				emitOperation: () => {
-					throw new Error("should not emit sheet operation for resize-only");
-				},
-				formula: formula.port,
-				onColumnResize: (columnId, width) => columnResizes.push({ columnId, width }),
-				onRowResize: (id, height) => rowResizes.push({ rowId: id, height }),
+		const result = coordinateHistoryCommand({
+			beginTransition: () => store.beginUndo(),
+			getCells: () => store.cells.map((row) => [...row]),
+			emitOperation: () => {
+				throw new Error("should not emit sheet operation for resize-only");
 			},
-			{
-				mutations: [],
-				columnResize: { columnId: "A", width: 120 },
-				rowResize: { rowId: rowId("r1"), height: 40 },
-			},
-		);
+			formula: formula.port,
+			onColumnResize: (columnId, width) => columnResizes.push({ columnId, width }),
+		});
 
 		expectApplied(result);
 		expect(formula.syncAllCalls).toEqual([]);
-		expect(columnResizes).toEqual([{ columnId: "A", width: 120 }]);
-		expect(rowResizes).toEqual([{ rowId: "r1", height: 40 }]);
+		expect(columnResizes).toEqual([{ columnId: "A", width: 100 }]);
+		expect(store.columnWidths().get("A")).toBe(100);
 	});
-});
 
-describe("Plan 002 failure contract (pending)", () => {
-	/**
-	 * Desired end-state after a failed undo/redo formula sync:
-	 * local cells and history remain at pre-command values, and no host
-	 * operation is emitted. SheetStore.undo()/redo() currently mutate
-	 * synchronously before coordination, so this seam cannot enforce rollback yet.
-	 */
-	it.skip("TODO(Plan 002): undo keeps pre-command cells/history when formula sync fails", () => {
-		const preCommandCells: CellValue[][] = [["committed"]];
-		const cells = preCommandCells.map((row) => [...row]);
-		const historyDepth = { undo: 1, redo: 0 };
-		const operations: SheetOperation[] = [];
-
-		// Stand-in for the eventual propose→sync→commit API.
-		const proposed: UndoRedoResult = {
-			mutations: [mutation(0, 0, "committed", "previous")],
+	it("rolls back a fake transaction when sync fails before emit", () => {
+		let rolledBack = false;
+		const transaction: HistoryTransitionTransaction = {
+			result: { mutations: [mutation(0, 0, "new", "old")] },
+			rollback: () => {
+				rolledBack = true;
+			},
 		};
-		cells[0]![0] = "previous";
-		historyDepth.undo = 0;
-		historyDepth.redo = 1;
-
 		const formula = createFakeFormula({
 			syncAll: () => Result.err(syncError()),
 		});
-		coordinateHistoryTransition(
-			{
-				getCells: () => cells,
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			proposed,
-		);
-
-		// Plan 002 must restore these after sync failure:
-		expect(cells).toEqual(preCommandCells);
-		expect(historyDepth).toEqual({ undo: 1, redo: 0 });
-		expect(operations).toEqual([]);
-	});
-
-	it.skip("TODO(Plan 002): redo keeps pre-command cells/history when formula sync fails", () => {
-		const preCommandCells: CellValue[][] = [["previous"]];
-		const cells = preCommandCells.map((row) => [...row]);
-		const historyDepth = { undo: 0, redo: 1 };
 		const operations: SheetOperation[] = [];
 
-		const proposed: UndoRedoResult = {
-			mutations: [mutation(0, 0, "previous", "committed")],
-		};
-		cells[0]![0] = "committed";
-		historyDepth.undo = 1;
-		historyDepth.redo = 0;
-
-		const formula = createFakeFormula({
-			syncAll: () => Result.err(syncError()),
+		const result = coordinateHistoryCommand({
+			beginTransition: () => transaction,
+			getCells: () => [["old"]],
+			emitOperation: (operation) => operations.push(operation),
+			formula: formula.port,
 		});
-		coordinateHistoryTransition(
-			{
-				getCells: () => cells,
-				emitOperation: (operation) => operations.push(operation),
-				formula: formula.port,
-			},
-			proposed,
-		);
 
-		expect(cells).toEqual(preCommandCells);
-		expect(historyDepth).toEqual({ undo: 0, redo: 1 });
+		expectError(result);
+		expect(rolledBack).toBe(true);
 		expect(operations).toEqual([]);
 	});
 });

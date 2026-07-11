@@ -19,7 +19,7 @@ import type {
 } from "../types";
 import { DEFAULT_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
 import { useSheetCustomization } from "../customization";
-import type { SheetStore, UndoRedoResult } from "../core/state";
+import type { SheetStore } from "../core/state";
 import { clampColumnWidth, getColumnWidth, getEffectiveColumnWidth, mapToRecord, recordToMap } from "../core/sizing";
 import {
 	emptySelection,
@@ -44,7 +44,7 @@ import { addressToA1, isFormulaText, isFormulaValue, rangeToA1, shiftFormulaByDe
 import { Result, isApplied, type OperationOutcome, type ResultLike } from "../internal/result";
 import {
 	coordinateBatchMutations,
-	coordinateHistoryTransition,
+	coordinateHistoryCommand,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
 import GridHeader from "./GridHeader";
@@ -915,31 +915,30 @@ export default function Grid(props: GridProps) {
 		));
 	}
 
-	function applyLocalHistoryTransition(result: UndoRedoResult): void {
-		coordinateHistoryTransition(
-			{
-				getCells: () => props.store.cells,
-				emitOperation: (operation) => {
-					props.onOperation?.(operation);
-				},
-				formula: getFormulaSyncPort(),
-				...(props.columnSizing === undefined
-					? {
-							onColumnResize: (columnId: string, width: number) => {
-								notifyColumnResizeState(columnId, width);
-							},
-						}
-					: {}),
-				...(props.rowSizing === undefined
-					? {
-							onRowResize: (id: RowId, height: number) => {
-								notifyRowResizeState(id, height);
-							},
-						}
-					: {}),
+	function applyLocalHistoryCommand(direction: "undo" | "redo"): void {
+		coordinateHistoryCommand({
+			beginTransition: () =>
+				direction === "undo" ? props.store.beginUndo() : props.store.beginRedo(),
+			getCells: () => props.store.cells,
+			emitOperation: (operation) => {
+				props.onOperation?.(operation);
 			},
-			result,
-		);
+			formula: getFormulaSyncPort(),
+			...(props.columnSizing === undefined
+				? {
+						onColumnResize: (columnId: string, width: number) => {
+							notifyColumnResizeState(columnId, width);
+						},
+					}
+				: {}),
+			...(props.rowSizing === undefined
+				? {
+						onRowResize: (id: RowId, height: number) => {
+							notifyRowResizeState(id, height);
+						},
+					}
+				: {}),
+		});
 	}
 
 	function buildCellMutation(
@@ -2041,10 +2040,7 @@ export default function Grid(props: GridProps) {
 					workbookCoordinator()?.undo();
 					break;
 				}
-				const undoResult = props.store.undo();
-				if (undoResult) {
-					applyLocalHistoryTransition(undoResult);
-				}
+				applyLocalHistoryCommand("undo");
 				break;
 			}
 
@@ -2053,10 +2049,7 @@ export default function Grid(props: GridProps) {
 					workbookCoordinator()?.redo();
 					break;
 				}
-				const redoResult = props.store.redo();
-				if (redoResult) {
-					applyLocalHistoryTransition(redoResult);
-				}
+				applyLocalHistoryCommand("redo");
 				break;
 			}
 
@@ -2378,20 +2371,14 @@ export default function Grid(props: GridProps) {
 						workbookCoordinator()?.undo();
 						return;
 					}
-					const result = props.store.undo();
-					if (result) {
-						applyLocalHistoryTransition(result);
-					}
+					applyLocalHistoryCommand("undo");
 				},
 				redo: () => {
 					if (props.workbook && workbookCoordinator()?.canRedo()) {
 						workbookCoordinator()?.redo();
 						return;
 					}
-					const result = props.store.redo();
-					if (result) {
-						applyLocalHistoryTransition(result);
-					}
+					applyLocalHistoryCommand("redo");
 				},
 				insertRows: (atIndex, count) => handleInsertRows(atIndex, count),
 				deleteRows: (atIndex, count) => handleDeleteRows(atIndex, count),

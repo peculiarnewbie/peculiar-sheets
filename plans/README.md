@@ -7,7 +7,7 @@ Generated on 2026-07-11 against commit `6def943`. Execute the patch phase first,
 | Phase | Plan | Title | Priority | Effort | Depends on | Status |
 |---|---|---|---|---|---|---|
 | Patch | 001 | Establish Grid coordination test seams | P1 | M | — | DONE |
-| Patch | 002 | Commit undo and redo only after formula synchronization | P1 | M | 001 | TODO |
+| Patch | 002 | Commit undo and redo only after formula synchronization | P1 | M | 001 | DONE |
 | Patch | 003 | Synchronize batch mutations without replacing full sheets | P1 | M | 001 | TODO |
 | Patch | 004 | Make row metrics sparse for large grids | P2 | M | 001 | TODO |
 | Major | 005 | Make workbook structural operations atomic | P1 | M | 001 | TODO |

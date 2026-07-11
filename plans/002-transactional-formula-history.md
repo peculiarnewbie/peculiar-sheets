@@ -90,11 +90,11 @@ Add tests that inject a bridge failure, assert the original command remains avai
 
 ## Done criteria
 
-- [ ] Formula sync failure causes no local store, history, selection, or callback change.
-- [ ] A retry after clearing the injected failure succeeds normally.
-- [ ] Keyboard and `SheetController` paths share the same internal coordination logic.
-- [ ] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
-- [ ] Plan 002 is marked DONE.
+- [x] Formula sync failure causes no local store, history, selection, or callback change.
+- [x] A retry after clearing the injected failure succeeds normally.
+- [x] Keyboard and `SheetController` paths share the same internal coordination logic.
+- [x] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
+- [x] Plan 002 is marked DONE.
 
 ## STOP conditions
 

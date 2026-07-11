@@ -1,4 +1,7 @@
-import type { UndoRedoResult } from "../core/state";
+import type {
+	HistoryTransitionTransaction,
+	UndoRedoResult,
+} from "../core/state";
 import { toNumber, type RowId } from "../core/brands";
 import type { FormulaBridgeOperationResult } from "../formula/bridge";
 import {
@@ -42,7 +45,8 @@ export interface BatchMutationCoordinationDeps {
 	formula: FormulaSyncPort | null;
 }
 
-export interface HistoryTransitionCoordinationDeps {
+export interface HistoryCommandCoordinationDeps {
+	beginTransition: () => HistoryTransitionTransaction | null;
 	getCells(): CellValue[][];
 	emitOperation(operation: SheetOperation): void;
 	formula: FormulaSyncPort | null;
@@ -136,20 +140,13 @@ function emitRowChange(
 }
 
 /**
- * Post-history path for undo/redo: store has already applied the transition.
- * Syncs formula engine to current cells / structure, then emits host operations.
- *
- * Plan 002 constraint: SheetStore.undo()/redo() mutate synchronously before this
- * runs. There is no non-mutating propose API on the store; pure planning exists
- * only in core/history.ts and is not wired to structural application. Sync
- * failure therefore cannot roll local state back through this seam yet.
+ * Synchronize every formula stage required by a history transition.
+ * Returns the first failure/noop without emitting host operations.
  */
-export function coordinateHistoryTransition(
-	deps: HistoryTransitionCoordinationDeps,
+function syncHistoryTransitionStages(
+	deps: Pick<HistoryCommandCoordinationDeps, "formula" | "getCells">,
 	result: UndoRedoResult,
 ): MutationCoordinationResult {
-	let didWork = false;
-
 	if (result.mutations.length > 0) {
 		const syncResult = tryFormulaSync(deps.formula, (formula) =>
 			formula.syncAll(deps.getCells()),
@@ -157,8 +154,6 @@ export function coordinateHistoryTransition(
 		if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 			return syncResult;
 		}
-		deps.emitOperation({ type: "batch-edit", mutations: result.mutations });
-		didWork = true;
 	}
 
 	if (result.rowChange) {
@@ -168,8 +163,6 @@ export function coordinateHistoryTransition(
 		if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 			return syncResult;
 		}
-		emitRowChange(deps.emitOperation, result.rowChange);
-		didWork = true;
 	}
 
 	if (result.rowReorder) {
@@ -180,7 +173,32 @@ export function coordinateHistoryTransition(
 		if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 			return syncResult;
 		}
-		deps.emitOperation({ type: "row-reorder", mutation: reorder });
+	}
+
+	return Result.ok(applied(true));
+}
+
+function emitHistoryTransition(
+	deps: Pick<
+		HistoryCommandCoordinationDeps,
+		"emitOperation" | "onColumnResize" | "onRowResize"
+	>,
+	result: UndoRedoResult,
+): boolean {
+	let didWork = false;
+
+	if (result.mutations.length > 0) {
+		deps.emitOperation({ type: "batch-edit", mutations: result.mutations });
+		didWork = true;
+	}
+
+	if (result.rowChange) {
+		emitRowChange(deps.emitOperation, result.rowChange);
+		didWork = true;
+	}
+
+	if (result.rowReorder) {
+		deps.emitOperation({ type: "row-reorder", mutation: result.rowReorder });
 		didWork = true;
 	}
 
@@ -194,6 +212,29 @@ export function coordinateHistoryTransition(
 		didWork = true;
 	}
 
+	return didWork;
+}
+
+/**
+ * Transactional undo/redo: apply locally, sync formula engine, then emit —
+ * or roll the store back if synchronization fails. Syncs all stages before
+ * any host callback so partial notifications cannot escape a failed command.
+ */
+export function coordinateHistoryCommand(
+	deps: HistoryCommandCoordinationDeps,
+): MutationCoordinationResult {
+	const transaction = deps.beginTransition();
+	if (!transaction) {
+		return Result.ok(noop("no-transition"));
+	}
+
+	const syncResult = syncHistoryTransitionStages(deps, transaction.result);
+	if (Result.isError(syncResult) || isNoop(syncResult.value)) {
+		transaction.rollback();
+		return syncResult;
+	}
+
+	const didWork = emitHistoryTransition(deps, transaction.result);
 	if (!didWork) {
 		return Result.ok(noop("no-transition"));
 	}
