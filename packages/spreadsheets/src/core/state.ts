@@ -33,6 +33,7 @@ import {
 	type HistoryStack,
 	type RowOperation,
 	type UndoRedoRowChange,
+	type UndoResult,
 	canRedo as histCanRedo,
 	canUndo as histCanUndo,
 	createHistory,
@@ -60,6 +61,15 @@ export interface UndoRedoResult {
 	rowReorder?: RowReorderMutation;
 	columnResize?: { columnId: string; width: number };
 	rowResize?: { rowId: RowId; height: number };
+}
+
+/**
+ * Applied undo/redo that can still be rolled back if formula sync fails.
+ * Local state is already mutated; call `rollback()` to restore the pre-command snapshot.
+ */
+export interface HistoryTransitionTransaction {
+	result: UndoRedoResult;
+	rollback(): void;
 }
 
 export interface SheetStore {
@@ -125,6 +135,10 @@ export interface SheetStore {
 	): void;
 	undo(): UndoRedoResult | null;
 	redo(): UndoRedoResult | null;
+	/** Apply undo and return a rollback handle for transactional formula sync. */
+	beginUndo(): HistoryTransitionTransaction | null;
+	/** Apply redo and return a rollback handle for transactional formula sync. */
+	beginRedo(): HistoryTransitionTransaction | null;
 	canUndo(): boolean;
 	canRedo(): boolean;
 }
@@ -359,6 +373,134 @@ export function createSheetStore(
 		);
 		setRowIds([...nextOrder]);
 		bumpDataRevision();
+	}
+
+	interface HistorySnapshot {
+		cells: CellValue[][];
+		rowIds: RowId[];
+		dimensions: { rowCount: number; colCount: number };
+		selection: Selection;
+		colWidths: Map<string, number>;
+		rowHeights: Map<RowId, number>;
+		history: HistoryStack;
+		hasPendingRowOp: boolean;
+		nextAutoRowId: number;
+		nextProvisionalCounter: number;
+	}
+
+	function captureHistorySnapshot(): HistorySnapshot {
+		const history = historyState();
+		return {
+			cells: cells.map((row) => [...row]),
+			rowIds: [...rowIds()],
+			dimensions: { ...dimensions() },
+			selection: selection(),
+			colWidths: new Map(colWidths()),
+			rowHeights: new Map(rowHeights()),
+			history: {
+				undoStack: [...history.undoStack],
+				redoStack: [...history.redoStack],
+			},
+			hasPendingRowOp: hasPendingRowOp(),
+			nextAutoRowId: nextAutoRowId(),
+			nextProvisionalCounter: nextProvisionalCounter(),
+		};
+	}
+
+	function restoreHistorySnapshot(snapshot: HistorySnapshot): void {
+		setDimensions({ ...snapshot.dimensions });
+		setCells(
+			produce((draft) => {
+				draft.length = 0;
+				for (const row of snapshot.cells) {
+					draft.push([...row]);
+				}
+			}),
+		);
+		setRowIds([...snapshot.rowIds]);
+		setSelection(snapshot.selection);
+		setColWidths(new Map(snapshot.colWidths));
+		setRowHeights(new Map(snapshot.rowHeights));
+		setHistory({
+			undoStack: [...snapshot.history.undoStack],
+			redoStack: [...snapshot.history.redoStack],
+		});
+		setHasPendingRowOp(snapshot.hasPendingRowOp);
+		setNextAutoRowId(snapshot.nextAutoRowId);
+		setNextProvisionalCounter(snapshot.nextProvisionalCounter);
+		bumpDataRevision();
+	}
+
+	function toUndoRedoResult(planned: UndoResult): UndoRedoResult {
+		return {
+			mutations: planned.mutations,
+			...(planned.rowChange !== undefined ? { rowChange: planned.rowChange } : {}),
+			...(planned.rowReorder ? { rowReorder: planned.rowReorder } : {}),
+			...(planned.columnResize ? { columnResize: planned.columnResize } : {}),
+			...(planned.rowResize ? { rowResize: planned.rowResize } : {}),
+		};
+	}
+
+	function applyHistoryPlan(planned: UndoResult, direction: "undo" | "redo"): UndoRedoResult {
+		setHistory(planned.history);
+		setSelection(planned.selection);
+
+		if (planned.rowOp) {
+			if (direction === "undo" && planned.rowOp.type === "insertRows") {
+				// Undo of deleteRows → re-insert with saved data
+				const originalEntry = planned.history.redoStack[planned.history.redoStack.length - 1];
+				const originalRowOp =
+					originalEntry?.type === "row-operation" ? originalEntry.rowOp : undefined;
+				if (originalRowOp?.type === "deleteRows" && originalRowOp.removedData.length > 0) {
+					_insertRowsWithData(planned.rowOp.atIndex, originalRowOp.removedData);
+					if (originalRowOp.previousCells) {
+						_restoreAllCells(originalRowOp.previousCells);
+					}
+				} else {
+					applyRowOp(planned.rowOp);
+				}
+			} else {
+				applyRowOp(planned.rowOp);
+			}
+		}
+
+		if (planned.mutations.length > 0) {
+			setCells(
+				produce((draft) => {
+					for (const m of planned.mutations) {
+						const row = draft[m.address.row];
+						if (row) {
+							row[m.address.col] = m.newValue;
+						}
+					}
+				}),
+			);
+			bumpDataRevision();
+		}
+
+		if (planned.rowReorder) {
+			reorderRows(planned.rowReorder.newOrder);
+		}
+
+		if (planned.columnResize) {
+			const columnResize = planned.columnResize;
+			setColWidths((prev) => {
+				const next = new Map(prev);
+				next.set(columnResize.columnId, columnResize.width);
+				return next;
+			});
+		}
+
+		if (planned.rowResize) {
+			const rowResize = planned.rowResize;
+			setRowHeights((prev) => {
+				const next = new Map(prev);
+				next.set(rowResize.rowId, rowResize.height);
+				return next;
+			});
+		}
+
+		return toUndoRedoResult(planned);
 	}
 
 	return {
@@ -765,128 +907,36 @@ export function createSheetStore(
 		},
 
 		undo(): UndoRedoResult | null {
-			const result = histUndo(historyState());
-			if (!result) return null;
-			setHistory(result.history);
-			setSelection(result.selection);
-
-			// Apply structural row change first (if any)
-			if (result.rowOp) {
-				if (result.rowOp.type === "insertRows") {
-					// Undo of deleteRows → re-insert with saved data
-					const originalEntry = result.history.redoStack[result.history.redoStack.length - 1];
-					const originalRowOp = originalEntry?.type === "row-operation"
-						? originalEntry.rowOp
-						: undefined;
-					if (originalRowOp?.type === "deleteRows" && originalRowOp.removedData.length > 0) {
-						_insertRowsWithData(result.rowOp.atIndex, originalRowOp.removedData);
-						if (originalRowOp.previousCells) {
-							_restoreAllCells(originalRowOp.previousCells);
-						}
-					} else {
-						applyRowOp(result.rowOp);
-					}
-				} else {
-					applyRowOp(result.rowOp);
-				}
-			}
-
-			// Apply inverse cell mutations
-			if (result.mutations.length > 0) {
-				setCells(
-					produce((draft) => {
-						for (const m of result.mutations) {
-							const row = draft[m.address.row];
-							if (row) {
-								row[m.address.col] = m.newValue;
-							}
-						}
-					}),
-				);
-				bumpDataRevision();
-			}
-
-			if (result.rowReorder) {
-				reorderRows(result.rowReorder.newOrder);
-			}
-
-			if (result.columnResize) {
-				setColWidths((prev) => {
-					const next = new Map(prev);
-					next.set(result.columnResize!.columnId, result.columnResize!.width);
-					return next;
-				});
-			}
-
-			if (result.rowResize) {
-				setRowHeights((prev) => {
-					const next = new Map(prev);
-					next.set(result.rowResize!.rowId, result.rowResize!.height);
-					return next;
-				});
-			}
-
-			return {
-				mutations: result.mutations,
-				...(result.rowChange !== undefined ? { rowChange: result.rowChange } : {}),
-				...(result.rowReorder ? { rowReorder: result.rowReorder } : {}),
-				...(result.columnResize ? { columnResize: result.columnResize } : {}),
-				...(result.rowResize ? { rowResize: result.rowResize } : {}),
-			};
+			const planned = histUndo(historyState());
+			if (!planned) return null;
+			return applyHistoryPlan(planned, "undo");
 		},
 
 		redo(): UndoRedoResult | null {
-			const result = histRedo(historyState());
-			if (!result) return null;
-			setHistory(result.history);
-			setSelection(result.selection);
+			const planned = histRedo(historyState());
+			if (!planned) return null;
+			return applyHistoryPlan(planned, "redo");
+		},
 
-			// Apply structural row change first (if any)
-			if (result.rowOp) {
-				applyRowOp(result.rowOp);
-			}
-
-			// Apply forward cell mutations
-			if (result.mutations.length > 0) {
-				setCells(
-					produce((draft) => {
-						for (const m of result.mutations) {
-							const row = draft[m.address.row];
-							if (row) {
-								row[m.address.col] = m.newValue;
-							}
-						}
-					}),
-				);
-				bumpDataRevision();
-			}
-
-			if (result.rowReorder) {
-				reorderRows(result.rowReorder.newOrder);
-			}
-
-			if (result.columnResize) {
-				setColWidths((prev) => {
-					const next = new Map(prev);
-					next.set(result.columnResize!.columnId, result.columnResize!.width);
-					return next;
-				});
-			}
-
-			if (result.rowResize) {
-				setRowHeights((prev) => {
-					const next = new Map(prev);
-					next.set(result.rowResize!.rowId, result.rowResize!.height);
-					return next;
-				});
-			}
-
+		beginUndo(): HistoryTransitionTransaction | null {
+			const planned = histUndo(historyState());
+			if (!planned) return null;
+			const snapshot = captureHistorySnapshot();
+			const result = applyHistoryPlan(planned, "undo");
 			return {
-				mutations: result.mutations,
-				...(result.rowChange !== undefined ? { rowChange: result.rowChange } : {}),
-				...(result.rowReorder ? { rowReorder: result.rowReorder } : {}),
-				...(result.columnResize ? { columnResize: result.columnResize } : {}),
-				...(result.rowResize ? { rowResize: result.rowResize } : {}),
+				result,
+				rollback: () => restoreHistorySnapshot(snapshot),
+			};
+		},
+
+		beginRedo(): HistoryTransitionTransaction | null {
+			const planned = histRedo(historyState());
+			if (!planned) return null;
+			const snapshot = captureHistorySnapshot();
+			const result = applyHistoryPlan(planned, "redo");
+			return {
+				result,
+				rollback: () => restoreHistorySnapshot(snapshot),
 			};
 		},
 

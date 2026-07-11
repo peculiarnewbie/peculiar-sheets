@@ -42,6 +42,11 @@ import { applyMutations } from "../core/commands";
 import type { FormulaBridge } from "../formula/bridge";
 import { addressToA1, isFormulaText, isFormulaValue, rangeToA1, shiftFormulaByDelta } from "../formula/references";
 import { Result, isApplied, type OperationOutcome, type ResultLike } from "../internal/result";
+import {
+	coordinateBatchMutations,
+	coordinateHistoryCommand,
+	type FormulaSyncPort,
+} from "./mutationCoordination";
 import GridHeader from "./GridHeader";
 import GridBody from "./GridBody";
 import CellEditor from "./CellEditor";
@@ -319,17 +324,15 @@ export default function Grid(props: GridProps) {
 		return nextOrder.map((entry) => entry.rowId);
 	});
 
-	const rowMetrics = createMemo(() =>
-		buildRowMetrics(
-			props.store.rowCount(),
-			props.rowHeight,
-			(visualRow) => {
-				const rowId = getRowIdAtVisualRow(visualRow);
-				if (rowId === null) return undefined;
-				return committedRowHeights().get(rowId);
-			},
-		),
-	);
+	const rowMetrics = createMemo(() => {
+		const heightOverrides = new Map<number, number>();
+		for (const [id, height] of committedRowHeights()) {
+			const visual = getVisualRowForRowId(id);
+			if (visual === null) continue;
+			heightOverrides.set(toNumber(visual), height);
+		}
+		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
+	});
 
 	const rowVirtualizer = createVirtualizer({
 		get count() {
@@ -878,6 +881,16 @@ export default function Grid(props: GridProps) {
 		return Result.isOk(result) && isApplied(result.value);
 	}
 
+	function getFormulaSyncPort(): FormulaSyncPort | null {
+		const bridge = props.formulaBridge;
+		if (!bridge) return null;
+		return {
+			syncAll: (cells) => bridge.syncAll(cells),
+			setCells: (mutations) => bridge.setCells(mutations),
+			setRowOrder: (indexOrder) => bridge.setRowOrder(indexOrder),
+		};
+	}
+
 	function syncAllToFormulaEngine(): boolean {
 		if (!props.formulaBridge) return true;
 		return didApplyFormulaBridgeOperation(
@@ -901,35 +914,30 @@ export default function Grid(props: GridProps) {
 		));
 	}
 
-	function buildCellsAfterMutations(mutations: CellMutation[]): CellValue[][] {
-		const nextCells = props.store.cells.map((row) => [...row]);
-		for (const mutation of mutations) {
-			while (nextCells.length <= mutation.address.row) {
-				nextCells.push(new Array(props.store.colCount()).fill(null) as CellValue[]);
-			}
-			const row = nextCells[mutation.address.row]!;
-			while (row.length <= mutation.address.col) {
-				row.push(null);
-			}
-			row[mutation.address.col] = mutation.newValue;
-		}
-		return nextCells;
-	}
-
-	function syncMutationsToFormulaEngine(mutations: CellMutation[]): boolean {
-		if (!props.formulaBridge || mutations.length === 0) return true;
-
-		return didApplyFormulaBridgeOperation(
-			props.formulaBridge.syncAll(buildCellsAfterMutations(mutations)),
-		);
-	}
-
-	function syncAlreadyAppliedMutationsToFormulaEngine(mutations: CellMutation[]): boolean {
-		if (!props.formulaBridge || mutations.length === 0) return true;
-
-		return didApplyFormulaBridgeOperation(
-			props.formulaBridge.syncAll(props.store.cells),
-		);
+	function applyLocalHistoryCommand(direction: "undo" | "redo"): void {
+		coordinateHistoryCommand({
+			beginTransition: () =>
+				direction === "undo" ? props.store.beginUndo() : props.store.beginRedo(),
+			getCells: () => props.store.cells,
+			emitOperation: (operation) => {
+				props.onOperation?.(operation);
+			},
+			formula: getFormulaSyncPort(),
+			...(props.columnSizing === undefined
+				? {
+						onColumnResize: (columnId: string, width: number) => {
+							notifyColumnResizeState(columnId, width);
+						},
+					}
+				: {}),
+			...(props.rowSizing === undefined
+				? {
+						onRowResize: (id: RowId, height: number) => {
+							notifyRowResizeState(id, height);
+						},
+					}
+				: {}),
+		});
 	}
 
 	function buildCellMutation(
@@ -958,10 +966,16 @@ export default function Grid(props: GridProps) {
 	}
 
 	function applyBatchMutations(mutations: CellMutation[]) {
-		if (mutations.length === 0) return;
-		if (!syncMutationsToFormulaEngine(mutations)) return;
-		applyMutations(props.store, mutations);
-		props.onOperation?.({ type: "batch-edit", mutations });
+		coordinateBatchMutations(
+			{
+				applyMutations: (batch) => applyMutations(props.store, batch),
+				emitOperation: (operation) => {
+					props.onOperation?.(operation);
+				},
+				formula: getFormulaSyncPort(),
+			},
+			mutations,
+		);
 	}
 
 	function setEditorSelection(start: number, end: number = start) {
@@ -2023,31 +2037,7 @@ export default function Grid(props: GridProps) {
 					workbookCoordinator()?.undo();
 					break;
 				}
-				const undoResult = props.store.undo();
-				if (undoResult) {
-					if (undoResult.mutations.length > 0) {
-						if (!syncAlreadyAppliedMutationsToFormulaEngine(undoResult.mutations)) break;
-						props.onOperation?.({ type: "batch-edit", mutations: undoResult.mutations });
-					}
-					if (undoResult.rowChange) {
-						if (!syncAllToFormulaEngine()) break;
-						if (undoResult.rowChange.type === "insertRows") {
-							props.onOperation?.({ type: "row-insert", atIndex: undoResult.rowChange.atIndex, count: undoResult.rowChange.count });
-						} else {
-							props.onOperation?.({ type: "row-delete", atIndex: undoResult.rowChange.atIndex, count: undoResult.rowChange.count });
-						}
-					}
-					if (undoResult.rowReorder) {
-						if (!syncRowOrderToFormulaEngine(undoResult.rowReorder.indexOrder)) break;
-						props.onOperation?.({ type: "row-reorder", mutation: undoResult.rowReorder });
-					}
-					if (undoResult.columnResize && props.columnSizing === undefined) {
-						notifyColumnResizeState(undoResult.columnResize.columnId, undoResult.columnResize.width);
-					}
-					if (undoResult.rowResize && props.rowSizing === undefined) {
-						notifyRowResizeState(undoResult.rowResize.rowId, undoResult.rowResize.height);
-					}
-				}
+				applyLocalHistoryCommand("undo");
 				break;
 			}
 
@@ -2056,31 +2046,7 @@ export default function Grid(props: GridProps) {
 					workbookCoordinator()?.redo();
 					break;
 				}
-				const redoResult = props.store.redo();
-				if (redoResult) {
-					if (redoResult.mutations.length > 0) {
-						if (!syncAlreadyAppliedMutationsToFormulaEngine(redoResult.mutations)) break;
-						props.onOperation?.({ type: "batch-edit", mutations: redoResult.mutations });
-					}
-					if (redoResult.rowChange) {
-						if (!syncAllToFormulaEngine()) break;
-						if (redoResult.rowChange.type === "insertRows") {
-							props.onOperation?.({ type: "row-insert", atIndex: redoResult.rowChange.atIndex, count: redoResult.rowChange.count });
-						} else {
-							props.onOperation?.({ type: "row-delete", atIndex: redoResult.rowChange.atIndex, count: redoResult.rowChange.count });
-						}
-					}
-					if (redoResult.rowReorder) {
-						if (!syncRowOrderToFormulaEngine(redoResult.rowReorder.indexOrder)) break;
-						props.onOperation?.({ type: "row-reorder", mutation: redoResult.rowReorder });
-					}
-					if (redoResult.columnResize && props.columnSizing === undefined) {
-						notifyColumnResizeState(redoResult.columnResize.columnId, redoResult.columnResize.width);
-					}
-					if (redoResult.rowResize && props.rowSizing === undefined) {
-						notifyRowResizeState(redoResult.rowResize.rowId, redoResult.rowResize.height);
-					}
-				}
+				applyLocalHistoryCommand("redo");
 				break;
 			}
 
@@ -2402,63 +2368,15 @@ export default function Grid(props: GridProps) {
 						workbookCoordinator()?.undo();
 						return;
 					}
-					const result = props.store.undo();
-					if (result) {
-						if (result.mutations.length > 0) {
-							if (!syncAlreadyAppliedMutationsToFormulaEngine(result.mutations)) return;
-							props.onOperation?.({ type: "batch-edit", mutations: result.mutations });
-						}
-							if (result.rowChange) {
-								if (!syncAllToFormulaEngine()) return;
-								if (result.rowChange.type === "insertRows") {
-									props.onOperation?.({ type: "row-insert", atIndex: result.rowChange.atIndex, count: result.rowChange.count });
-								} else {
-									props.onOperation?.({ type: "row-delete", atIndex: result.rowChange.atIndex, count: result.rowChange.count });
-								}
-							}
-							if (result.rowReorder) {
-								if (!syncRowOrderToFormulaEngine(result.rowReorder.indexOrder)) return;
-								props.onOperation?.({ type: "row-reorder", mutation: result.rowReorder });
-							}
-							if (result.columnResize && props.columnSizing === undefined) {
-								notifyColumnResizeState(result.columnResize.columnId, result.columnResize.width);
-							}
-							if (result.rowResize && props.rowSizing === undefined) {
-								notifyRowResizeState(result.rowResize.rowId, result.rowResize.height);
-							}
-						}
-					},
+					applyLocalHistoryCommand("undo");
+				},
 				redo: () => {
 					if (props.workbook && workbookCoordinator()?.canRedo()) {
 						workbookCoordinator()?.redo();
 						return;
 					}
-					const result = props.store.redo();
-					if (result) {
-						if (result.mutations.length > 0) {
-							if (!syncAlreadyAppliedMutationsToFormulaEngine(result.mutations)) return;
-							props.onOperation?.({ type: "batch-edit", mutations: result.mutations });
-						}
-							if (result.rowChange) {
-								if (!syncAllToFormulaEngine()) return;
-								if (result.rowChange.type === "insertRows") {
-									props.onOperation?.({ type: "row-insert", atIndex: result.rowChange.atIndex, count: result.rowChange.count });
-								} else {
-									props.onOperation?.({ type: "row-delete", atIndex: result.rowChange.atIndex, count: result.rowChange.count });
-								}
-							}
-							if (result.rowReorder) {
-								if (!syncRowOrderToFormulaEngine(result.rowReorder.indexOrder)) return;
-								props.onOperation?.({ type: "row-reorder", mutation: result.rowReorder });
-							}
-							if (result.columnResize && props.columnSizing === undefined) {
-								notifyColumnResizeState(result.columnResize.columnId, result.columnResize.width);
-							}
-							if (result.rowResize && props.rowSizing === undefined) {
-								notifyRowResizeState(result.rowResize.rowId, result.rowResize.height);
-							}
-						}
-					},
+					applyLocalHistoryCommand("redo");
+				},
 				insertRows: (atIndex, count) => handleInsertRows(atIndex, count),
 				deleteRows: (atIndex, count) => handleDeleteRows(atIndex, count),
 				canUndo: () => Boolean(props.workbook && workbookCoordinator()?.canUndo()) || props.store.canUndo(),

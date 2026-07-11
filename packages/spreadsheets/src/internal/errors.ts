@@ -33,6 +33,17 @@ export class FormulaCellUpdateError extends TaggedError("FormulaCellUpdateError"
 	cause?: unknown;
 }>() {}
 
+export class FormulaBatchUpdateError extends TaggedError("FormulaBatchUpdateError")<{
+	operation: "setCells";
+	formulaName: string;
+	sheetId: FormulaSheetId;
+	cellCount: number;
+	message: string;
+	/** True when at least one written cell could not be restored after the failed batch. */
+	engineInconsistent: boolean;
+	cause?: unknown;
+}>() {}
+
 export class FormulaDisplayValueError extends TaggedError("FormulaDisplayValueError")<{
 	operation: "getDisplayValue";
 	formulaName: string;
@@ -116,6 +127,7 @@ export type FormulaBridgeError =
 	| FormulaEngineSubscriptionError
 	| FormulaEngineSyncError
 	| FormulaCellUpdateError
+	| FormulaBatchUpdateError
 	| FormulaDisplayValueError
 	| FormulaRowOrderError;
 
