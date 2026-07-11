@@ -400,62 +400,85 @@ export function createFormulaBridge(
 		const fSheetId = formulaSheetId(sheetIdResult.value.value);
 		const sheet = toNumber(fSheetId);
 
-		const result = Result.try({
-			try: () => {
-				const written: CellMutation[] = [];
+		function cellKey(row: number, col: number): string {
+			return `${row}:${col}`;
+		}
 
-				const writeAll = () => {
-					for (const mutation of mutations) {
-						hf.setCellContents(
-							{
-								sheet,
-								row: toNumber(mutation.address.row),
-								col: toNumber(mutation.address.col),
-							},
-							normalizeEngineValue(mutation.newValue),
-						);
-						written.push(mutation);
-					}
-				};
+		// First oldValue per address is the pre-batch engine state to restore.
+		const restoreByKey = new Map<string, CellValue>();
+		for (const mutation of mutations) {
+			const key = cellKey(toNumber(mutation.address.row), toNumber(mutation.address.col));
+			if (!restoreByKey.has(key)) {
+				restoreByKey.set(key, mutation.oldValue);
+			}
+		}
 
-				try {
-					if (typeof hf.batch === "function") {
-						hf.batch(writeAll);
-					} else {
-						writeAll();
-					}
-				} catch (cause) {
-					// Best-effort restore so a partial batch does not leave HF ahead of the store.
-					for (const mutation of written) {
-						try {
-							hf.setCellContents(
-								{
-									sheet,
-									row: toNumber(mutation.address.row),
-									col: toNumber(mutation.address.col),
-								},
-								normalizeEngineValue(mutation.oldValue),
-							);
-						} catch {
-							// Continue restoring remaining cells.
-						}
-					}
-					throw cause;
+		const writtenKeys: string[] = [];
+		const writtenKeySet = new Set<string>();
+
+		function writeAll(): void {
+			for (const mutation of mutations) {
+				const row = toNumber(mutation.address.row);
+				const col = toNumber(mutation.address.col);
+				const key = cellKey(row, col);
+				hf.setCellContents(
+					{ sheet, row, col },
+					normalizeEngineValue(mutation.newValue),
+				);
+				if (!writtenKeySet.has(key)) {
+					writtenKeySet.add(key);
+					writtenKeys.push(key);
 				}
-			},
-			catch: (cause) => new FormulaBatchUpdateError({
+			}
+		}
+
+		function restoreWritten(): boolean {
+			let restoredAll = true;
+			// Reverse order so repeated writes to the same address restore the original.
+			for (let index = writtenKeys.length - 1; index >= 0; index -= 1) {
+				const key = writtenKeys[index];
+				if (key === undefined) continue;
+				const separator = key.indexOf(":");
+				const row = Number(key.slice(0, separator));
+				const col = Number(key.slice(separator + 1));
+				const previous = restoreByKey.get(key);
+				if (previous === undefined) {
+					restoredAll = false;
+					continue;
+				}
+				try {
+					hf.setCellContents(
+						{ sheet, row, col },
+						normalizeEngineValue(previous),
+					);
+				} catch {
+					restoredAll = false;
+				}
+			}
+			return restoredAll;
+		}
+
+		try {
+			if (typeof hf.batch === "function") {
+				hf.batch(writeAll);
+			} else {
+				writeAll();
+			}
+		} catch (cause) {
+			const restoredAll = restoreWritten();
+			const error = new FormulaBatchUpdateError({
 				operation: "setCells",
 				formulaName: sheetName,
 				sheetId: fSheetId,
 				cellCount: mutations.length,
-				message: getErrorMessage(cause),
+				message: restoredAll
+					? getErrorMessage(cause)
+					: `batch update failed and engine restore was incomplete: ${getErrorMessage(cause)}`,
+				engineInconsistent: !restoredAll,
 				cause,
-			}),
-		});
-
-		if (Result.isError(result)) {
-			trace.err(errorTraceContext(result.error));
-			return result;
+			});
+			trace.err(errorTraceContext(error));
+			return Result.err(error);
 		}
 
 		bumpRevision();

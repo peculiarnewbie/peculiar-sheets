@@ -439,11 +439,132 @@ describe("formula bridge", () => {
 		]);
 
 		expect(Result.isError(result)).toBe(true);
-		expect(bridge.getDisplayValue(0, 0, "keep")).toBe("keep");
+		if (!Result.isError(result)) {
+			throw new Error("Expected error Result");
+		}
+		expect(result.error._tag).toBe("FormulaBatchUpdateError");
+		expect((result.error as { engineInconsistent: boolean }).engineInconsistent).toBe(false);
+		expect(engine.getCellValue({ sheet: 0, row: 0, col: 0 })).toBe("keep");
+		expect(engine.getCellValue({ sheet: 0, row: 0, col: 1 })).toBe(null);
 		expect(traceEvents.some((event) =>
 			event.operation === "setCells" &&
 			event.status === "err" &&
 			event.context.message === "batch cell update failed"
+		)).toBe(true);
+	});
+
+	it("setCells restores the original value when a batch rewrites the same address", () => {
+		const engine = createMockEngine();
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		}));
+		expectAppliedNumber(bridge.setCells([
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: null,
+				newValue: "original",
+				source: "user",
+			},
+		]));
+
+		let writes = 0;
+		const original = engine.setCellContents.bind(engine);
+		engine.setCellContents = (address, value) => {
+			writes += 1;
+			// Fail on the third forward write (second mutation's write).
+			if (writes === 3) {
+				throw new Error("duplicate address batch failed");
+			}
+			return original(address, value);
+		};
+
+		const result = bridge.setCells([
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: "original",
+				newValue: "intermediate",
+				source: "paste",
+			},
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: "intermediate",
+				newValue: "final",
+				source: "paste",
+			},
+			{
+				address: { row: physicalRow(0), col: columnIdx(1) },
+				columnId: "B",
+				oldValue: null,
+				newValue: "other",
+				source: "paste",
+			},
+		]);
+
+		expect(Result.isError(result)).toBe(true);
+		if (!Result.isError(result)) {
+			throw new Error("Expected error Result");
+		}
+		expect((result.error as { engineInconsistent: boolean }).engineInconsistent).toBe(false);
+		expect(engine.getCellValue({ sheet: 0, row: 0, col: 0 })).toBe("original");
+	});
+
+	it("setCells marks engineInconsistent when restoration itself fails", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		}));
+		expectAppliedNumber(bridge.ensureSheet());
+
+		let phase: "forward" | "restore" = "forward";
+		let forwardWrites = 0;
+		const original = engine.setCellContents.bind(engine);
+		engine.setCellContents = (address, value) => {
+			if (phase === "forward") {
+				forwardWrites += 1;
+				if (forwardWrites === 2) {
+					phase = "restore";
+					throw new Error("forward batch failed");
+				}
+				return original(address, value);
+			}
+			throw new Error("restore failed");
+		};
+
+		const result = bridge.setCells([
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: "before-a",
+				newValue: "after-a",
+				source: "user",
+			},
+			{
+				address: { row: physicalRow(0), col: columnIdx(1) },
+				columnId: "B",
+				oldValue: "before-b",
+				newValue: "after-b",
+				source: "user",
+			},
+		]);
+
+		expect(Result.isError(result)).toBe(true);
+		if (!Result.isError(result)) {
+			throw new Error("Expected error Result");
+		}
+		expect(result.error._tag).toBe("FormulaBatchUpdateError");
+		expect((result.error as { engineInconsistent: boolean }).engineInconsistent).toBe(true);
+		expect(String((result.error as { message: string }).message)).toContain(
+			"engine restore was incomplete",
+		);
+		expect(traceEvents.some((event) =>
+			event.operation === "setCells" &&
+			event.status === "err"
 		)).toBe(true);
 	});
 

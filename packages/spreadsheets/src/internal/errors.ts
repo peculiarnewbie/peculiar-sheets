@@ -39,6 +39,8 @@ export class FormulaBatchUpdateError extends TaggedError("FormulaBatchUpdateErro
 	sheetId: FormulaSheetId;
 	cellCount: number;
 	message: string;
+	/** True when at least one written cell could not be restored after the failed batch. */
+	engineInconsistent: boolean;
 	cause?: unknown;
 }>() {}
 

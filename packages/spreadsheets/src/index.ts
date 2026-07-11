@@ -68,7 +68,6 @@ export {
 	FormulaEngineSubscriptionError,
 	FormulaEngineSyncError,
 	FormulaCellUpdateError,
-	FormulaBatchUpdateError,
 	FormulaDisplayValueError,
 	FormulaRowOrderError,
 	WorkbookSheetNotRegisteredError,
