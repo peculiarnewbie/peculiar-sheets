@@ -89,11 +89,11 @@ Add a unit test with a large in-memory matrix and a one- or few-cell batch. Asse
 
 ## Done criteria
 
-- [ ] Mutation-only batch paths never call `setSheetContent`.
-- [ ] Full/structural synchronization still calls `syncAll` and retains current behavior.
-- [ ] Formula normalization, revision semantics, and Result/trace error behavior are tested.
-- [ ] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
-- [ ] Plan 003 is marked DONE.
+- [x] Mutation-only batch paths never call `setSheetContent`.
+- [x] Full/structural synchronization still calls `syncAll` and retains current behavior.
+- [x] Formula normalization, revision semantics, and Result/trace error behavior are tested.
+- [x] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
+- [x] Plan 003 is marked DONE.
 
 ## STOP conditions
 

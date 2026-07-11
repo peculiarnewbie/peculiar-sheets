@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
-import type { CellValue, FormulaEngineConfig } from "../types";
+import type { CellMutation, CellValue, FormulaEngineConfig } from "../types";
 import {
+	FormulaBatchUpdateError,
 	FormulaCellUpdateError,
 	FormulaDisplayValueError,
 	FormulaEngineSubscriptionError,
@@ -30,18 +31,23 @@ import { isFormulaValue } from "./references";
 
 /** Minimal interface we expect from a HyperFormula instance. */
 interface HyperFormulaLike {
-	setCellContents(address: { sheet: number; row: number; col: number }, value: unknown): void;
+	setCellContents(
+		address: { sheet: number; row: number; col: number },
+		value: unknown | unknown[][],
+	): void;
 	getCellValue(address: { sheet: number; row: number; col: number }): unknown;
 	addSheet(name?: string): string;
 	getSheetId(name: string): number | undefined;
 	setSheetContent(sheetId: number, data: unknown[][]): void;
 	setRowOrder(sheetId: number, newRowOrder: number[]): unknown;
 	isItPossibleToSetRowOrder(sheetId: number, newRowOrder: number[]): boolean;
+	/** Suspend recalculation across multiple writes when available. */
+	batch?(callback: () => void): unknown;
 	on(event: string, callback: (...args: unknown[]) => void): void;
 	off(event: string, callback: (...args: unknown[]) => void): void;
 }
 
-type FormulaBridgeNoopReason = "sheet-unavailable";
+type FormulaBridgeNoopReason = "sheet-unavailable" | "empty-mutations";
 type FormulaBridgeRowOrderNoopReason = FormulaBridgeNoopReason | "engine-rejected";
 
 export type FormulaBridgeOperationResult<Reason extends string = FormulaBridgeNoopReason> =
@@ -57,6 +63,8 @@ export interface FormulaBridge {
 	syncAll(cells: CellValue[][]): FormulaBridgeOperationResult;
 	/** Update a single cell in the formula engine. */
 	setCell(row: PhysicalRowIndex, col: ColumnIndex, value: CellValue): FormulaBridgeOperationResult;
+	/** Update only the changed cells from a mutation batch (no full-sheet rewrite). */
+	setCells(mutations: CellMutation[]): FormulaBridgeOperationResult;
 	/** Reorder rows structurally in the formula engine. */
 	setRowOrder(newRowOrder: number[]): FormulaBridgeOperationResult<FormulaBridgeRowOrderNoopReason>;
 	/** Get the display value for a cell (evaluated formula result or raw value). */
@@ -365,6 +373,96 @@ export function createFormulaBridge(
 		return Result.ok(applied(toNumber(fSheetId)));
 	}
 
+	function trySetCells(mutations: CellMutation[]): FormulaBridgeOperationResult {
+		const trace = withTraceContext({
+			module: "formula-bridge",
+			operation: "setCells",
+			phase: "mutation",
+			context: { formulaName: sheetName, cellCount: mutations.length },
+		});
+		trace.start();
+
+		if (mutations.length === 0) {
+			trace.noop({ reason: "empty-mutations" });
+			return Result.ok(noop("empty-mutations"));
+		}
+
+		const sheetIdResult = tryResolveSheetId();
+		if (Result.isError(sheetIdResult)) {
+			trace.err(errorTraceContext(sheetIdResult.error));
+			return sheetIdResult;
+		}
+		if (!isApplied(sheetIdResult.value)) {
+			trace.noop({ reason: sheetIdResult.value.reason });
+			return sheetIdResult;
+		}
+
+		const fSheetId = formulaSheetId(sheetIdResult.value.value);
+		const sheet = toNumber(fSheetId);
+
+		const result = Result.try({
+			try: () => {
+				const written: CellMutation[] = [];
+
+				const writeAll = () => {
+					for (const mutation of mutations) {
+						hf.setCellContents(
+							{
+								sheet,
+								row: toNumber(mutation.address.row),
+								col: toNumber(mutation.address.col),
+							},
+							normalizeEngineValue(mutation.newValue),
+						);
+						written.push(mutation);
+					}
+				};
+
+				try {
+					if (typeof hf.batch === "function") {
+						hf.batch(writeAll);
+					} else {
+						writeAll();
+					}
+				} catch (cause) {
+					// Best-effort restore so a partial batch does not leave HF ahead of the store.
+					for (const mutation of written) {
+						try {
+							hf.setCellContents(
+								{
+									sheet,
+									row: toNumber(mutation.address.row),
+									col: toNumber(mutation.address.col),
+								},
+								normalizeEngineValue(mutation.oldValue),
+							);
+						} catch {
+							// Continue restoring remaining cells.
+						}
+					}
+					throw cause;
+				}
+			},
+			catch: (cause) => new FormulaBatchUpdateError({
+				operation: "setCells",
+				formulaName: sheetName,
+				sheetId: fSheetId,
+				cellCount: mutations.length,
+				message: getErrorMessage(cause),
+				cause,
+			}),
+		});
+
+		if (Result.isError(result)) {
+			trace.err(errorTraceContext(result.error));
+			return result;
+		}
+
+		bumpRevision();
+		trace.ok({ sheetId: toNumber(fSheetId), cellCount: mutations.length });
+		return Result.ok(applied(toNumber(fSheetId)));
+	}
+
 	function trySetRowOrder(
 		newRowOrder: number[],
 	): FormulaBridgeOperationResult<FormulaBridgeRowOrderNoopReason> {
@@ -478,6 +576,10 @@ export function createFormulaBridge(
 
 		setCell(row: PhysicalRowIndex, col: ColumnIndex, value: CellValue) {
 			return trySetCell(row, col, value);
+		},
+
+		setCells(mutations: CellMutation[]) {
+			return trySetCells(mutations);
 		},
 
 		setRowOrder(newRowOrder: number[]) {

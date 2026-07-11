@@ -33,6 +33,15 @@ export class FormulaCellUpdateError extends TaggedError("FormulaCellUpdateError"
 	cause?: unknown;
 }>() {}
 
+export class FormulaBatchUpdateError extends TaggedError("FormulaBatchUpdateError")<{
+	operation: "setCells";
+	formulaName: string;
+	sheetId: FormulaSheetId;
+	cellCount: number;
+	message: string;
+	cause?: unknown;
+}>() {}
+
 export class FormulaDisplayValueError extends TaggedError("FormulaDisplayValueError")<{
 	operation: "getDisplayValue";
 	formulaName: string;
@@ -116,6 +125,7 @@ export type FormulaBridgeError =
 	| FormulaEngineSubscriptionError
 	| FormulaEngineSyncError
 	| FormulaCellUpdateError
+	| FormulaBatchUpdateError
 	| FormulaDisplayValueError
 	| FormulaRowOrderError;
 

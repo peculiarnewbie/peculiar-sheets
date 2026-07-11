@@ -34,12 +34,11 @@ export type MutationCoordinationResult = ResultLike<
 /** Injected formula engine surface — no Solid/DOM. */
 export interface FormulaSyncPort {
 	syncAll(cells: CellValue[][]): FormulaBridgeOperationResult;
+	setCells(mutations: CellMutation[]): FormulaBridgeOperationResult;
 	setRowOrder(indexOrder: number[]): FormulaBridgeOperationResult<string>;
 }
 
 export interface BatchMutationCoordinationDeps {
-	getCells(): CellValue[][];
-	getColCount(): number;
 	applyMutations(mutations: CellMutation[]): void;
 	emitOperation(operation: SheetOperation): void;
 	formula: FormulaSyncPort | null;
@@ -107,9 +106,7 @@ export function coordinateBatchMutations(
 	}
 
 	const syncResult = tryFormulaSync(deps.formula, (formula) =>
-		formula.syncAll(
-			buildCellsAfterMutations(deps.getCells(), deps.getColCount(), mutations),
-		),
+		formula.setCells(mutations),
 	);
 	if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 		return syncResult;
@@ -149,7 +146,7 @@ function syncHistoryTransitionStages(
 ): MutationCoordinationResult {
 	if (result.mutations.length > 0) {
 		const syncResult = tryFormulaSync(deps.formula, (formula) =>
-			formula.syncAll(deps.getCells()),
+			formula.setCells(result.mutations),
 		);
 		if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 			return syncResult;

@@ -888,6 +888,7 @@ export default function Grid(props: GridProps) {
 		if (!bridge) return null;
 		return {
 			syncAll: (cells) => bridge.syncAll(cells),
+			setCells: (mutations) => bridge.setCells(mutations),
 			setRowOrder: (indexOrder) => bridge.setRowOrder(indexOrder),
 		};
 	}
@@ -969,8 +970,6 @@ export default function Grid(props: GridProps) {
 	function applyBatchMutations(mutations: CellMutation[]) {
 		coordinateBatchMutations(
 			{
-				getCells: () => props.store.cells,
-				getColCount: () => props.store.colCount(),
 				applyMutations: (batch) => applyMutations(props.store, batch),
 				emitOperation: (operation) => {
 					props.onOperation?.(operation);

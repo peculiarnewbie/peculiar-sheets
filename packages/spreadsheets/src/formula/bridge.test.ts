@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
+import { columnIdx, physicalRow } from "../core/brands";
 import { createFormulaBridge, type FormulaBridge } from "./bridge";
 import { Result, isApplied, isNoop } from "../internal/result";
 import { setInternalTraceSink, type InternalTraceEvent } from "../internal/trace";
+import type { CellMutation } from "../types";
 
 function columnLettersToIndex(input: string): number {
 	let index = 0;
@@ -26,6 +28,11 @@ function createMockEngine() {
 	const sheetContents = new Map<number, unknown[][]>();
 	const handlers = new Map<string, Set<(...args: unknown[]) => void>>();
 	let nextSheetId = 0;
+	const setSheetContentCalls: Array<{ sheetId: number; data: unknown[][] }> = [];
+	const setCellContentsCalls: Array<{
+		address: { sheet: number; row: number; col: number };
+		value: unknown;
+	}> = [];
 
 	function ensureSheet(sheetId: number) {
 		const existing = sheetContents.get(sheetId);
@@ -68,6 +75,8 @@ function createMockEngine() {
 	}
 
 	return {
+		setSheetContentCalls,
+		setCellContentsCalls,
 		addSheet(name = `Sheet${nextSheetId + 1}`) {
 			const id = nextSheetId++;
 			sheetIds.set(name, id);
@@ -78,9 +87,14 @@ function createMockEngine() {
 			return sheetIds.get(name);
 		},
 		setSheetContent(sheetId: number, data: unknown[][]) {
+			setSheetContentCalls.push({
+				sheetId,
+				data: data.map((row) => [...row]),
+			});
 			sheetContents.set(sheetId, data.map((row) => [...row]));
 		},
 		setCellContents(address: { sheet: number; row: number; col: number }, value: unknown) {
+			setCellContentsCalls.push({ address: { ...address }, value });
 			const sheet = ensureSheet(address.sheet);
 			while (sheet.length <= address.row) {
 				sheet.push([]);
@@ -99,6 +113,9 @@ function createMockEngine() {
 		setRowOrder(sheetId: number, newRowOrder: number[]) {
 			const current = sheetContents.get(sheetId) ?? [];
 			sheetContents.set(sheetId, newRowOrder.map((index) => [...(current[index] ?? [])]));
+		},
+		batch(callback: () => void) {
+			callback();
 		},
 		on(event: string, callback: (...args: unknown[]) => void) {
 			const registered = handlers.get(event) ?? new Set<(...args: unknown[]) => void>();
@@ -337,5 +354,127 @@ describe("formula bridge", () => {
 			event.status === "err" &&
 			event.context.message === "display failed"
 		)).toBe(true);
+	});
+
+	it("setCells writes only changed cells, normalizes formulas, and bumps revision once", () => {
+		const engine = createMockEngine();
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		}));
+		expectAppliedNumber(bridge.ensureSheet());
+		const revisionBefore = bridge.revision();
+
+		const mutations: CellMutation[] = [
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: null,
+				newValue: 10,
+				source: "user",
+			},
+			{
+				address: { row: physicalRow(0), col: columnIdx(1) },
+				columnId: "B",
+				oldValue: null,
+				newValue: "==A1",
+				source: "paste",
+			},
+		];
+
+		expectAppliedNumber(bridge.setCells(mutations));
+
+		expect(engine.setSheetContentCalls).toEqual([]);
+		expect(engine.setCellContentsCalls).toEqual([
+			{ address: { sheet: 0, row: 0, col: 0 }, value: 10 },
+			{ address: { sheet: 0, row: 0, col: 1 }, value: "=A1" },
+		]);
+		expect(bridge.revision()).toBe(revisionBefore + 1);
+		expect(bridge.getDisplayValue(0, 1, "=A1")).toBe(10);
+	});
+
+	it("setCells returns an error Result and restores prior values on failure", () => {
+		const engine = createMockEngine();
+		resetTraceSink = setInternalTraceSink((event) => traceEvents.push(event));
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		}));
+		expectAppliedNumber(bridge.setCells([
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: null,
+				newValue: "keep",
+				source: "user",
+			},
+		]));
+		engine.setCellContentsCalls.length = 0;
+
+		let calls = 0;
+		const original = engine.setCellContents.bind(engine);
+		engine.setCellContents = (address, value) => {
+			calls += 1;
+			if (calls === 2) {
+				throw new Error("batch cell update failed");
+			}
+			return original(address, value);
+		};
+
+		const result = bridge.setCells([
+			{
+				address: { row: physicalRow(0), col: columnIdx(0) },
+				columnId: "A",
+				oldValue: "keep",
+				newValue: "first",
+				source: "user",
+			},
+			{
+				address: { row: physicalRow(0), col: columnIdx(1) },
+				columnId: "B",
+				oldValue: null,
+				newValue: "second",
+				source: "user",
+			},
+		]);
+
+		expect(Result.isError(result)).toBe(true);
+		expect(bridge.getDisplayValue(0, 0, "keep")).toBe("keep");
+		expect(traceEvents.some((event) =>
+			event.operation === "setCells" &&
+			event.status === "err" &&
+			event.context.message === "batch cell update failed"
+		)).toBe(true);
+	});
+
+	it("setCells scale guard: sparse edits never call setSheetContent", () => {
+		const engine = createMockEngine();
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+		}));
+		expectAppliedNumber(bridge.ensureSheet());
+
+		const largeGrid = Array.from({ length: 500 }, () =>
+			Array.from({ length: 20 }, () => null),
+		);
+		expectAppliedNumber(bridge.syncAll(largeGrid));
+		engine.setSheetContentCalls.length = 0;
+		engine.setCellContentsCalls.length = 0;
+
+		expectAppliedNumber(bridge.setCells([
+			{
+				address: { row: physicalRow(499), col: columnIdx(19) },
+				columnId: "T",
+				oldValue: null,
+				newValue: 42,
+				source: "user",
+			},
+		]));
+
+		expect(engine.setSheetContentCalls).toEqual([]);
+		expect(engine.setCellContentsCalls).toEqual([
+			{ address: { sheet: 0, row: 499, col: 19 }, value: 42 },
+		]);
 	});
 });

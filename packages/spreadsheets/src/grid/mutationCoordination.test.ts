@@ -67,27 +67,38 @@ function syncError(): FormulaEngineSyncError {
 
 function createFakeFormula(options?: {
 	syncAll?: FormulaSyncPort["syncAll"];
+	setCells?: FormulaSyncPort["setCells"];
 	setRowOrder?: FormulaSyncPort["setRowOrder"];
-	failUntil?: number;
+	failSetCellsUntil?: number;
 }): {
 	port: FormulaSyncPort;
 	syncAllCalls: CellValue[][][];
+	setCellsCalls: CellMutation[][];
 	setRowOrderCalls: number[][];
 } {
 	const syncAllCalls: CellValue[][][] = [];
+	const setCellsCalls: CellMutation[][] = [];
 	const setRowOrderCalls: number[][] = [];
-	let syncAttempts = 0;
+	let setCellsAttempts = 0;
 	return {
 		syncAllCalls,
+		setCellsCalls,
 		setRowOrderCalls,
 		port: {
 			syncAll: (cells) => {
 				syncAllCalls.push(cells.map((row) => [...row]));
-				syncAttempts += 1;
-				if (options?.failUntil !== undefined && syncAttempts <= options.failUntil) {
+				return options?.syncAll?.(cells) ?? Result.ok(applied(0));
+			},
+			setCells: (mutations) => {
+				setCellsCalls.push(mutations);
+				setCellsAttempts += 1;
+				if (
+					options?.failSetCellsUntil !== undefined &&
+					setCellsAttempts <= options.failSetCellsUntil
+				) {
 					return Result.err(syncError());
 				}
-				return options?.syncAll?.(cells) ?? Result.ok(applied(0));
+				return options?.setCells?.(mutations) ?? Result.ok(applied(0));
 			},
 			setRowOrder: (indexOrder) => {
 				setRowOrderCalls.push([...indexOrder]);
@@ -113,7 +124,7 @@ describe("buildCellsAfterMutations", () => {
 });
 
 describe("coordinateBatchMutations", () => {
-	it("syncs proposed cells once, then applies store + emits host operation", () => {
+	it("syncs changed cells once, then applies store + emits host operation", () => {
 		const formula = createFakeFormula();
 		const appliedMutations: CellMutation[][] = [];
 		const operations: SheetOperation[] = [];
@@ -122,8 +133,6 @@ describe("coordinateBatchMutations", () => {
 
 		const result = coordinateBatchMutations(
 			{
-				getCells: () => cells,
-				getColCount: () => 1,
 				applyMutations: (batch) => {
 					appliedMutations.push(batch);
 					cells[0]![0] = batch[0]!.newValue;
@@ -135,7 +144,8 @@ describe("coordinateBatchMutations", () => {
 		);
 
 		expectApplied(result);
-		expect(formula.syncAllCalls).toEqual([[["new"]]]);
+		expect(formula.setCellsCalls).toEqual([mutations]);
+		expect(formula.syncAllCalls).toEqual([]);
 		expect(appliedMutations).toEqual([mutations]);
 		expect(operations).toEqual([{ type: "batch-edit", mutations }]);
 		expect(cells).toEqual([["new"]]);
@@ -143,7 +153,7 @@ describe("coordinateBatchMutations", () => {
 
 	it("leaves store and host unchanged when formula sync fails", () => {
 		const formula = createFakeFormula({
-			syncAll: () => Result.err(syncError()),
+			setCells: () => Result.err(syncError()),
 		});
 		const cells: CellValue[][] = [["old"]];
 		const appliedMutations: CellMutation[][] = [];
@@ -152,8 +162,6 @@ describe("coordinateBatchMutations", () => {
 
 		const result = coordinateBatchMutations(
 			{
-				getCells: () => cells,
-				getColCount: () => 1,
 				applyMutations: (batch) => appliedMutations.push(batch),
 				emitOperation: (operation) => operations.push(operation),
 				formula: formula.port,
@@ -169,15 +177,13 @@ describe("coordinateBatchMutations", () => {
 
 	it("suppresses commit when formula sync returns noop", () => {
 		const formula = createFakeFormula({
-			syncAll: () => Result.ok(noop("sheet-missing")),
+			setCells: () => Result.ok(noop("sheet-unavailable")),
 		});
 		const appliedMutations: CellMutation[][] = [];
 		const operations: SheetOperation[] = [];
 
 		const result = coordinateBatchMutations(
 			{
-				getCells: () => [["old"]],
-				getColCount: () => 1,
 				applyMutations: (batch) => appliedMutations.push(batch),
 				emitOperation: (operation) => operations.push(operation),
 				formula: formula.port,
@@ -197,8 +203,6 @@ describe("coordinateBatchMutations", () => {
 
 		const result = coordinateBatchMutations(
 			{
-				getCells: () => [],
-				getColCount: () => 0,
 				applyMutations: (batch) => appliedMutations.push(batch),
 				emitOperation: (operation) => operations.push(operation),
 				formula: formula.port,
@@ -207,6 +211,7 @@ describe("coordinateBatchMutations", () => {
 		);
 
 		expectNoop(result, "empty-mutations");
+		expect(formula.setCellsCalls).toEqual([]);
 		expect(formula.syncAllCalls).toEqual([]);
 		expect(appliedMutations).toEqual([]);
 		expect(operations).toEqual([]);
@@ -219,8 +224,6 @@ describe("coordinateBatchMutations", () => {
 
 		const result = coordinateBatchMutations(
 			{
-				getCells: () => [["old"]],
-				getColCount: () => 1,
 				applyMutations: (batch) => appliedMutations.push(batch),
 				emitOperation: (operation) => operations.push(operation),
 				formula: null,
@@ -235,7 +238,7 @@ describe("coordinateBatchMutations", () => {
 });
 
 describe("coordinateHistoryCommand", () => {
-	it("syncs current cells once and emits batch-edit after successful mutation undo", () => {
+	it("syncs changed cells once and emits batch-edit after successful mutation undo", () => {
 		const store = createSheetStore([["old"]], columns);
 		store.setSelection(selectCell({ row: visualRow(0), col: columnIdx(0) }));
 		const edit = mutation(0, 0, "old", "new");
@@ -256,7 +259,8 @@ describe("coordinateHistoryCommand", () => {
 		expect(store.cells[0]?.[0]).toBe("old");
 		expect(store.canUndo()).toBe(false);
 		expect(store.canRedo()).toBe(true);
-		expect(formula.syncAllCalls).toEqual([[["old"]]]);
+		expect(formula.setCellsCalls).toHaveLength(1);
+		expect(formula.syncAllCalls).toEqual([]);
 		expect(operations).toEqual([
 			{
 				type: "batch-edit",
@@ -328,7 +332,7 @@ describe("coordinateHistoryCommand", () => {
 		store.pushMutations([edit], store.selection(), store.selection());
 
 		const formula = createFakeFormula({
-			syncAll: () => Result.err(syncError()),
+			setCells: () => Result.err(syncError()),
 		});
 		const operations: SheetOperation[] = [];
 
@@ -384,7 +388,7 @@ describe("coordinateHistoryCommand", () => {
 		store.setCells([{ row: physicalRow(0), col: 0, value: "new" }]);
 		store.pushMutations([edit], store.selection(), store.selection());
 
-		const formula = createFakeFormula({ failUntil: 1 });
+		const formula = createFakeFormula({ failSetCellsUntil: 1 });
 		const operations: SheetOperation[] = [];
 
 		const failed = coordinateHistoryCommand({
@@ -421,7 +425,7 @@ describe("coordinateHistoryCommand", () => {
 		expect(store.cells[0]?.[0]).toBe("old");
 		expect(store.canRedo()).toBe(true);
 
-		const formula = createFakeFormula({ failUntil: 1 });
+		const formula = createFakeFormula({ failSetCellsUntil: 1 });
 		const operations: SheetOperation[] = [];
 
 		const failed = coordinateHistoryCommand({
@@ -501,7 +505,7 @@ describe("coordinateHistoryCommand", () => {
 			},
 		};
 		const formula = createFakeFormula({
-			syncAll: () => Result.err(syncError()),
+			setCells: () => Result.err(syncError()),
 		});
 		const operations: SheetOperation[] = [];
 
