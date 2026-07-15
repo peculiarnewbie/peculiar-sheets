@@ -116,10 +116,15 @@ export function createFormulaBridge(
 	const hf = config.instance as HyperFormulaLike;
 	let resolvedSheetId: FormulaSheetId | null = config.sheetId ?? null;
 	const sheetName = config.sheetName ?? "Sheet1";
+	const onEngineContentChanged = config.onEngineContentChanged;
 	const [revision, setRevision] = createSignal(0);
 
 	function bumpRevision() {
 		setRevision((value) => value + 1);
+	}
+
+	function notifyEngineContentChanged() {
+		onEngineContentChanged?.();
 	}
 
 	function tryResolveSheetId(): FormulaBridgeOperationResult {
@@ -320,6 +325,7 @@ export function createFormulaBridge(
 			return result;
 		}
 
+		notifyEngineContentChanged();
 		bumpRevision();
 		trace.ok({ sheetId: toNumber(sheetId) });
 		return Result.ok(applied(sheetId));
@@ -368,6 +374,7 @@ export function createFormulaBridge(
 			return result;
 		}
 
+		notifyEngineContentChanged();
 		bumpRevision();
 		trace.ok({ sheetId: toNumber(fSheetId) });
 		return Result.ok(applied(toNumber(fSheetId)));
@@ -481,6 +488,7 @@ export function createFormulaBridge(
 			return Result.err(error);
 		}
 
+		notifyEngineContentChanged();
 		bumpRevision();
 		trace.ok({ sheetId: toNumber(fSheetId), cellCount: mutations.length });
 		return Result.ok(applied(toNumber(fSheetId)));
@@ -546,6 +554,7 @@ export function createFormulaBridge(
 			return rowOrderResult;
 		}
 
+		notifyEngineContentChanged();
 		bumpRevision();
 		trace.ok({ sheetId: toNumber(fSheetId) });
 		return Result.ok(applied(toNumber(fSheetId)));

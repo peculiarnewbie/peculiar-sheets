@@ -52,6 +52,10 @@ export function Sheet(props: SheetProps) {
 		if (Result.isError(synced) || !isApplied(synced.value)) {
 			return;
 		}
+
+		if (props.workbook) {
+			requireWorkbookInternals().markEngineContentUnconfirmed(props.workbook.sheetKey);
+		}
 	}
 
 	// ── Create Store ───────────────────────────────────────────────────────

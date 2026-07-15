@@ -93,12 +93,16 @@ Update the README’s workbook section and release notes with the major-version 
 
 ## Done criteria
 
-- [ ] Structural history does not retain duplicate full before/after snapshots for unaffected sheets.
-- [ ] Measured engine writes and serializations scale with affected work wherever HyperFormula semantics allow it.
-- [ ] Cross-sheet formula display, undo/redo, and atomic rollback tests pass.
-- [ ] Any public snapshot/history contract change is documented as a major migration.
-- [ ] `bun test packages/spreadsheets/src`, `pnpm typecheck`, and `pnpm build:lib` pass.
-- [ ] Plan 006 is marked DONE.
+- [x] Structural history does not retain duplicate full before/after snapshots for unaffected sheets.
+- [x] Measured engine writes and serializations scale with affected work wherever HyperFormula semantics allow it.
+- [x] Cross-sheet formula display, undo/redo, and atomic rollback tests pass.
+- [x] Any public snapshot/history contract change is documented as a major migration.
+- [x] `bun test packages/spreadsheets/src`, `pnpm typecheck`, and `pnpm build:lib` pass.
+- [x] Plan 006 is marked DONE.
+
+## Measurement notes (post-review)
+
+On a confirmed three-sheet workbook, a successful insert performs **3** `getSheetSerialized` calls (one public `after` pass), not 9. Confirmed rollback capture and cache-built `before` snapshots skip serialization. The scoped-history instrumentation test asserts both `setSheetContent` skips for clean sheets and `getSheetSerializedCalls === sheetCount`.
 
 ## STOP conditions
 
