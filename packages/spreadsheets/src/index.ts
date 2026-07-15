@@ -77,6 +77,7 @@ export {
 	WorkbookSnapshotRestoreError,
 	WorkbookReferenceInsertError,
 	WorkbookStructuralOperationError,
+	WorkbookStructuralRollbackError,
 	WorkbookHistoryError,
 } from "./internal/errors";
 

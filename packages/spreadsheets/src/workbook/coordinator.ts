@@ -46,6 +46,14 @@ export interface WorkbookCoordinatorInternals {
 	detachController(sheetKey: string, controller: SheetController): void;
 	attachDataGetter(sheetKey: string, getCells: () => CellValue[][]): void;
 	detachDataGetter(sheetKey: string, getCells: () => CellValue[][]): void;
+	markEngineContentUnconfirmed(sheetKey: string): void;
+	getLastKnownCells(sheetKey: string): CellValue[][];
+	peekHistoryEntries(): ReadonlyArray<{
+		beforeSheetKeys: string[];
+		afterSheetKeys: string[];
+		beforeCellCount: number;
+		afterCellCount: number;
+	}>;
 	handleCellPointerDown(sheetKey: string, address: VisualCellAddress, event: MouseEvent): boolean;
 	handleCellPointerMove(sheetKey: string, address: VisualCellAddress, event: MouseEvent): boolean;
 	handleEditModeChange(sheetKey: string, state: EditModeState | null): void;
@@ -214,6 +222,7 @@ export function createWorkbookCoordinator(
 				instance: hf,
 				sheetId: runtime.sheetId,
 				sheetName: runtime.formulaName,
+				onEngineContentChanged: () => registry.markEngineContentUnconfirmed(binding.sheetKey),
 			};
 		},
 
@@ -247,6 +256,29 @@ export function createWorkbookCoordinator(
 
 		detachDataGetter(sheetKey, getCells) {
 			registry.detachDataGetter(sheetKey, getCells);
+		},
+
+		markEngineContentUnconfirmed(sheetKey) {
+			registry.markEngineContentUnconfirmed(sheetKey);
+		},
+
+		getLastKnownCells(sheetKey) {
+			return registry.getSheetRuntime(sheetKey).lastKnownCells.map((row) => [...row]);
+		},
+
+		peekHistoryEntries() {
+			return history.peekEntries().map((entry) => ({
+				beforeSheetKeys: entry.before.map((snapshot) => snapshot.sheetKey),
+				afterSheetKeys: entry.after.map((snapshot) => snapshot.sheetKey),
+				beforeCellCount: entry.before.reduce(
+					(total, snapshot) => total + snapshot.cells.reduce((rowTotal, row) => rowTotal + row.length, 0),
+					0,
+				),
+				afterCellCount: entry.after.reduce(
+					(total, snapshot) => total + snapshot.cells.reduce((rowTotal, row) => rowTotal + row.length, 0),
+					0,
+				),
+			}));
 		},
 
 		handleCellPointerDown(sheetKey, address, event) {

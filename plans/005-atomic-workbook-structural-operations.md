@@ -88,12 +88,12 @@ Retain existing successful change snapshots, `Result` variants, undo/redo behavi
 
 ## Done criteria
 
-- [ ] No failed structural operation leaves any registered HyperFormula sheet or runtime cache changed.
-- [ ] Failed operations do not change history availability or emit `WorkbookStructuralChange`.
-- [ ] Rollback failure is explicit, tagged, and traced with original cause context.
-- [ ] Successful public result shape remains backward compatible unless the major-release decision explicitly documents a change.
-- [ ] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
-- [ ] Plan 005 is marked DONE.
+- [x] No failed structural operation leaves any registered HyperFormula sheet or runtime cache changed.
+- [x] Failed operations do not change history availability or emit `WorkbookStructuralChange`.
+- [x] Rollback failure is explicit, tagged, and traced with original cause context.
+- [x] Successful public result shape remains backward compatible unless the major-release decision explicitly documents a change.
+- [x] `bun test packages/spreadsheets/src` and `pnpm typecheck` pass.
+- [x] Plan 005 is marked DONE.
 
 ## STOP conditions
 

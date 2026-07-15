@@ -221,6 +221,30 @@ describe("formula bridge", () => {
 		expect(bridge.revision()).toBe(1);
 	});
 
+	it("notifies workbook integrations after successful content writes", () => {
+		const engine = createMockEngine();
+		let contentChanges = 0;
+		const bridge = expectBridge(createFormulaBridge({
+			instance: engine,
+			sheetName: "Gameplay",
+			onEngineContentChanged: () => {
+				contentChanges += 1;
+			},
+		}));
+
+		expectAppliedNumber(bridge.syncAll([[1]]));
+		expectAppliedNumber(bridge.setCell(physicalRow(0), columnIdx(0), 2));
+		expectAppliedNumber(bridge.setCells([{
+			address: { row: physicalRow(0), col: columnIdx(0) },
+			columnId: "A",
+			oldValue: 2,
+			newValue: 3,
+			source: "user",
+		}]));
+
+		expect(contentChanges).toBe(3);
+	});
+
 	it("normalizes repeated leading equals before sending formulas to the engine", () => {
 		const engine = createMockEngine();
 		const bridge = expectBridge(createFormulaBridge({

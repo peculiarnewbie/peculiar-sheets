@@ -27,6 +27,8 @@ export interface WorkbookSheetRuntime {
 	controller: SheetController | null;
 	getCells: (() => CellValue[][]) | null;
 	lastKnownCells: CellValue[][];
+	/** False until engine content is known to match lastKnownCells. */
+	engineContentConfirmed: boolean;
 }
 
 export type RuntimeResult = ResultLike<WorkbookSheetRuntime, WorkbookCoordinatorError>;
@@ -41,6 +43,8 @@ export interface SheetRegistry {
 	detachController(sheetKey: string, controller: SheetController): void;
 	attachDataGetter(sheetKey: string, getCells: () => CellValue[][]): void;
 	detachDataGetter(sheetKey: string, getCells: () => CellValue[][]): void;
+	/** Mark that HyperFormula may no longer match lastKnownCells (e.g. after formula-bridge writes). */
+	markEngineContentUnconfirmed(sheetKey: string): void;
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────
@@ -173,6 +177,7 @@ export function createSheetRegistry(
 				controller: null,
 				getCells: null,
 				lastKnownCells: [],
+				engineContentConfirmed: false,
 			});
 			sheetKeysByFormulaName.set(definition.formulaName, definition.sheetKey);
 			trace.ok({ sheetId: sheetIdResult.value });
@@ -226,6 +231,8 @@ export function createSheetRegistry(
 			const runtime = this.getSheetRuntime(sheetKey);
 			runtime.getCells = getCells;
 			runtime.lastKnownCells = cloneCells(getCells());
+			// Host data is cached, but the engine may still be empty/stale until sync.
+			runtime.engineContentConfirmed = false;
 		},
 
 		detachDataGetter(sheetKey, getCells) {
@@ -233,7 +240,12 @@ export function createSheetRegistry(
 			if (runtime.getCells === getCells) {
 				runtime.lastKnownCells = cloneCells(getCells());
 				runtime.getCells = null;
+				runtime.engineContentConfirmed = false;
 			}
+		},
+
+		markEngineContentUnconfirmed(sheetKey) {
+			this.getSheetRuntime(sheetKey).engineContentConfirmed = false;
 		},
 	};
 }

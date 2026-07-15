@@ -33,6 +33,8 @@ export interface HistoryManager {
 	) => ResultLike<WorkbookStructuralChange, WorkbookCoordinatorError>,
 	): WorkbookHistoryResult;
 	pushHistoryEntry(entry: WorkbookHistoryEntry): void;
+	/** Test/inspection helper: retained history entries in stack order. */
+	peekEntries(): readonly WorkbookHistoryEntry[];
 }
 
 // ── Factory ─────────────────────────────────────────────────────────────────
@@ -54,6 +56,10 @@ export function createHistoryManager(): HistoryManager {
 			history.splice(historyIndex);
 			history.push(entry);
 			historyIndex = history.length;
+		},
+
+		peekEntries() {
+			return history;
 		},
 
 		undo(restoreSnapshots) {
