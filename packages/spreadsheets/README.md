@@ -115,7 +115,11 @@ Notes:
 - The host owns workbook layout and naming UI.
 - `formulaName` is fixed for the lifetime of a workbook binding in v1.
 - Structural workbook sync is driven by `workbook.subscribe(...)` snapshots, not just `onRowInsert` / `onRowDelete`.
+- Failed structural operations (`insertRows`, `deleteRows`, `setRowOrder`) and failed undo/redo restores are atomic: registered HyperFormula sheets, runtime caches, and undo/redo availability are left unchanged, and subscribers do not receive a `WorkbookStructuralChange`. If rollback itself fails, the Result is a `WorkbookStructuralRollbackError` with `engineInconsistent: true`.
+- `WorkbookStructuralChange.snapshots` remains an all-registered-sheet payload for subscribers. Internal undo/redo history retains only sheets whose serialized content changed for that operation.
+- On the confirmed happy path, a structural operation serializes each registered sheet once (public `after` snapshots). Rollback capture reuses confirmed caches, and `before` history snapshots are built from those caches without a second full-workbook serialize. Formula-bridge writes (`setCell` / `setCells` / `syncAll` / `setRowOrder`) mark the workbook sheet unconfirmed so later rollback capture re-serializes that sheet instead of restoring a stale cache.
 - Non-goals in v1: built-in workbook/tabs UI, sheet rename, column insert/delete, workbook-wide non-structural undo
+- No repository changelog convention exists yet; treat the atomic-failure and scoped-history notes above as the migration contract for the major workbook release.
 
 ## Props
 

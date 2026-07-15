@@ -116,6 +116,19 @@ export class WorkbookStructuralOperationError extends TaggedError("WorkbookStruc
 	cause?: unknown;
 }>() {}
 
+export class WorkbookStructuralRollbackError extends TaggedError("WorkbookStructuralRollbackError")<{
+	operation: string;
+	sheetKey?: string;
+	atIndex?: PhysicalRowIndex;
+	count?: number;
+	indexOrder?: PhysicalRowIndex[];
+	message: string;
+	/** True when at least one registered sheet could not be restored after the failed operation. */
+	engineInconsistent: boolean;
+	cause?: unknown;
+	rollbackCause?: unknown;
+}>() {}
+
 export class WorkbookHistoryError extends TaggedError("WorkbookHistoryError")<{
 	operation: "undo" | "redo";
 	message: string;
@@ -139,4 +152,5 @@ export type WorkbookCoordinatorError =
 	| WorkbookSnapshotRestoreError
 	| WorkbookReferenceInsertError
 	| WorkbookStructuralOperationError
+	| WorkbookStructuralRollbackError
 	| WorkbookHistoryError;

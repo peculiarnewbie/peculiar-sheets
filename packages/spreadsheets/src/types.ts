@@ -443,6 +443,11 @@ export interface FormulaEngineConfig {
 	instance: unknown;
 	sheetId?: FormulaSheetId;
 	sheetName?: string;
+	/**
+	 * Called after the bridge successfully mutates engine content. Workbook
+	 * integrations use this to invalidate their engine-content snapshot cache.
+	 */
+	onEngineContentChanged?: () => void;
 }
 
 // ── Internal Helpers ─────────────────────────────────────────────────────────

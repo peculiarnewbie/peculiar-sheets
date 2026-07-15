@@ -49,6 +49,7 @@ import {
 	coordinateHistoryCommand,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
+import { getWorkbookCoordinatorInternals } from "../workbook/coordinator";
 import GridHeader from "./GridHeader";
 import GridBody from "./GridBody";
 import CellEditor from "./CellEditor";
@@ -906,17 +907,29 @@ export default function Grid(props: GridProps) {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
 	}
 
+	function markWorkbookEngineUnconfirmed() {
+		const binding = props.workbook;
+		if (!binding) return;
+		getWorkbookCoordinatorInternals(binding.coordinator)
+			.markEngineContentUnconfirmed(binding.sheetKey);
+	}
+
 	function didApplyFormulaBridgeOperation(
 		result:
 			| ReturnType<FormulaBridge["ensureSheet"]>
 			| ReturnType<FormulaBridge["syncAll"]>
 			| ReturnType<FormulaBridge["setCell"]>
+			| ReturnType<FormulaBridge["setCells"]>
 			| ReturnType<FormulaBridge["setRowOrder"]>
 			| null
 			| undefined,
 	): boolean {
 		if (!props.formulaBridge) return true;
-		return Boolean(result && Result.isOk(result) && isApplied(result.value));
+		const applied = Boolean(result && Result.isOk(result) && isApplied(result.value));
+		if (applied) {
+			markWorkbookEngineUnconfirmed();
+		}
+		return applied;
 	}
 
 	function didApplyResult<T, Reason extends string, Error>(
@@ -929,9 +942,27 @@ export default function Grid(props: GridProps) {
 		const bridge = props.formulaBridge;
 		if (!bridge) return null;
 		return {
-			syncAll: (cells) => bridge.syncAll(cells),
-			setCells: (mutations) => bridge.setCells(mutations),
-			setRowOrder: (indexOrder) => bridge.setRowOrder(indexOrder),
+			syncAll: (cells) => {
+				const result = bridge.syncAll(cells);
+				if (Result.isOk(result) && isApplied(result.value)) {
+					markWorkbookEngineUnconfirmed();
+				}
+				return result;
+			},
+			setCells: (mutations) => {
+				const result = bridge.setCells(mutations);
+				if (Result.isOk(result) && isApplied(result.value)) {
+					markWorkbookEngineUnconfirmed();
+				}
+				return result;
+			},
+			setRowOrder: (indexOrder) => {
+				const result = bridge.setRowOrder(indexOrder);
+				if (Result.isOk(result) && isApplied(result.value)) {
+					markWorkbookEngineUnconfirmed();
+				}
+				return result;
+			},
 		};
 	}
 
