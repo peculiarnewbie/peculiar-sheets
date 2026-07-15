@@ -119,7 +119,7 @@ Notes:
 - `WorkbookStructuralChange.snapshots` remains an all-registered-sheet payload for subscribers. Internal undo/redo history retains only sheets whose serialized content changed for that operation.
 - On the confirmed happy path, a structural operation serializes each registered sheet once (public `after` snapshots). Rollback capture reuses confirmed caches, and `before` history snapshots are built from those caches without a second full-workbook serialize. Formula-bridge writes (`setCell` / `setCells` / `syncAll` / `setRowOrder`) mark the workbook sheet unconfirmed so later rollback capture re-serializes that sheet instead of restoring a stale cache.
 - Non-goals in v1: built-in workbook/tabs UI, sheet rename, column insert/delete, workbook-wide non-structural undo
-- No repository changelog convention exists yet; treat the atomic-failure and scoped-history notes above as the migration contract for the major workbook release.
+- See [CHANGELOG.md](./CHANGELOG.md) for the `0.10.1` release notes covering these atomic-failure and scoped-history semantics.
 
 ## Props
 
@@ -254,6 +254,10 @@ import {
 	shiftFormulaByDelta,
 } from "peculiar-sheets";
 ```
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## License
 
