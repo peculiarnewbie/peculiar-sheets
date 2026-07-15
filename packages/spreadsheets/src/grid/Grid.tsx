@@ -1,9 +1,11 @@
 import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { unwrap } from "solid-js/store";
 import { createVirtualizer } from "@tanstack/solid-virtual";
 import type {
 	CellMutation,
 	CellRange,
 	CellValue,
+	CellWrite,
 	ColumnDef,
 	PhysicalCellAddress,
 	ResizeMode,
@@ -54,7 +56,7 @@ import FormulaBar from "./FormulaBar";
 import SelectionOverlay from "./SelectionOverlay";
 import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
 import SearchBar from "./SearchBar";
-import { createMatchSet, findMatchesChunked } from "../core/search";
+import { createActiveSearchScanSource, createMatchSet, findMatchesChunked } from "../core/search";
 import { buildRowMetrics } from "./rowMetrics";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
 import type { WorkbookSheetBinding } from "../workbook/types";
@@ -342,10 +344,24 @@ export default function Grid(props: GridProps) {
 		estimateSize: (index) => rowMetrics().getRowHeight(visualRow(index)),
 		overscan: 3,
 	});
+	const columnVirtualizer = createVirtualizer({
+		get count() {
+			return props.columns.length;
+		},
+		getScrollElement: () => viewportRef ?? null,
+		estimateSize: (index) => columnWidths()[index] ?? DEFAULT_COL_WIDTH,
+		horizontal: true,
+		overscan: 2,
+	});
 
 	createEffect(
 		on(rowMetrics, () => {
 			rowVirtualizer.measure();
+		}),
+	);
+	createEffect(
+		on(columnWidths, () => {
+			columnVirtualizer.measure();
 		}),
 	);
 
@@ -477,27 +493,27 @@ export default function Grid(props: GridProps) {
 		}),
 	);
 
+	const activeSearchScan = createActiveSearchScanSource({
+		query: debouncedSearchQuery,
+		rowCount: () => props.store.rowCount(),
+		colCount: () => props.store.colCount(),
+		dataRevision: () => props.store.dataRevision(),
+		formulaRevision: () => props.formulaBridge?.revision() ?? 0,
+	});
+
 	createEffect(
-		on(
-			[
-				debouncedSearchQuery,
-				() => props.store.rowCount(),
-				() => props.store.colCount(),
-				() => props.store.dataRevision(),
-				() => props.formulaBridge?.revision() ?? 0,
-			],
-			([query, rowCount, colCount]) => {
-				let cancelled = false;
-				if (!query) {
-					setSearchMatches([]);
+		on(activeSearchScan, (scan) => {
+				if (!scan) {
+					setSearchMatches((matches) => matches.length === 0 ? matches : []);
 					return;
 				}
+				let cancelled = false;
 
 				void findMatchesChunked(
 					getDisplayCellValueForPhysicalRow,
-					rowCount,
-					colCount,
-					query,
+					scan.rowCount,
+					scan.colCount,
+					scan.query,
 					{ isCancelled: () => cancelled },
 				).then((matches) => {
 					if (!cancelled) setSearchMatches(matches);
@@ -506,9 +522,26 @@ export default function Grid(props: GridProps) {
 				onCleanup(() => {
 					cancelled = true;
 				});
-			},
-		),
+			}),
 	);
+	const virtualColumns = createMemo(() => {
+		const rendered = new Map<number, { index: number; start: number; size: number; column: ColumnDef }>();
+		for (const item of columnVirtualizer.getVirtualItems()) {
+			const column = props.columns[item.index];
+			if (column) rendered.set(item.index, { index: item.index, start: item.start, size: item.size, column });
+		}
+		for (let index = 0; index < props.columns.length; index++) {
+			const column = props.columns[index];
+			if (!column || column.pinned !== "left" || rendered.has(index)) continue;
+			rendered.set(index, {
+				index,
+				start: columnRightOffsets()[index - 1] ?? 0,
+				size: columnWidths()[index] ?? DEFAULT_COL_WIDTH,
+				column,
+			});
+		}
+		return [...rendered.values()].sort((left, right) => left.index - right.index);
+	});
 
 	const searchMatchSet = createMemo(() => createMatchSet(searchMatches()));
 
@@ -843,7 +876,18 @@ export default function Grid(props: GridProps) {
 	});
 
 	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
-		return props.store.cells[toNumber(row)]?.[toNumber(col)] ?? null;
+		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
+		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
+		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
+		props.store.structuralRevision();
+		const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
+		if (id !== null) {
+			props.store.rowRevision(id);
+		}
+		return untrack(() => {
+			const rawCells = unwrap(props.store.cells);
+			return rawCells[toNumber(row)]?.[toNumber(col)] ?? null;
+		});
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -976,6 +1020,24 @@ export default function Grid(props: GridProps) {
 			},
 			mutations,
 		);
+	}
+
+	function buildExternalBatchMutations(writes: readonly CellWrite[]): CellMutation[] {
+		const latestWrites = new Map<string, CellWrite>();
+		for (const write of writes) {
+			latestWrites.set(`${write.row},${write.col}`, write);
+		}
+
+		const mutations: CellMutation[] = [];
+		for (const write of latestWrites.values()) {
+			const mutation = buildCellMutation(
+				{ row: visualRow(write.row), col: columnIdx(write.col) },
+				write.value,
+				"external",
+			);
+			if (mutation) mutations.push(mutation);
+		}
+		return mutations;
 	}
 
 	function setEditorSelection(start: number, end: number = start) {
@@ -2360,7 +2422,10 @@ export default function Grid(props: GridProps) {
 						if (!syncMutationToFormulaEngine(mutation)) return;
 						applyMutations(props.store, [mutation]);
 						props.onOperation?.({ type: "cell-edit", mutation });
-				},
+					},
+					setCellValues: (writes) => {
+						applyBatchMutations(buildExternalBatchMutations(writes));
+					},
 				getColumnMeta: (columnId) =>
 					props.columns.find((column) => column.id === columnId)?.meta,
 				undo: () => {
@@ -2476,7 +2541,6 @@ export default function Grid(props: GridProps) {
 					>
 						<GridBody
 							columns={props.columns}
-							columnWidths={committedColumnWidths()}
 							rowMetrics={rowMetrics()}
 							rowGutterWidth={rowGutterWidth()}
 							showReferenceHeaders={props.showReferenceHeaders}
@@ -2487,6 +2551,7 @@ export default function Grid(props: GridProps) {
 							onRowResizeStart={handleRowResizeStart}
 							activeResizeRow={activeResizeRow()}
 							virtualRows={virtualRows()}
+							virtualColumns={virtualColumns()}
 							totalHeight={rowMetrics().getTotalHeight()}
 							getDisplayValue={getDisplayCellValue}
 							getRawValue={getRawCellValue}

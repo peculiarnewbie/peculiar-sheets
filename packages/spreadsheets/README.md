@@ -185,7 +185,16 @@ ctrl.undo();
 ctrl.redo();
 ```
 
-Key methods: `getSelection`, `setSelection`, `clearSelection`, `scrollToCell`, `startEditing`, `stopEditing`, `getRawCellValue`, `getDisplayCellValue`, `setCellValue`, `undo`, `redo`, `canUndo`, `canRedo`.
+Key methods: `getSelection`, `setSelection`, `clearSelection`, `scrollToCell`, `startEditing`, `stopEditing`, `getRawCellValue`, `getDisplayCellValue`, `setCellValue`, `setCellValues`, `undo`, `redo`, `canUndo`, `canRedo`.
+
+Use `setCellValues` for bulk host updates that should share one formula sync, store update, undo entry, and `batch-edit` operation:
+
+```ts
+ctrl.setCellValues([
+	{ row: 0, col: 0, value: "Alice" },
+	{ row: 0, col: 1, value: 31 },
+]);
+```
 
 ## Customization
 

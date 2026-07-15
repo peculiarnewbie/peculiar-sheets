@@ -33,6 +33,7 @@ export type {
 	CellRenderContext,
 	CellStyle,
 	CellValue,
+	CellWrite,
 	ClipboardPayload,
 	ColumnDef,
 	EditModeState,

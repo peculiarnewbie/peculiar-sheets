@@ -33,6 +33,7 @@ function createStubController(
 		cancelActiveEditor: () => {},
 		getCellValue: () => null,
 		setCellValue: () => {},
+		setCellValues: () => {},
 		insertRows: () => {},
 		deleteRows: () => {},
 		getColumnMeta: () => undefined,

@@ -126,7 +126,8 @@ describe("sorting", () => {
 		expect(mutations).toHaveLength(1);
 		expect(mutations[0]?.address).toEqual({ row: 3, col: 0 });
 		expect(mutations[0]?.viewAddress).toEqual({ row: 0, col: 0 });
-		expect(typeof mutations[0]?.rowId).toBe("number");
+		// Auto row ids are string indices (`RowId`); Dave is physical row 3.
+		expect(mutations[0]?.rowId).toBe("3");
 	});
 
 	it("keeps the selected column active when view sort direction changes", async () => {

@@ -30,6 +30,13 @@ export interface CellRange {
 	end: VisualCellAddress;
 }
 
+/** A visual cell write used by the imperative batch mutation API. */
+export interface CellWrite {
+	row: number;
+	col: number;
+	value: CellValue;
+}
+
 // ── Selection ────────────────────────────────────────────────────────────────
 
 export interface Selection {
@@ -410,6 +417,12 @@ export interface SheetController {
 	/** Legacy alias for getRawCellValue. */
 	getCellValue(row: number, col: number): CellValue;
 	setCellValue(row: number, col: number, value: CellValue): void;
+	/**
+	 * Apply multiple visual cell writes as one formula sync, store update,
+	 * undo entry, revision bump, and `batch-edit` operation.
+	 * Duplicate addresses use the last supplied value.
+	 */
+	setCellValues(writes: readonly CellWrite[]): void;
 	/** Insert empty rows at the given index, shifting existing data down. */
 	insertRows(atIndex: number, count: number): void;
 	/** Delete rows at the given index, shifting existing data up. */

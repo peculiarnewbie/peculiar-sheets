@@ -1,6 +1,40 @@
 import type { PhysicalCellAddress, CellValue } from "../types";
+import type { Accessor } from "solid-js";
 import { type ColumnIndex, type PhysicalRowIndex, columnIdx, physicalRow, toNumber } from "./brands";
 import { defaultFormatCellValue } from "./formatting";
+
+export interface ActiveSearchScan {
+	query: string;
+	rowCount: number;
+	colCount: number;
+	dataRevision: number;
+	formulaRevision: number;
+}
+
+/**
+ * Creates a dynamically-tracked search source. Grid revisions are deliberately
+ * read only while a query is active, so ordinary writes do not invalidate idle
+ * search state or every rendered cell's search classes.
+ */
+export function createActiveSearchScanSource(options: {
+	query: Accessor<string>;
+	rowCount: Accessor<number>;
+	colCount: Accessor<number>;
+	dataRevision: Accessor<number>;
+	formulaRevision: Accessor<number>;
+}): Accessor<ActiveSearchScan | null> {
+	return () => {
+		const query = options.query();
+		if (!query) return null;
+		return {
+			query,
+			rowCount: options.rowCount(),
+			colCount: options.colCount(),
+			dataRevision: options.dataRevision(),
+			formulaRevision: options.formulaRevision(),
+		};
+	};
+}
 
 // ── Search Logic ────────────────────────────────────────────────────────────
 

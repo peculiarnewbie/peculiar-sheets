@@ -78,7 +78,21 @@ export interface SheetStore {
 	rowCount(): number;
 	colCount(): number;
 	rowIds(): RowId[];
+	/**
+	 * Global revision bumped on any cell or structural data change.
+	 * Prefer `rowRevision` / `structuralRevision` for render subscriptions.
+	 */
 	dataRevision(): number;
+	/**
+	 * Per-row revision keyed by stable {@link RowId}.
+	 * Bumped only for cell writes that touch that row.
+	 */
+	rowRevision(rowId: RowId): number;
+	/**
+	 * Bumped on insert/delete/reorder/resize/snapshot/reconcile structure changes.
+	 * Rendered cells should subscribe to this plus their row revision.
+	 */
+	structuralRevision(): number;
 	selection(): Selection;
 	editMode(): EditModeState | null;
 	columnWidths(): Map<string, number>;
@@ -182,9 +196,40 @@ export function createSheetStore(
 	const [historyState, setHistory] = createSignal<HistoryStack>(createHistory());
 	const [hasPendingRowOp, setHasPendingRowOp] = createSignal(false);
 	const [dataRevision, setDataRevision] = createSignal(0);
+	const [structuralRevision, setStructuralRevision] = createSignal(0);
+	const [rowRevisions, setRowRevisions] = createStore<Record<string, number>>({});
 
 	function bumpDataRevision() {
 		setDataRevision((value) => value + 1);
+	}
+
+	function bumpStructuralRevision() {
+		setStructuralRevision((value) => value + 1);
+		bumpDataRevision();
+	}
+
+	function bumpRowRevisionsForPhysicalRows(rows: Iterable<number>) {
+		const ids = rowIds();
+		const unique = new Set<string>();
+		for (const row of rows) {
+			const id = ids[row];
+			if (id !== undefined) unique.add(id);
+		}
+		if (unique.size === 0) return;
+		for (const id of unique) {
+			setRowRevisions(id, (value = 0) => value + 1);
+		}
+		bumpDataRevision();
+	}
+
+	function forgetRowRevisions(ids: Iterable<RowId>) {
+		setRowRevisions(
+			produce((draft) => {
+				for (const id of ids) {
+					delete draft[id];
+				}
+			}),
+		);
 	}
 
 	function allocateNewRowIds(count: number, explicitIds?: RowId[]): RowId[] {
@@ -245,10 +290,9 @@ export function createSheetStore(
 		if (trackPending) {
 			setHasPendingRowOp(true);
 		}
-		bumpDataRevision();
+		bumpStructuralRevision();
 	}
 
-	/** Internal: splice rows out of the cells array, update dimensions, return removed data. */
 	function _deleteRows(atIndex: number, count: number, trackPending = true): CellValue[][] {
 		const currentRowCount = dimensions().rowCount;
 		const cc = dimensions().colCount;
@@ -283,13 +327,14 @@ export function createSheetStore(
 		);
 		setRowIds((prev) => {
 			const next = [...prev];
-			next.splice(deleteAt, actualCount);
+			const removedIds = next.splice(deleteAt, actualCount);
+			forgetRowRevisions(removedIds);
 			return next;
 		});
 		if (trackPending) {
 			setHasPendingRowOp(true);
 		}
-		bumpDataRevision();
+		bumpStructuralRevision();
 
 		return removedData;
 	}
@@ -315,7 +360,7 @@ export function createSheetStore(
 				}
 			}),
 		);
-		bumpDataRevision();
+		// Structural revision already bumped by _insertRows.
 	}
 
 	function _restoreAllCells(snapshot: CellValue[][]) {
@@ -327,7 +372,7 @@ export function createSheetStore(
 				}
 			}),
 		);
-		bumpDataRevision();
+		bumpStructuralRevision();
 	}
 
 	/** Internal: apply a row operation (used during undo/redo). */
@@ -372,7 +417,7 @@ export function createSheetStore(
 			}),
 		);
 		setRowIds([...nextOrder]);
-		bumpDataRevision();
+		bumpStructuralRevision();
 	}
 
 	interface HistorySnapshot {
@@ -428,7 +473,7 @@ export function createSheetStore(
 		setHasPendingRowOp(snapshot.hasPendingRowOp);
 		setNextAutoRowId(snapshot.nextAutoRowId);
 		setNextProvisionalCounter(snapshot.nextProvisionalCounter);
-		bumpDataRevision();
+		bumpStructuralRevision();
 	}
 
 	function toUndoRedoResult(planned: UndoResult): UndoRedoResult {
@@ -475,7 +520,7 @@ export function createSheetStore(
 					}
 				}),
 			);
-			bumpDataRevision();
+			bumpRowRevisionsForPhysicalRows(planned.mutations.map((m) => toNumber(m.address.row)));
 		}
 
 		if (planned.rowReorder) {
@@ -512,6 +557,10 @@ export function createSheetStore(
 		colCount: () => dimensions().colCount,
 		rowIds,
 		dataRevision,
+		rowRevision(id: RowId) {
+			return rowRevisions[id] ?? 0;
+		},
+		structuralRevision,
 
 		selection,
 		editMode,
@@ -538,7 +587,7 @@ export function createSheetStore(
 					draftRow[col] = value;
 				}),
 			);
-			bumpDataRevision();
+			bumpRowRevisionsForPhysicalRows([toNumber(row)]);
 		},
 
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
@@ -561,7 +610,7 @@ export function createSheetStore(
 					}
 				}),
 			);
-			bumpDataRevision();
+			bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 		},
 
 		reorderRows,
@@ -611,6 +660,7 @@ export function createSheetStore(
 				if (prev.length === newRowCount) return prev;
 
 				if (prev.length > newRowCount) {
+					forgetRowRevisions(prev.slice(newRowCount));
 					return prev.slice(0, newRowCount);
 				}
 
@@ -619,7 +669,7 @@ export function createSheetStore(
 				next.push(...allocateNewRowIds(additional));
 				return next;
 			});
-			bumpDataRevision();
+			bumpStructuralRevision();
 		},
 
 		restoreSnapshot(nextCells: CellValue[][], nextRowIds: RowId[]) {
@@ -634,7 +684,7 @@ export function createSheetStore(
 			);
 			setRowIds([...nextRowIds]);
 			setHasPendingRowOp(false);
-			bumpDataRevision();
+			bumpStructuralRevision();
 		},
 
 		adoptRowIds(ids: RowId[]) {
@@ -644,7 +694,7 @@ export function createSheetStore(
 				);
 			}
 			setRowIds([...ids]);
-			bumpDataRevision();
+			bumpStructuralRevision();
 		},
 
 		hasHostRowIds: () => hostProvidesRowIds(),
@@ -738,7 +788,7 @@ export function createSheetStore(
 								}
 							}),
 						);
-						bumpDataRevision();
+						bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 					},
 					resizeColumns(colCount: number) {
 						setDimensions({ rowCount: dimensions().rowCount, colCount });
@@ -753,7 +803,7 @@ export function createSheetStore(
 								}
 							}),
 						);
-						bumpDataRevision();
+						bumpStructuralRevision();
 					},
 				};
 
@@ -798,12 +848,14 @@ export function createSheetStore(
 				setRowIds((prev) => {
 					if (prev.length === newRowCount) return prev;
 					if (prev.length > newRowCount) {
+						forgetRowRevisions(prev.slice(newRowCount));
 						return prev.slice(0, newRowCount);
 					}
 					const next = [...prev];
 					next.push(...allocateNewRowIds(newRowCount - prev.length));
 					return next;
 				});
+				bumpStructuralRevision();
 				didChange = true;
 			}
 
@@ -849,7 +901,7 @@ export function createSheetStore(
 						}
 					}),
 				);
-				bumpDataRevision();
+				bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 				didChange = true;
 			}
 
