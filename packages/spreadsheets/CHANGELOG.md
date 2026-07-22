@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking (dependency graph):** `hyperformula` is no longer a production dependency of `peculiar-sheets`. The packed core installs without HyperFormula.
+- **Breaking (dependency graph):** `hyperformula` is no longer a production or peer dependency of `peculiar-sheets`. The packed core installs without HyperFormula.
 - Formula evaluation remains available through the optional duck-typed `formulaEngine` / workbook APIs. Hosts that need HyperFormula should install it directly or use the separately named GPL package `peculiar-sheets-hyperformula`.
 - Package description and keywords no longer imply a bundled formula engine.
-- Added `pnpm --filter peculiar-sheets pack:check` to reject packed manifests that reintroduce HyperFormula as a production dependency.
+- Added `pnpm --filter peculiar-sheets pack:check` to reject packed manifests that reintroduce HyperFormula as a production or peer dependency.
 
 ### License note
 
