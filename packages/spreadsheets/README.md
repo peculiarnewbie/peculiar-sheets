@@ -304,7 +304,7 @@ import {
 
 - Packed `peculiar-sheets` must not declare HyperFormula as a production dependency. Verify with `pnpm --filter peculiar-sheets pack:check`.
 - Formula hosts use `peculiar-sheets-hyperformula` (GPL) or a self-managed HyperFormula install.
-- An MIT formula-free npm release requires an explicit copyright-holder authorization and published registry evidence. This repository change alone is not that release.
+- The copyright holder has authorized the formula-free core under MIT. Published registry metadata must report MIT and omit HyperFormula from production and peer dependencies.
 
 ## Changelog
 
@@ -312,6 +312,6 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 ## License
 
-[GPL-3.0](./LICENSE)
+[MIT](./LICENSE)
 
 The optional HyperFormula adapter and HyperFormula itself are GPL-licensed. They are not part of the formula-free core dependency graph.

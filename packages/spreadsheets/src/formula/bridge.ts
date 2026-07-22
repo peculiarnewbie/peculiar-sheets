@@ -27,7 +27,8 @@ import { isFormulaValue } from "./references";
 //
 // This module wraps HyperFormula as an optional formula engine. It uses dynamic
 // property access so the library has no hard compile-time dependency on
-// HyperFormula — it's a peer dependency that may or may not be installed.
+// HyperFormula. Hosts that opt into formulas provide the engine instance themselves
+// or through the separately licensed adapter.
 
 /** Minimal interface we expect from a HyperFormula instance. */
 interface HyperFormulaLike {

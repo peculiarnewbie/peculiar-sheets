@@ -9,23 +9,22 @@ Preparatory work on `feature/023-formula-free-mit-core` (2026-07-22).
 - UE Shed's required surface (`Sheet`, `rowId`, operation/selection types, `peculiar-sheets/styles`) is preserved without installing HyperFormula.
 - Packed-manifest gate: `pnpm --filter peculiar-sheets pack:check`.
 
-## Not claimed / not done here
+## Authorization and remaining release work
 
-- **No MIT claim.** Package `license` remains `GPL-3.0-only`. This agent does not authorize copyright relicensing.
+- The copyright holder authorized the formula-free `peculiar-sheets` core under MIT on 2026-07-22.
 - **HyperFormula is not MIT.**
-- **No publish, tag, push, or merge** was performed.
+- The optional `peculiar-sheets-hyperformula` adapter remains GPL-3.0-only.
 - **No npm formula-free MIT release exists yet** (`npm view peculiar-sheets@latest` still reports `GPL-3.0-only` with a HyperFormula production dependency as of the gate check).
 
 ## Owner action still required
 
-1. Copyright holder explicitly authorizes an MIT license for the formula-free core code only.
-2. Replace core `LICENSE` / `package.json#license` with MIT under that authorization (adapter stays GPL).
-3. Publish a concrete formula-free core version (name/version decided by owner; likely `peculiar-sheets@>=0.11.0` or a dedicated core package name).
-4. Publish evidence must show:
+1. Merge the reviewed formula-free split and MIT core metadata.
+2. Publish `peculiar-sheets@0.11.0`.
+3. Publish evidence must show:
    - `npm view <core-package>@<version> license` → `MIT`
    - dependencies omit `hyperformula`
    - release notes identify the build as formula-free
-5. Only after that evidence exists may UE Shed pin the exact published version, refresh its lockfile, add root MIT docs/checks, and mark Plan 023 DONE.
+4. Only after that evidence exists may UE Shed pin the exact published version, refresh its lockfile, add root MIT docs/checks, and mark Plan 023 DONE.
 
 ## UE Shed reminder
 

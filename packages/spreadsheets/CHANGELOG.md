@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### License note
 
-- This preparatory split does **not** relicense the package. `license` remains `GPL-3.0-only` until the copyright holder authorizes an MIT formula-free release and publishes that version. HyperFormula itself is not MIT.
+- The copyright holder has authorized the formula-free `peculiar-sheets` core under MIT.
+- The optional `peculiar-sheets-hyperformula` adapter and HyperFormula itself remain GPL-licensed and are not part of the core distribution.
 
 ## [0.10.1] - 2026-07-16
 

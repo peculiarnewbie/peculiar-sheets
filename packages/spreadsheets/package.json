@@ -2,7 +2,7 @@
 	"name": "peculiar-sheets",
 	"version": "0.11.0",
 	"description": "A high-performance SolidJS spreadsheet grid. Formula evaluation is optional and not bundled.",
-	"license": "GPL-3.0-only",
+	"license": "MIT",
 	"author": "peculiarnewbie",
 	"repository": {
 		"type": "git",
