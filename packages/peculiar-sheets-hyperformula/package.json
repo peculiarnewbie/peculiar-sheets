@@ -1,7 +1,8 @@
 {
-	"name": "peculiar-sheets",
+	"name": "peculiar-sheets-hyperformula",
 	"version": "0.11.0",
-	"description": "A high-performance SolidJS spreadsheet grid. Formula evaluation is optional and not bundled.",
+	"private": true,
+	"description": "Optional GPL HyperFormula adapter for peculiar-sheets. Not part of the formula-free core distribution.",
 	"license": "GPL-3.0-only",
 	"author": "peculiarnewbie",
 	"repository": {
@@ -18,43 +19,35 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
-		},
-		"./styles": "./dist/sheet.css"
+		}
 	},
 	"files": [
 		"dist",
 		"LICENSE",
-		"README.md",
-		"CHANGELOG.md"
+		"README.md"
 	],
 	"scripts": {
 		"build": "tsdown",
-		"dev": "tsdown --watch",
-		"typecheck": "tsc --noEmit -p tsconfig.src.json",
-		"typecheck:all": "tsc --noEmit",
-		"pack:check": "bun ./scripts/pack-check.ts",
-		"prepublishOnly": "tsdown && bun ./scripts/pack-check.ts",
-		"publish:npm": "tsdown && bun ./scripts/pack-check.ts && npm publish --access public"
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"prepublishOnly": "tsdown"
 	},
 	"keywords": [
 		"spreadsheet",
 		"solidjs",
-		"sheet",
-		"grid",
-		"datagrid",
-		"excel",
-		"cells"
+		"hyperformula",
+		"gpl",
+		"formula",
+		"peculiar-sheets"
 	],
 	"peerDependencies": {
+		"peculiar-sheets": "workspace:*",
 		"solid-js": "^1.9.0"
 	},
 	"dependencies": {
-		"@tanstack/solid-virtual": "^3.13.6",
-		"better-result": "^2.8.2"
+		"hyperformula": "^3.0.0"
 	},
 	"devDependencies": {
-		"@rolldown-plugin/solid": "^0.0.2",
-		"hyperformula": "^3.0.0",
+		"peculiar-sheets": "workspace:*",
 		"tsdown": "^0.12.0",
 		"typescript": "^5.8.0"
 	}

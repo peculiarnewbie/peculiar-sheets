@@ -29,3 +29,7 @@ Generated on 2026-07-11 against commit `6def943`. Execute the patch phase first,
 - Shrinking columns retain hidden trailing cells temporarily: not planned separately because subsequent reconciliation clears them before they become visible; treat as an implementation detail when touching reconciliation, not a release blocker.
 - Broadly splitting `Grid.tsx`: rejected as an aesthetic refactor. Extract only the coordination seam required for tests.
 - Replacing every `find`/`indexOf`: rejected pending profiling; present call sites are usually visible-row or one-off paths.
+
+## External distribution prep
+
+- [023 formula-free core prep](023-formula-free-mit-core-prep.md) — dependency split landed on `feature/023-formula-free-mit-core`; MIT authorization + npm publication evidence still required before any UE Shed consumer upgrade.

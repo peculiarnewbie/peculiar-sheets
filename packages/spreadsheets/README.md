@@ -1,14 +1,18 @@
 # peculiar-sheets
 
-A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/) powered by [HyperFormula](https://hyperformula.handsontable.com/).
+A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/).
+
+Formula evaluation is **optional** and **not bundled**. The published core package does not depend on HyperFormula. Hosts that need formulas should install HyperFormula themselves or use the separately named GPL adapter [`peculiar-sheets-hyperformula`](../peculiar-sheets-hyperformula).
+
+> HyperFormula is dual GPLv3 / commercial. It is **not** MIT. Ownership of Peculiar Sheets does not relicense HyperFormula.
 
 ## Features
 
 - **SolidJS-native** fine-grained reactivity -- no unnecessary re-renders
 - **Virtual scrolling** via `@tanstack/solid-virtual` for large datasets
-- **Formula engine** powered by HyperFormula (A1 references, cross-sheet formulas, 400+ built-in functions)
+- **Optional formula engine** via duck-typed `formulaEngine` / workbook APIs (HyperFormula through the GPL adapter)
 - **Selection system** with multi-range (Ctrl+click), shift-extend, and keyboard navigation
-- **Inline & formula bar editing** with reference insertion mode
+- **Inline editing** with optional formula bar and reference insertion mode
 - **Undo / redo** with full mutation history
 - **Copy / paste** with TSV serialization
 - **Autofill** (fill-down) with copy, linear series, and formula-shift modes
@@ -19,22 +23,59 @@ A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/)
 
 ## Installation
 
+Formula-free grid (no HyperFormula installed):
+
 ```bash
 npm install peculiar-sheets
 # or
 bun add peculiar-sheets
 ```
 
-HyperFormula is included as a dependency -- no extra install needed.
+Optional formulas (GPL path):
 
-## Quick Start
+```bash
+npm install peculiar-sheets peculiar-sheets-hyperformula hyperformula
+```
+
+## Quick Start (formula-free)
 
 ```tsx
-import HyperFormula from "hyperformula";
 import { Sheet } from "peculiar-sheets";
 import "peculiar-sheets/styles";
 
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+const columns = [
+	{ id: "a", header: "A", width: 120, editable: true },
+	{ id: "b", header: "B", width: 120, editable: true },
+];
+
+const data = [
+	[10, 20],
+	[30, 40],
+];
+
+function App() {
+	return (
+		<Sheet
+			data={data}
+			columns={columns}
+			showFormulaBar={false}
+			onOperation={(operation) => console.log("operation:", operation)}
+		/>
+	);
+}
+```
+
+## Optional Formulas (GPL adapter)
+
+```tsx
+import { Sheet } from "peculiar-sheets";
+import {
+	createGplHyperFormula,
+	toFormulaEngineConfig,
+} from "peculiar-sheets-hyperformula";
+import "peculiar-sheets/styles";
+
+const hf = createGplHyperFormula();
 const sheetName = hf.addSheet("Sheet1");
 const sheetId = hf.getSheetId(sheetName)!;
 
@@ -54,29 +95,33 @@ function App() {
 		<Sheet
 			data={data}
 			columns={columns}
-			formulaEngine={{ instance: hf, sheetId }}
+			formulaEngine={toFormulaEngineConfig(hf, { sheetId, sheetName })}
 			showFormulaBar
 			showReferenceHeaders
-			onCellEdit={(mutation) => console.log("edited:", mutation)}
+			onOperation={(operation) => console.log("operation:", operation)}
 		/>
 	);
 }
 ```
+
+You can also pass a HyperFormula instance you constructed yourself through `formulaEngine.instance` / `createWorkbookCoordinator({ engine })`. The core types stay duck-typed so HyperFormula is never a required install for grid-only hosts.
 
 ## Cross-Sheet Formulas
 
 Multiple `Sheet` components can share a single HyperFormula instance for cross-sheet references:
 
 ```tsx
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+import { createGplHyperFormula, toFormulaEngineConfig } from "peculiar-sheets-hyperformula";
+
+const hf = createGplHyperFormula();
 const dataSheetId = hf.getSheetId(hf.addSheet("Data"))!;
 const summarySheetId = hf.getSheetId(hf.addSheet("Summary"))!;
 
 // In the Summary sheet, reference the Data sheet:
 // =SUM(Data!A1:A10)
 
-<Sheet data={dataRows} columns={dataCols} formulaEngine={{ instance: hf, sheetId: dataSheetId }} />
-<Sheet data={summaryRows} columns={summaryCols} formulaEngine={{ instance: hf, sheetId: summarySheetId }} />
+<Sheet data={dataRows} columns={dataCols} formulaEngine={toFormulaEngineConfig(hf, { sheetId: dataSheetId })} />
+<Sheet data={summaryRows} columns={summaryCols} formulaEngine={toFormulaEngineConfig(hf, { sheetId: summarySheetId })} />
 ```
 
 That shared-engine pattern is enough for cross-sheet evaluation.
@@ -84,10 +129,10 @@ That shared-engine pattern is enough for cross-sheet evaluation.
 For host-owned faux-workbook behavior, use the headless workbook coordinator:
 
 ```tsx
-import HyperFormula from "hyperformula";
 import { Sheet, createWorkbookCoordinator } from "peculiar-sheets";
+import { createGplHyperFormula } from "peculiar-sheets-hyperformula";
 
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+const hf = createGplHyperFormula();
 const workbook = createWorkbookCoordinator({ engine: hf });
 
 const dataWorkbook = workbook.bindSheet({
@@ -119,7 +164,7 @@ Notes:
 - `WorkbookStructuralChange.snapshots` remains an all-registered-sheet payload for subscribers. Internal undo/redo history retains only sheets whose serialized content changed for that operation.
 - On the confirmed happy path, a structural operation serializes each registered sheet once (public `after` snapshots). Rollback capture reuses confirmed caches, and `before` history snapshots are built from those caches without a second full-workbook serialize. Formula-bridge writes (`setCell` / `setCells` / `syncAll` / `setRowOrder`) mark the workbook sheet unconfirmed so later rollback capture re-serializes that sheet instead of restoring a stale cache.
 - Non-goals in v1: built-in workbook/tabs UI, sheet rename, column insert/delete, workbook-wide non-structural undo
-- See [CHANGELOG.md](./CHANGELOG.md) for the `0.10.1` release notes covering these atomic-failure and scoped-history semantics.
+- See [CHANGELOG.md](./CHANGELOG.md) for release notes covering atomic-failure and scoped-history semantics.
 
 ## Props
 
@@ -131,7 +176,7 @@ Notes:
 | `rowHeight` | `number?` | Row height in px (default `28`) |
 | `resizeMode` | `"onEnd" \| "onChange"` | Resize commit timing (`onEnd` by default) |
 | `readOnly` | `boolean?` | Disable editing |
-| `formulaEngine` | `FormulaEngineConfig?` | HyperFormula instance + sheet ID |
+| `formulaEngine` | `FormulaEngineConfig?` | Optional duck-typed formula engine + sheet ID |
 | `workbook` | `WorkbookSheetBinding?` | Headless workbook binding for shared cross-sheet coordination |
 | `showFormulaBar` | `boolean?` | Show the formula bar |
 | `showReferenceHeaders` | `boolean?` | Show A1-style column/row headers |
@@ -147,7 +192,7 @@ Notes:
 ### Event Callbacks
 
 | Callback | Payload | Description |
-|----------|---------|-------------|
+|------|------|-------------|
 | `onCellEdit` | `CellMutation` | Single cell edited |
 | `onBatchEdit` | `CellMutation[]` | Multiple cells edited (paste, fill) |
 | `onSelectionChange` | `Selection` | Selection changed |
@@ -255,6 +300,12 @@ import {
 } from "peculiar-sheets";
 ```
 
+## Distribution boundary
+
+- Packed `peculiar-sheets` must not declare HyperFormula as a production dependency. Verify with `pnpm --filter peculiar-sheets pack:check`.
+- Formula hosts use `peculiar-sheets-hyperformula` (GPL) or a self-managed HyperFormula install.
+- An MIT formula-free npm release requires an explicit copyright-holder authorization and published registry evidence. This repository change alone is not that release.
+
 ## Changelog
 
 See [CHANGELOG.md](./CHANGELOG.md) for release history.
@@ -263,4 +314,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 [GPL-3.0](./LICENSE)
 
-This project depends on [HyperFormula](https://hyperformula.handsontable.com/) which is also licensed under GPL-3.0.
+The optional HyperFormula adapter and HyperFormula itself are GPL-licensed. They are not part of the formula-free core dependency graph.

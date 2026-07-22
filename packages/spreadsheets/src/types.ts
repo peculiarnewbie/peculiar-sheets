@@ -323,7 +323,10 @@ export interface SheetProps {
 	resizeMode?: ResizeMode;
 	/** When true, no cell editing is allowed. */
 	readOnly?: boolean;
-	/** Optional HyperFormula integration. */
+	/**
+	 * Optional formula-engine integration. Pass a duck-typed engine instance
+	 * (for example from `peculiar-sheets-hyperformula`). Omit for formula-free use.
+	 */
 	formulaEngine?: FormulaEngineConfig;
 	/** Optional headless workbook binding for cross-sheet coordination. */
 	workbook?: WorkbookSheetBinding;
@@ -439,7 +442,11 @@ export interface SheetController {
 // ── Formula ──────────────────────────────────────────────────────────────────
 
 export interface FormulaEngineConfig {
-	/** HyperFormula instance (typed as unknown to avoid hard dependency). */
+	/**
+	 * Formula engine instance (typed as unknown so the core package does not
+	 * depend on HyperFormula). Prefer `peculiar-sheets-hyperformula` helpers
+	 * when using HyperFormula under GPL terms.
+	 */
 	instance: unknown;
 	sheetId?: FormulaSheetId;
 	sheetName?: string;

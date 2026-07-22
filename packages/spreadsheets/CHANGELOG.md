@@ -5,6 +5,19 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - Unreleased
+
+### Changed
+
+- **Breaking (dependency graph):** `hyperformula` is no longer a production dependency of `peculiar-sheets`. The packed core installs without HyperFormula.
+- Formula evaluation remains available through the optional duck-typed `formulaEngine` / workbook APIs. Hosts that need HyperFormula should install it directly or use the separately named GPL package `peculiar-sheets-hyperformula`.
+- Package description and keywords no longer imply a bundled formula engine.
+- Added `pnpm --filter peculiar-sheets pack:check` to reject packed manifests that reintroduce HyperFormula as a production dependency.
+
+### License note
+
+- This preparatory split does **not** relicense the package. `license` remains `GPL-3.0-only` until the copyright holder authorizes an MIT formula-free release and publishes that version. HyperFormula itself is not MIT.
+
 ## [0.10.1] - 2026-07-16
 
 ### Added
