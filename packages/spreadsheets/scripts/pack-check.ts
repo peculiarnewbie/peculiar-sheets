@@ -85,7 +85,14 @@ if ("hyperformula" in productionDeps) {
 
 if ("hyperformula" in (manifest.peerDependencies ?? {})) {
 	fail(
-		"Packed peculiar-sheets still declares hyperformula as a peerDependency. Keep HyperFormula only in the GPL adapter / local devDependencies.",
+		"Packed peculiar-sheets still declares hyperformula as a peerDependency. Keep HyperFormula only in local devDependencies.",
+	);
+}
+
+const packedReadme = readFileSync(join(packDir, "package", "README.md"), "utf8");
+if (packedReadme.includes("peculiar-sheets-hyperformula")) {
+	fail(
+		"Packed README points consumers at the private peculiar-sheets-hyperformula package. Document direct HyperFormula installation instead.",
 	);
 }
 

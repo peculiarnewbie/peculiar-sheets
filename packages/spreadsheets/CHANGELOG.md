@@ -10,14 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Breaking (dependency graph):** `hyperformula` is no longer a production or peer dependency of `peculiar-sheets`. The packed core installs without HyperFormula.
-- Formula evaluation remains available through the optional duck-typed `formulaEngine` / workbook APIs. Hosts that need HyperFormula should install it directly or use the separately named GPL package `peculiar-sheets-hyperformula`.
+- Formula evaluation remains available through the optional duck-typed `formulaEngine` / workbook APIs. Hosts that need HyperFormula must install it directly.
 - Package description and keywords no longer imply a bundled formula engine.
 - Added `pnpm --filter peculiar-sheets pack:check` to reject packed manifests that reintroduce HyperFormula as a production or peer dependency.
+
+### Migration from 0.10.x
+
+- Formula-free hosts can upgrade without application-code changes.
+- Formula hosts must add `hyperformula@^3.0.0` as a direct dependency. Existing `HyperFormula.buildEmpty(...)`, `formulaEngine={{ instance, sheetId }}`, and `createWorkbookCoordinator({ engine })` code remains valid.
 
 ### License note
 
 - The copyright holder has authorized the formula-free `peculiar-sheets` core under MIT.
-- The optional `peculiar-sheets-hyperformula` adapter and HyperFormula itself remain GPL-licensed and are not part of the core distribution.
+- HyperFormula remains GPL/commercial licensed and is not part of the core distribution.
 
 ## [0.10.1] - 2026-07-16
 

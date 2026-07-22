@@ -324,8 +324,8 @@ export interface SheetProps {
 	/** When true, no cell editing is allowed. */
 	readOnly?: boolean;
 	/**
-	 * Optional formula-engine integration. Pass a duck-typed engine instance
-	 * (for example from `peculiar-sheets-hyperformula`). Omit for formula-free use.
+	 * Optional formula-engine integration. Pass a duck-typed engine instance.
+	 * Omit for formula-free use.
 	 */
 	formulaEngine?: FormulaEngineConfig;
 	/** Optional headless workbook binding for cross-sheet coordination. */
@@ -444,8 +444,7 @@ export interface SheetController {
 export interface FormulaEngineConfig {
 	/**
 	 * Formula engine instance (typed as unknown so the core package does not
-	 * depend on HyperFormula). Prefer `peculiar-sheets-hyperformula` helpers
-	 * when using HyperFormula under GPL terms.
+	 * depend on HyperFormula). Formula hosts install their engine explicitly.
 	 */
 	instance: unknown;
 	sheetId?: FormulaSheetId;

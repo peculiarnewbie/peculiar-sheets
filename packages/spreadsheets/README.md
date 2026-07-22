@@ -2,7 +2,7 @@
 
 A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/).
 
-Formula evaluation is **optional** and **not bundled**. The published core package does not depend on HyperFormula. Hosts that need formulas should install HyperFormula themselves or use the separately named GPL adapter [`peculiar-sheets-hyperformula`](../peculiar-sheets-hyperformula).
+Formula evaluation is **optional** and **not bundled**. The published core package does not depend on HyperFormula. Hosts that need formulas should install HyperFormula explicitly.
 
 > HyperFormula is dual GPLv3 / commercial. It is **not** MIT. Ownership of Peculiar Sheets does not relicense HyperFormula.
 
@@ -10,7 +10,7 @@ Formula evaluation is **optional** and **not bundled**. The published core packa
 
 - **SolidJS-native** fine-grained reactivity -- no unnecessary re-renders
 - **Virtual scrolling** via `@tanstack/solid-virtual` for large datasets
-- **Optional formula engine** via duck-typed `formulaEngine` / workbook APIs (HyperFormula through the GPL adapter)
+- **Optional formula engine** via duck-typed `formulaEngine` / workbook APIs
 - **Selection system** with multi-range (Ctrl+click), shift-extend, and keyboard navigation
 - **Inline editing** with optional formula bar and reference insertion mode
 - **Undo / redo** with full mutation history
@@ -34,8 +34,25 @@ bun add peculiar-sheets
 Optional formulas (GPL path):
 
 ```bash
-npm install peculiar-sheets peculiar-sheets-hyperformula hyperformula
+npm install peculiar-sheets hyperformula
 ```
+
+## Migrating from 0.10.x
+
+Formula-free applications can upgrade without changing application code:
+
+```bash
+npm install peculiar-sheets@0.11.0
+```
+
+Applications that use formulas must make the previously transitive HyperFormula dependency explicit:
+
+```bash
+npm install peculiar-sheets@0.11.0 hyperformula@^3.0.0
+```
+
+Existing `HyperFormula.buildEmpty(...)`, `formulaEngine={{ instance, sheetId }}`, and
+`createWorkbookCoordinator({ engine })` code remains valid.
 
 ## Quick Start (formula-free)
 
@@ -65,17 +82,14 @@ function App() {
 }
 ```
 
-## Optional Formulas (GPL adapter)
+## Optional Formulas
 
 ```tsx
 import { Sheet } from "peculiar-sheets";
-import {
-	createGplHyperFormula,
-	toFormulaEngineConfig,
-} from "peculiar-sheets-hyperformula";
+import HyperFormula from "hyperformula";
 import "peculiar-sheets/styles";
 
-const hf = createGplHyperFormula();
+const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
 const sheetName = hf.addSheet("Sheet1");
 const sheetId = hf.getSheetId(sheetName)!;
 
@@ -95,7 +109,7 @@ function App() {
 		<Sheet
 			data={data}
 			columns={columns}
-			formulaEngine={toFormulaEngineConfig(hf, { sheetId, sheetName })}
+			formulaEngine={{ instance: hf, sheetId, sheetName }}
 			showFormulaBar
 			showReferenceHeaders
 			onOperation={(operation) => console.log("operation:", operation)}
@@ -104,24 +118,24 @@ function App() {
 }
 ```
 
-You can also pass a HyperFormula instance you constructed yourself through `formulaEngine.instance` / `createWorkbookCoordinator({ engine })`. The core types stay duck-typed so HyperFormula is never a required install for grid-only hosts.
+The core types stay duck-typed so HyperFormula is never a required install for grid-only hosts.
 
 ## Cross-Sheet Formulas
 
 Multiple `Sheet` components can share a single HyperFormula instance for cross-sheet references:
 
 ```tsx
-import { createGplHyperFormula, toFormulaEngineConfig } from "peculiar-sheets-hyperformula";
+import HyperFormula from "hyperformula";
 
-const hf = createGplHyperFormula();
+const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
 const dataSheetId = hf.getSheetId(hf.addSheet("Data"))!;
 const summarySheetId = hf.getSheetId(hf.addSheet("Summary"))!;
 
 // In the Summary sheet, reference the Data sheet:
 // =SUM(Data!A1:A10)
 
-<Sheet data={dataRows} columns={dataCols} formulaEngine={toFormulaEngineConfig(hf, { sheetId: dataSheetId })} />
-<Sheet data={summaryRows} columns={summaryCols} formulaEngine={toFormulaEngineConfig(hf, { sheetId: summarySheetId })} />
+<Sheet data={dataRows} columns={dataCols} formulaEngine={{ instance: hf, sheetId: dataSheetId }} />
+<Sheet data={summaryRows} columns={summaryCols} formulaEngine={{ instance: hf, sheetId: summarySheetId }} />
 ```
 
 That shared-engine pattern is enough for cross-sheet evaluation.
@@ -130,9 +144,9 @@ For host-owned faux-workbook behavior, use the headless workbook coordinator:
 
 ```tsx
 import { Sheet, createWorkbookCoordinator } from "peculiar-sheets";
-import { createGplHyperFormula } from "peculiar-sheets-hyperformula";
+import HyperFormula from "hyperformula";
 
-const hf = createGplHyperFormula();
+const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
 const workbook = createWorkbookCoordinator({ engine: hf });
 
 const dataWorkbook = workbook.bindSheet({
@@ -303,7 +317,7 @@ import {
 ## Distribution boundary
 
 - Packed `peculiar-sheets` must not declare HyperFormula as a production dependency. Verify with `pnpm --filter peculiar-sheets pack:check`.
-- Formula hosts use `peculiar-sheets-hyperformula` (GPL) or a self-managed HyperFormula install.
+- Formula hosts install and configure HyperFormula explicitly under its GPL or commercial terms.
 - The copyright holder has authorized the formula-free core under MIT. Published registry metadata must report MIT and omit HyperFormula from production and peer dependencies.
 
 ## Changelog
@@ -314,4 +328,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 [MIT](./LICENSE)
 
-The optional HyperFormula adapter and HyperFormula itself are GPL-licensed. They are not part of the formula-free core dependency graph.
+HyperFormula is GPL/commercial licensed and is not part of the formula-free core dependency graph.

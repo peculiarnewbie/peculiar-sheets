@@ -5,7 +5,7 @@ Preparatory work on `feature/023-formula-free-mit-core` (2026-07-22).
 ## Verified in this worktree
 
 - `peculiar-sheets@0.11.0` (unreleased) no longer declares `hyperformula` under `dependencies`.
-- Optional formula APIs remain duck-typed in core; HyperFormula lives in the separately named GPL package `peculiar-sheets-hyperformula`.
+- Optional formula APIs remain duck-typed in core; formula hosts install HyperFormula explicitly.
 - UE Shed's required surface (`Sheet`, `rowId`, operation/selection types, `peculiar-sheets/styles`) is preserved without installing HyperFormula.
 - Packed-manifest gate: `pnpm --filter peculiar-sheets pack:check`.
 
@@ -13,7 +13,7 @@ Preparatory work on `feature/023-formula-free-mit-core` (2026-07-22).
 
 - The copyright holder authorized the formula-free `peculiar-sheets` core under MIT on 2026-07-22.
 - **HyperFormula is not MIT.**
-- The optional `peculiar-sheets-hyperformula` adapter remains GPL-3.0-only.
+- The private `peculiar-sheets-hyperformula` conformance package remains GPL-3.0-only and is not published.
 - **No npm formula-free MIT release exists yet** (`npm view peculiar-sheets@latest` still reports `GPL-3.0-only` with a HyperFormula production dependency as of the gate check).
 
 ## Owner action still required

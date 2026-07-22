@@ -32,4 +32,4 @@ Generated on 2026-07-11 against commit `6def943`. Execute the patch phase first,
 
 ## External distribution prep
 
-- [023 formula-free core prep](023-formula-free-mit-core-prep.md) — dependency split and MIT core authorization are prepared on `feature/023-formula-free-mit-core`; npm publication evidence is still required before any UE Shed consumer upgrade.
+- [023 formula-free core prep](023-formula-free-mit-core-prep.md) — dependency split, direct-install migration guidance, and MIT core authorization are prepared; npm publication evidence is still required before any UE Shed consumer upgrade.

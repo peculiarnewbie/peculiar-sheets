@@ -1,8 +1,8 @@
 # peculiar-sheets-hyperformula
 
-Optional **GPL-3.0-only** HyperFormula adapter for [`peculiar-sheets`](https://www.npmjs.com/package/peculiar-sheets).
+Private **GPL-3.0-only** HyperFormula integration package used for repository conformance tests.
 
-This package exists so formula evaluation can stay separately named and separately licensed from the formula-free grid core. **HyperFormula is not MIT.** Ownership of Peculiar Sheets does not relicense HyperFormula.
+This package is not published to npm and is not part of the public migration path. **HyperFormula is not MIT.** Ownership of Peculiar Sheets does not relicense HyperFormula.
 
 ## When to use this
 
@@ -13,13 +13,16 @@ This package exists so formula evaluation can stay separately named and separate
 
 - MIT / formula-free distribution (for example UE Shed Data Authoring) should depend only on the formula-free `peculiar-sheets` core and must not install this adapter.
 
-## Install
+## Public installation
 
 ```bash
-npm install peculiar-sheets peculiar-sheets-hyperformula hyperformula
+npm install peculiar-sheets hyperformula
 ```
 
-## Usage
+Public consumers construct HyperFormula directly and pass it through the existing duck-typed
+`formulaEngine` or workbook APIs. The helpers below are internal to this repository.
+
+## Internal usage
 
 ```tsx
 import { Sheet } from "peculiar-sheets";
