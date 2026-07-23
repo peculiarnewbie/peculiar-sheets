@@ -11,13 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking (dependency graph):** `hyperformula` is no longer a production or peer dependency of `peculiar-sheets`. The packed core installs without HyperFormula.
 - Formula evaluation remains available through the optional duck-typed `formulaEngine` / workbook APIs. Hosts that need HyperFormula must install it directly.
+- Added an engine-neutral `FormulaEngine` contract and kept direct HyperFormula instances source-compatible through `adaptHyperFormula`.
+- Added the separately installed `peculiar-sheets-ironcalc` adapter as the recommended formula path, including asynchronous WASM initialization, typed value reads, batched recalculation, row operations, subscriptions, and disposal.
 - Package description and keywords no longer imply a bundled formula engine.
 - Added `pnpm --filter peculiar-sheets pack:check` to reject packed manifests that reintroduce HyperFormula as a production or peer dependency.
 
 ### Migration from 0.10.x
 
 - Formula-free hosts can upgrade without application-code changes.
-- Formula hosts must add `hyperformula@^3.0.0` as a direct dependency. Existing `HyperFormula.buildEmpty(...)`, `formulaEngine={{ instance, sheetId }}`, and `createWorkbookCoordinator({ engine })` code remains valid.
+- Formula hosts can install `peculiar-sheets-ironcalc@0.11.0` and initialize it before rendering. Existing HyperFormula hosts can instead add `hyperformula@^3.0.0` directly; their component and coordinator calls remain valid.
 
 ### License note
 

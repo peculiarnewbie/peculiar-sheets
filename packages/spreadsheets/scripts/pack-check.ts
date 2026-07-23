@@ -77,9 +77,15 @@ const productionDeps = {
 	...(manifest.optionalDependencies ?? {}),
 };
 
-if ("hyperformula" in productionDeps) {
+const bundledFormulaDependencies = [
+	"hyperformula",
+	"@ironcalc/wasm",
+	"peculiar-sheets-ironcalc",
+].filter((dependency) => dependency in productionDeps);
+
+if (bundledFormulaDependencies.length > 0) {
 	fail(
-		"Packed peculiar-sheets still declares hyperformula as a production dependency. Formula-free core gate failed.",
+		`Packed peculiar-sheets declares formula-engine production dependencies: ${bundledFormulaDependencies.join(", ")}. Formula-free core gate failed.`,
 	);
 }
 

@@ -2,15 +2,14 @@
 
 A high-performance spreadsheet component for [SolidJS](https://www.solidjs.com/).
 
-Formula evaluation is **optional** and **not bundled**. The published core package does not depend on HyperFormula. Hosts that need formulas should install HyperFormula explicitly.
-
-> HyperFormula is dual GPLv3 / commercial. It is **not** MIT. Ownership of Peculiar Sheets does not relicense HyperFormula.
+Formula evaluation is **optional** and **not bundled**. IronCalc is the recommended formula engine;
+existing HyperFormula integrations remain supported through a compatibility adapter.
 
 ## Features
 
 - **SolidJS-native** fine-grained reactivity -- no unnecessary re-renders
 - **Virtual scrolling** via `@tanstack/solid-virtual` for large datasets
-- **Optional formula engine** via duck-typed `formulaEngine` / workbook APIs
+- **Optional formula engines** through an engine-neutral adapter and workbook API
 - **Selection system** with multi-range (Ctrl+click), shift-extend, and keyboard navigation
 - **Inline editing** with optional formula bar and reference insertion mode
 - **Undo / redo** with full mutation history
@@ -31,11 +30,14 @@ npm install peculiar-sheets
 bun add peculiar-sheets
 ```
 
-Optional formulas (GPL path):
+Recommended formulas (MIT/Apache-2.0 IronCalc path):
 
 ```bash
-npm install peculiar-sheets hyperformula
+npm install peculiar-sheets peculiar-sheets-ironcalc
 ```
+
+Legacy HyperFormula integrations can instead install `hyperformula@^3.0.0` directly. HyperFormula
+is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 
 ## Migrating from 0.10.x
 
@@ -45,14 +47,16 @@ Formula-free applications can upgrade without changing application code:
 npm install peculiar-sheets@0.11.0
 ```
 
-Applications that use formulas must make the previously transitive HyperFormula dependency explicit:
+Applications that use formulas can migrate to the recommended IronCalc adapter:
 
 ```bash
-npm install peculiar-sheets@0.11.0 hyperformula@^3.0.0
+npm install peculiar-sheets@0.11.0 peculiar-sheets-ironcalc@0.11.0
 ```
 
-Existing `HyperFormula.buildEmpty(...)`, `formulaEngine={{ instance, sheetId }}`, and
-`createWorkbookCoordinator({ engine })` code remains valid.
+Because IronCalc loads WASM asynchronously, create it before rendering the formula-enabled sheet.
+Existing applications may instead install `hyperformula@^3.0.0`; direct
+`HyperFormula.buildEmpty(...)`, `formulaEngine={{ instance, sheetId }}`, and
+`createWorkbookCoordinator({ engine })` code remains valid without a rewrite.
 
 ## Quick Start (formula-free)
 
@@ -82,16 +86,13 @@ function App() {
 }
 ```
 
-## Optional Formulas
+## Recommended formulas with IronCalc
 
 ```tsx
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Sheet } from "peculiar-sheets";
-import HyperFormula from "hyperformula";
+import { createIronCalcFormulaEngine } from "peculiar-sheets-ironcalc";
 import "peculiar-sheets/styles";
-
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-const sheetName = hf.addSheet("Sheet1");
-const sheetId = hf.getSheetId(sheetName)!;
 
 const columns = [
 	{ id: "a", header: "A", width: 120, editable: true },
@@ -105,49 +106,60 @@ const data = [
 ];
 
 function App() {
+	const [engine, setEngine] = createSignal<Awaited<
+		ReturnType<typeof createIronCalcFormulaEngine>
+	> | null>(null);
+	let created: Awaited<ReturnType<typeof createIronCalcFormulaEngine>> | null = null;
+
+	onMount(async () => {
+		created = await createIronCalcFormulaEngine();
+		setEngine(created);
+	});
+	onCleanup(() => created?.dispose?.());
+
 	return (
-		<Sheet
-			data={data}
-			columns={columns}
-			formulaEngine={{ instance: hf, sheetId, sheetName }}
-			showFormulaBar
-			showReferenceHeaders
-			onOperation={(operation) => console.log("operation:", operation)}
-		/>
+		<Show when={engine()}>
+			{(ready) => <Sheet
+				data={data}
+				columns={columns}
+				formulaEngine={{ instance: ready() }}
+				showFormulaBar
+				showReferenceHeaders
+			/>}
+		</Show>
 	);
 }
 ```
 
-The core types stay duck-typed so HyperFormula is never a required install for grid-only hosts.
+The core stays formula-free. `peculiar-sheets-ironcalc` owns WASM initialization and coordinate,
+evaluation, event, structural-row, and lifetime adaptation.
+
+## Legacy HyperFormula compatibility
+
+Install `hyperformula` explicitly and keep passing the direct instance. Peculiar Sheets detects and
+adapts it to the same engine-neutral boundary:
+
+```tsx
+import HyperFormula from "hyperformula";
+
+const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
+const sheetName = hf.addSheet("Sheet1");
+const sheetId = hf.getSheetId(sheetName)!;
+
+<Sheet data={data} columns={columns} formulaEngine={{ instance: hf, sheetId, sheetName }} />
+```
 
 ## Cross-Sheet Formulas
 
-Multiple `Sheet` components can share a single HyperFormula instance for cross-sheet references:
+Multiple `Sheet` components can share one engine for cross-sheet references. The headless workbook
+coordinator is the recommended engine-neutral path:
 
 ```tsx
-import HyperFormula from "hyperformula";
+import { createWorkbookCoordinator } from "peculiar-sheets";
+import { createIronCalcFormulaEngine } from "peculiar-sheets-ironcalc";
 
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-const dataSheetId = hf.getSheetId(hf.addSheet("Data"))!;
-const summarySheetId = hf.getSheetId(hf.addSheet("Summary"))!;
-
-// In the Summary sheet, reference the Data sheet:
-// =SUM(Data!A1:A10)
-
-<Sheet data={dataRows} columns={dataCols} formulaEngine={{ instance: hf, sheetId: dataSheetId }} />
-<Sheet data={summaryRows} columns={summaryCols} formulaEngine={{ instance: hf, sheetId: summarySheetId }} />
-```
-
-That shared-engine pattern is enough for cross-sheet evaluation.
-
-For host-owned faux-workbook behavior, use the headless workbook coordinator:
-
-```tsx
-import { Sheet, createWorkbookCoordinator } from "peculiar-sheets";
-import HyperFormula from "hyperformula";
-
-const hf = HyperFormula.buildEmpty({ licenseKey: "gpl-v3" });
-const workbook = createWorkbookCoordinator({ engine: hf });
+const engine = await createIronCalcFormulaEngine();
+const workbook = createWorkbookCoordinator({ engine });
 
 const dataWorkbook = workbook.bindSheet({
 	sheetKey: "data",
@@ -167,14 +179,14 @@ Workbook mode keeps `Sheet` embeddable while adding:
 
 - Cross-sheet click/drag reference insertion
 - Cross-sheet reference highlighting
-- Workbook-correct row insert/delete and mutation-sort snapshots through HyperFormula
+- Workbook-correct row insert/delete and mutation-sort snapshots through the selected engine
 
 Notes:
 
 - The host owns workbook layout and naming UI.
 - `formulaName` is fixed for the lifetime of a workbook binding in v1.
 - Structural workbook sync is driven by `workbook.subscribe(...)` snapshots, not just `onRowInsert` / `onRowDelete`.
-- Failed structural operations (`insertRows`, `deleteRows`, `setRowOrder`) and failed undo/redo restores are atomic: registered HyperFormula sheets, runtime caches, and undo/redo availability are left unchanged, and subscribers do not receive a `WorkbookStructuralChange`. If rollback itself fails, the Result is a `WorkbookStructuralRollbackError` with `engineInconsistent: true`.
+- Failed structural operations (`insertRows`, `deleteRows`, `setRowOrder`) and failed undo/redo restores are atomic: registered engine sheets, runtime caches, and undo/redo availability are left unchanged, and subscribers do not receive a `WorkbookStructuralChange`. If rollback itself fails, the Result is a `WorkbookStructuralRollbackError` with `engineInconsistent: true`.
 - `WorkbookStructuralChange.snapshots` remains an all-registered-sheet payload for subscribers. Internal undo/redo history retains only sheets whose serialized content changed for that operation.
 - On the confirmed happy path, a structural operation serializes each registered sheet once (public `after` snapshots). Rollback capture reuses confirmed caches, and `before` history snapshots are built from those caches without a second full-workbook serialize. Formula-bridge writes (`setCell` / `setCells` / `syncAll` / `setRowOrder`) mark the workbook sheet unconfirmed so later rollback capture re-serializes that sheet instead of restoring a stale cache.
 - Non-goals in v1: built-in workbook/tabs UI, sheet rename, column insert/delete, workbook-wide non-structural undo
@@ -190,7 +202,7 @@ Notes:
 | `rowHeight` | `number?` | Row height in px (default `28`) |
 | `resizeMode` | `"onEnd" \| "onChange"` | Resize commit timing (`onEnd` by default) |
 | `readOnly` | `boolean?` | Disable editing |
-| `formulaEngine` | `FormulaEngineConfig?` | Optional duck-typed formula engine + sheet ID |
+| `formulaEngine` | `FormulaEngineConfig?` | Optional FormulaEngine adapter or legacy HyperFormula instance |
 | `workbook` | `WorkbookSheetBinding?` | Headless workbook binding for shared cross-sheet coordination |
 | `showFormulaBar` | `boolean?` | Show the formula bar |
 | `showReferenceHeaders` | `boolean?` | Show A1-style column/row headers |
@@ -289,6 +301,7 @@ import type {
 	ColumnDef,
 	EditModeState,
 	FormulaEngineConfig,
+	FormulaEngine,
 	Selection,
 	SheetController,
 	SheetCustomization,
@@ -316,8 +329,8 @@ import {
 
 ## Distribution boundary
 
-- Packed `peculiar-sheets` must not declare HyperFormula as a production dependency. Verify with `pnpm --filter peculiar-sheets pack:check`.
-- Formula hosts install and configure HyperFormula explicitly under its GPL or commercial terms.
+- Packed `peculiar-sheets` must not declare a formula engine as a production dependency. Verify with `pnpm --filter peculiar-sheets pack:check`.
+- Formula hosts install `peculiar-sheets-ironcalc` (recommended) or configure HyperFormula explicitly.
 - The copyright holder has authorized the formula-free core under MIT. Published registry metadata must report MIT and omit HyperFormula from production and peer dependencies.
 
 ## Changelog
@@ -328,4 +341,4 @@ See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 [MIT](./LICENSE)
 
-HyperFormula is GPL/commercial licensed and is not part of the formula-free core dependency graph.
+IronCalc and HyperFormula are not part of the formula-free core dependency graph.

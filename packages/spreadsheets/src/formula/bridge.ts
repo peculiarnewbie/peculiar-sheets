@@ -21,32 +21,10 @@ import {
 } from "../internal/result";
 import { type ColumnIndex, type FormulaSheetId, type PhysicalRowIndex, formulaSheetId, toNumber } from "../core/brands";
 import { errorTraceContext, withTraceContext } from "../internal/trace";
+import { adaptHyperFormula, type FormulaEngineAddress } from "../workbook/formula-engine";
 import { isFormulaValue } from "./references";
 
-// ── HyperFormula Bridge ──────────────────────────────────────────────────────
-//
-// This module wraps HyperFormula as an optional formula engine. It uses dynamic
-// property access so the library has no hard compile-time dependency on
-// HyperFormula. Hosts that opt into formulas provide the engine instance themselves
-// or through the separately licensed adapter.
-
-/** Minimal interface we expect from a HyperFormula instance. */
-interface HyperFormulaLike {
-	setCellContents(
-		address: { sheet: number; row: number; col: number },
-		value: unknown | unknown[][],
-	): void;
-	getCellValue(address: { sheet: number; row: number; col: number }): unknown;
-	addSheet(name?: string): string;
-	getSheetId(name: string): number | undefined;
-	setSheetContent(sheetId: number, data: unknown[][]): void;
-	setRowOrder(sheetId: number, newRowOrder: number[]): unknown;
-	isItPossibleToSetRowOrder(sheetId: number, newRowOrder: number[]): boolean;
-	/** Suspend recalculation across multiple writes when available. */
-	batch?(callback: () => void): unknown;
-	on(event: string, callback: (...args: unknown[]) => void): void;
-	off(event: string, callback: (...args: unknown[]) => void): void;
-}
+// ── Formula Engine Bridge ────────────────────────────────────────────────────
 
 type FormulaBridgeNoopReason = "sheet-unavailable" | "empty-mutations";
 type FormulaBridgeRowOrderNoopReason = FormulaBridgeNoopReason | "engine-rejected";
@@ -114,11 +92,12 @@ export function createFormulaBridge(
 ): ResultLike<FormulaBridge | null, FormulaBridgeError> {
 	if (!config) return Result.ok(null);
 
-	const hf = config.instance as HyperFormulaLike;
+	const engine = adaptHyperFormula(config.instance);
 	let resolvedSheetId: FormulaSheetId | null = config.sheetId ?? null;
 	const sheetName = config.sheetName ?? "Sheet1";
 	const onEngineContentChanged = config.onEngineContentChanged;
 	const [revision, setRevision] = createSignal(0);
+	let unsubscribe: (() => void) | null = null;
 
 	function bumpRevision() {
 		setRevision((value) => value + 1);
@@ -142,7 +121,7 @@ export function createFormulaBridge(
 		trace.start();
 
 		const existingIdResult = Result.try({
-			try: () => hf.getSheetId(sheetName),
+			try: () => engine.findSheetId(sheetName),
 			catch: (cause) => new FormulaSheetResolutionError({
 				operation: "getSheetId",
 				formulaName: sheetName,
@@ -162,7 +141,7 @@ export function createFormulaBridge(
 		}
 
 		const addedNameResult = Result.try({
-			try: () => hf.addSheet(sheetName),
+			try: () => engine.createSheet(sheetName),
 			catch: (cause) => new FormulaSheetResolutionError({
 				operation: "addSheet",
 				formulaName: sheetName,
@@ -176,7 +155,7 @@ export function createFormulaBridge(
 		}
 
 		const addedIdResult = Result.try({
-			try: () => hf.getSheetId(addedNameResult.value),
+			try: () => addedNameResult.value.id,
 			catch: (cause) => new FormulaSheetResolutionError({
 				operation: "getAddedSheetId",
 				formulaName: sheetName,
@@ -210,7 +189,7 @@ export function createFormulaBridge(
 
 		const result = Result.try({
 			try: () => {
-				hf.on("valuesUpdated", handleValuesUpdated);
+				unsubscribe = engine.subscribe(handleValuesUpdated);
 			},
 			catch: (cause) => new FormulaEngineSubscriptionError({
 				operation: "subscribe",
@@ -240,7 +219,8 @@ export function createFormulaBridge(
 
 		const result = Result.try({
 			try: () => {
-				hf.off("valuesUpdated", handleValuesUpdated);
+				unsubscribe?.();
+				unsubscribe = null;
 			},
 			catch: (cause) => new FormulaEngineSubscriptionError({
 				operation: "unsubscribe",
@@ -259,9 +239,11 @@ export function createFormulaBridge(
 		return Result.ok();
 	}
 
-	function handleValuesUpdated(...args: unknown[]) {
-		const [changes] = args;
-		if (!Array.isArray(changes)) return;
+	function handleValuesUpdated(changes?: readonly FormulaEngineAddress[]) {
+		if (!changes) {
+			bumpRevision();
+			return;
+		}
 
 		const sheetIdResult = tryResolveSheetId();
 		if (Result.isError(sheetIdResult)) {
@@ -272,13 +254,7 @@ export function createFormulaBridge(
 		}
 
 		const sheetId = formulaSheetId(sheetIdResult.value.value);
-		const affectsSheet = changes.some((change) => {
-			if (typeof change !== "object" || change === null) return false;
-			if (!("address" in change)) return true;
-
-			const address = (change as { address?: { sheet?: unknown } }).address;
-			return address?.sheet === toNumber(sheetId);
-		});
+		const affectsSheet = changes.some((address) => address.sheet === toNumber(sheetId));
 
 		if (affectsSheet) {
 			bumpRevision();
@@ -307,7 +283,7 @@ export function createFormulaBridge(
 		const sheetId = formulaSheetId(sheetIdResult.value.value);
 		const result = Result.try({
 			try: () => {
-				hf.setSheetContent(
+				engine.replaceSheet(
 					toNumber(sheetId),
 					cells.map((row) => row.map((value) => normalizeEngineValue(value))),
 				);
@@ -354,7 +330,7 @@ export function createFormulaBridge(
 		const fSheetId = formulaSheetId(sheetIdResult.value.value);
 		const result = Result.try({
 			try: () => {
-				hf.setCellContents(
+				engine.setCell(
 					{ sheet: toNumber(fSheetId), row: toNumber(row), col: toNumber(col) },
 					normalizeEngineValue(value),
 				);
@@ -429,7 +405,7 @@ export function createFormulaBridge(
 				const row = toNumber(mutation.address.row);
 				const col = toNumber(mutation.address.col);
 				const key = cellKey(row, col);
-				hf.setCellContents(
+				engine.setCell(
 					{ sheet, row, col },
 					normalizeEngineValue(mutation.newValue),
 				);
@@ -455,7 +431,7 @@ export function createFormulaBridge(
 					continue;
 				}
 				try {
-					hf.setCellContents(
+					engine.setCell(
 						{ sheet, row, col },
 						normalizeEngineValue(previous),
 					);
@@ -467,11 +443,7 @@ export function createFormulaBridge(
 		}
 
 		try {
-			if (typeof hf.batch === "function") {
-				hf.batch(writeAll);
-			} else {
-				writeAll();
-			}
+			engine.transaction(writeAll);
 		} catch (cause) {
 			const restoredAll = restoreWritten();
 			const error = new FormulaBatchUpdateError({
@@ -518,7 +490,7 @@ export function createFormulaBridge(
 
 		const fSheetId = formulaSheetId(sheetIdResult.value.value);
 		const canSetRowOrderResult = Result.try({
-			try: () => hf.isItPossibleToSetRowOrder(toNumber(fSheetId), newRowOrder),
+			try: () => engine.canReorderRows(toNumber(fSheetId), newRowOrder),
 			catch: (cause) => new FormulaRowOrderError({
 				operation: "setRowOrder",
 				formulaName: sheetName,
@@ -539,7 +511,7 @@ export function createFormulaBridge(
 
 		const rowOrderResult = Result.try({
 			try: () => {
-				hf.setRowOrder(toNumber(fSheetId), newRowOrder);
+				engine.reorderRows(toNumber(fSheetId), newRowOrder);
 			},
 			catch: (cause) => new FormulaRowOrderError({
 				operation: "setRowOrder",
@@ -576,7 +548,7 @@ export function createFormulaBridge(
 
 		const fSheetId = formulaSheetId(sheetIdResult.value.value);
 		return Result.try({
-			try: () => applied(coerceDisplayValue(hf.getCellValue({ sheet: toNumber(fSheetId), row: toNumber(row), col: toNumber(col) }), rawValue)),
+			try: () => applied(coerceDisplayValue(engine.getCellValue({ sheet: toNumber(fSheetId), row: toNumber(row), col: toNumber(col) }), rawValue)),
 			catch: (cause) => new FormulaDisplayValueError({
 				operation: "getDisplayValue",
 				formulaName: sheetName,

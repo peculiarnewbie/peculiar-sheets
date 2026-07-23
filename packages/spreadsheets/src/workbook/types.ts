@@ -4,6 +4,7 @@ import type { WorkbookCoordinatorError } from "../internal/errors";
 import type { OperationOutcome, ResultLike } from "../internal/result";
 
 export interface WorkbookCoordinatorOptions {
+	/** FormulaEngine adapter or a legacy direct HyperFormula instance. */
 	engine: unknown;
 }
 

@@ -7,7 +7,7 @@ import type {
 	WorkbookStructuralOrigin,
 	WorkbookStructuralResult,
 } from "./types";
-import type { HyperFormulaWorkbookLike } from "./hf-interface";
+import { adaptHyperFormula } from "./formula-engine";
 import {
 	WorkbookBindingMismatchError,
 	WorkbookReferenceInsertError,
@@ -94,10 +94,10 @@ function toPublicReferenceResult(result: WorkbookReferenceResult): boolean {
 export function createWorkbookCoordinator(
 	options: WorkbookCoordinatorOptions,
 ): WorkbookCoordinator {
-	const hf = options.engine as HyperFormulaWorkbookLike;
+	const engine = adaptHyperFormula(options.engine);
 
-	const registry = createSheetRegistry(hf);
-	const structural = createStructuralEngine(hf);
+	const registry = createSheetRegistry(engine);
+	const structural = createStructuralEngine(engine);
 	const history = createHistoryManager();
 	const references = createReferenceSession();
 
@@ -161,7 +161,7 @@ export function createWorkbookCoordinator(
 				end: { ...normalized.end, sheet: target.sheetId },
 			};
 			const referenceResult = Result.try({
-				try: () => hf.simpleCellRangeToString(sheetRange, source.sheetId),
+				try: () => engine.formatRange(sheetRange, source.sheetId),
 				catch: (cause) => new WorkbookReferenceInsertError({
 					operation: "simpleCellRangeToString",
 					sourceSheetKey,
@@ -219,7 +219,7 @@ export function createWorkbookCoordinator(
 				});
 			}
 			return {
-				instance: hf,
+				instance: engine,
 				sheetId: runtime.sheetId,
 				sheetName: runtime.formulaName,
 				onEngineContentChanged: () => registry.markEngineContentUnconfirmed(binding.sheetKey),
@@ -382,7 +382,7 @@ export function createWorkbookCoordinator(
 			}
 			return applyStructuralOp(
 				{ type: "insertRows", sheetKey, atIndex, count },
-				() => { hf.addRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), [toNumber(atIndex), count]); },
+				() => { engine.insertRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), toNumber(atIndex), count); },
 			);
 		},
 
@@ -398,14 +398,14 @@ export function createWorkbookCoordinator(
 			}
 			return applyStructuralOp(
 				{ type: "deleteRows", sheetKey, atIndex, count },
-				() => { hf.removeRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), [toNumber(atIndex), count]); },
+				() => { engine.deleteRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), toNumber(atIndex), count); },
 			);
 		},
 
 		setRowOrder(sheetKey, indexOrder) {
 			return applyStructuralOp(
 				{ type: "setRowOrder", sheetKey, indexOrder: [...indexOrder] },
-				() => { hf.setRowOrder(toNumber(registry.getSheetRuntime(sheetKey).sheetId), indexOrder.map(toNumber)); },
+				() => { engine.reorderRows(toNumber(registry.getSheetRuntime(sheetKey).sheetId), indexOrder.map(toNumber)); },
 			);
 		},
 

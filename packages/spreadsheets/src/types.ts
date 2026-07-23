@@ -443,8 +443,8 @@ export interface SheetController {
 
 export interface FormulaEngineConfig {
 	/**
-	 * Formula engine instance (typed as unknown so the core package does not
-	 * depend on HyperFormula). Formula hosts install their engine explicitly.
+	 * FormulaEngine adapter or a legacy direct HyperFormula instance.
+	 * Formula hosts install and initialize their engine explicitly.
 	 */
 	instance: unknown;
 	sheetId?: FormulaSheetId;

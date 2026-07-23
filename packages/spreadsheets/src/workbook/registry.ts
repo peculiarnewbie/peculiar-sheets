@@ -3,7 +3,7 @@ import type {
 	WorkbookSheetDefinition,
 } from "./types";
 import type { FormulaSheetId } from "../core/brands";
-import type { HyperFormulaWorkbookLike } from "./hf-interface";
+import type { FormulaEngine } from "./formula-engine";
 import {
 	WorkbookDuplicateFormulaNameError,
 	WorkbookSheetNotRegisteredError,
@@ -56,7 +56,7 @@ function cloneCells(cells: CellValue[][]): CellValue[][] {
 // ── Factory ─────────────────────────────────────────────────────────────────
 
 export function createSheetRegistry(
-	hf: HyperFormulaWorkbookLike,
+	engine: FormulaEngine,
 ): SheetRegistry {
 	const sheets = new Map<string, WorkbookSheetRuntime>();
 	const sheetKeysByFormulaName = new Map<string, string>();
@@ -72,7 +72,7 @@ export function createSheetRegistry(
 		trace.start();
 
 		const existingIdResult = Result.try({
-			try: () => hf.getSheetId(formulaName),
+			try: () => engine.findSheetId(formulaName),
 			catch: (cause) => new WorkbookStructuralOperationError({
 				operation: "getSheetId",
 				formulaName,
@@ -90,7 +90,7 @@ export function createSheetRegistry(
 		}
 
 		const addedNameResult = Result.try({
-			try: () => hf.addSheet(formulaName),
+			try: () => engine.createSheet(formulaName),
 			catch: (cause) => new WorkbookStructuralOperationError({
 				operation: "addSheet",
 				formulaName,
@@ -104,7 +104,7 @@ export function createSheetRegistry(
 		}
 
 		const addedIdResult = Result.try({
-			try: () => hf.getSheetId(addedNameResult.value),
+			try: () => addedNameResult.value.id,
 			catch: (cause) => new WorkbookStructuralOperationError({
 				operation: "getAddedSheetId",
 				formulaName,

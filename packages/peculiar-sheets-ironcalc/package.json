@@ -1,0 +1,53 @@
+{
+	"name": "peculiar-sheets-ironcalc",
+	"version": "0.11.0",
+	"description": "Official IronCalc formula-engine adapter for Peculiar Sheets.",
+	"license": "MIT",
+	"author": "peculiarnewbie",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/peculiarnewbie/spreadsheets"
+	},
+	"homepage": "https://sheets.peculiarnewbie.com",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"LICENSE",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"prepublishOnly": "tsdown",
+		"publish:npm": "tsdown && npm publish --access public"
+	},
+	"keywords": [
+		"spreadsheet",
+		"solidjs",
+		"ironcalc",
+		"wasm",
+		"formula",
+		"peculiar-sheets"
+	],
+	"peerDependencies": {
+		"peculiar-sheets": "workspace:*"
+	},
+	"dependencies": {
+		"@ironcalc/wasm": "^0.7.0"
+	},
+	"devDependencies": {
+		"peculiar-sheets": "workspace:*",
+		"tsdown": "^0.12.0",
+		"typescript": "^5.8.0"
+	}
+}

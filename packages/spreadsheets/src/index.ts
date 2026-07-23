@@ -1,6 +1,12 @@
 export { Sheet } from "./Sheet";
 export { createWorkbookCoordinator } from "./workbook/coordinator";
-export type { HyperFormulaWorkbookLike } from "./workbook/hf-interface";
+export { adaptHyperFormula, isFormulaEngine } from "./workbook/formula-engine";
+export type {
+	FormulaEngine,
+	FormulaEngineAddress,
+	FormulaEngineRange,
+	HyperFormulaWorkbookLike,
+} from "./workbook/formula-engine";
 export type { WorkbookSheetRuntime } from "./workbook/registry";
 export {
 	addressToA1,

@@ -130,6 +130,22 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/peculiar-sheets-ironcalc:
+    dependencies:
+      '@ironcalc/wasm':
+        specifier: ^0.7.0
+        version: 0.7.0
+    devDependencies:
+      peculiar-sheets:
+        specifier: workspace:*
+        version: link:../spreadsheets
+      tsdown:
+        specifier: ^0.12.0
+        version: 0.12.9(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/sheet-scenarios:
     dependencies:
       better-result:
@@ -1156,6 +1172,9 @@ packages:
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [win32]
+
+  '@ironcalc/wasm@0.7.0':
+    resolution: {integrity: sha512-57QjqpZYxc70HrgS8TLrpv3ndeVZKSHnK8admaYbWBz/yFdON73pHLLQxKwEW0tFfUfjokKehGl5ZKH+lnJz5A==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -4166,6 +4185,8 @@ snapshots:
 
   '@img/sharp-win32-x64@0.34.5':
     optional: true
+
+  '@ironcalc/wasm@0.7.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:

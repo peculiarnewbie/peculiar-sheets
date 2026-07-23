@@ -1,7 +1,7 @@
 import type { CellValue } from "../types";
 import type { WorkbookStructuralChange, WorkbookStructuralOrigin, WorkbookStructuralResult } from "./types";
 import type { WorkbookSheetRuntime } from "./registry";
-import type { HyperFormulaWorkbookLike } from "./hf-interface";
+import type { FormulaEngine } from "./formula-engine";
 import type { WorkbookHistoryEntry } from "./history";
 import type { FormulaSheetId } from "../core/brands";
 import {
@@ -141,7 +141,7 @@ function originTraceContext(origin: WorkbookStructuralOrigin): Record<string, un
 // ── Factory ─────────────────────────────────────────────────────────────────
 
 export function createStructuralEngine(
-	hf: HyperFormulaWorkbookLike,
+	engine: FormulaEngine,
 ): StructuralEngine {
 	const listeners = new Set<(change: WorkbookStructuralChange) => void>();
 
@@ -161,7 +161,7 @@ export function createStructuralEngine(
 				engineCells = cloneCells(runtime.lastKnownCells);
 			} else {
 				const serializedResult = Result.try({
-					try: () => hf.getSheetSerialized(toNumber(runtime.sheetId)),
+					try: () => engine.serializeSheet(toNumber(runtime.sheetId)),
 					catch: (cause) => new WorkbookSnapshotBuildError({
 						sheetKey: runtime.sheetKey,
 						sheetId: runtime.sheetId,
@@ -256,7 +256,7 @@ export function createStructuralEngine(
 			const runtime = runtimeResult.value;
 			const setResult = Result.try({
 				try: () => {
-					hf.setSheetContent(toNumber(runtime.sheetId), normalizeSheetContent(sheet.engineCells));
+					engine.replaceSheet(toNumber(runtime.sheetId), normalizeSheetContent(sheet.engineCells));
 				},
 				catch: (cause) => new WorkbookSnapshotRestoreError({
 					sheetKey: sheet.sheetKey,
@@ -297,7 +297,7 @@ export function createStructuralEngine(
 			}
 			const setResult = Result.try({
 				try: () => {
-					hf.setSheetContent(toNumber(runtime.sheetId), normalized);
+					engine.replaceSheet(toNumber(runtime.sheetId), normalized);
 				},
 				catch: (cause) => new WorkbookStructuralOperationError({
 					operation: "syncRegisteredSheetsToEngine",
@@ -335,7 +335,7 @@ export function createStructuralEngine(
 		const snapshots: WorkbookStructuralChange["snapshots"] = [];
 		for (const runtime of registry.iterSheetRuntimes()) {
 			const serializedResult = Result.try({
-				try: () => hf.getSheetSerialized(toNumber(runtime.sheetId)),
+				try: () => engine.serializeSheet(toNumber(runtime.sheetId)),
 				catch: (cause) => new WorkbookSnapshotBuildError({
 					sheetKey: runtime.sheetKey,
 					sheetId: runtime.sheetId,
@@ -424,7 +424,7 @@ export function createStructuralEngine(
 				const runtime = runtimeResult.value;
 				const setResult = Result.try({
 					try: () => {
-						hf.setSheetContent(toNumber(runtime.sheetId), normalizeSheetContent(snapshot.cells));
+						engine.replaceSheet(toNumber(runtime.sheetId), normalizeSheetContent(snapshot.cells));
 					},
 					catch: (cause) => new WorkbookSnapshotRestoreError({
 						sheetKey: snapshot.sheetKey,
