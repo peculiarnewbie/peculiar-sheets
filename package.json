@@ -8,7 +8,7 @@
 		"typecheck": "pnpm -r typecheck",
 		"typecheck:lib": "pnpm --filter peculiar-sheets typecheck",
 		"build:www": "pnpm --filter solid-sheet-www build",
-		"pack:check": "pnpm --filter peculiar-sheets pack:check",
+		"pack:check": "pnpm --filter peculiar-sheets pack:check && pnpm --filter peculiar-sheets-ironcalc pack:check",
 		"publish": "pnpm run publish:core && pnpm run publish:ironcalc",
 		"publish:core": "pnpm --filter peculiar-sheets run publish:npm",
 		"publish:ironcalc": "pnpm --filter peculiar-sheets-ironcalc run publish:npm",

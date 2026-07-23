@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets-ironcalc",
-	"version": "0.11.0",
+	"version": "0.11.1",
 	"description": "Official IronCalc formula-engine adapter for Peculiar Sheets.",
 	"license": "MIT",
 	"author": "peculiarnewbie",
@@ -23,13 +23,15 @@
 	"files": [
 		"dist",
 		"LICENSE",
-		"README.md"
+		"README.md",
+		"CHANGELOG.md"
 	],
 	"scripts": {
 		"build": "tsdown",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
-		"prepublishOnly": "tsdown",
-		"publish:npm": "tsdown && npm publish --access public"
+		"pack:check": "tsdown && bun ./scripts/pack-check.ts",
+		"prepublishOnly": "pnpm run pack:check",
+		"publish:npm": "npm publish --access public"
 	},
 	"keywords": [
 		"spreadsheet",
@@ -40,13 +42,13 @@
 		"peculiar-sheets"
 	],
 	"peerDependencies": {
-		"peculiar-sheets": "workspace:*"
+		"peculiar-sheets": "0.11.x"
 	},
 	"dependencies": {
 		"@ironcalc/wasm": "^0.7.0"
 	},
 	"devDependencies": {
-		"peculiar-sheets": "workspace:*",
+		"peculiar-sheets": "0.11.0",
 		"tsdown": "^0.12.0",
 		"typescript": "^5.8.0"
 	}

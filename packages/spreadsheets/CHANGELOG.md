@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration from 0.10.x
 
 - Formula-free hosts can upgrade without application-code changes.
-- Formula hosts can install `peculiar-sheets-ironcalc@0.11.0` and initialize it before rendering. Existing HyperFormula hosts can instead add `hyperformula@^3.0.0` directly; their component and coordinator calls remain valid.
+- Formula hosts can install `peculiar-sheets-ironcalc@0.11.1` and initialize it before rendering. Existing HyperFormula hosts can instead add `hyperformula@^3.0.0` directly; their component and coordinator calls remain valid.
 
 ### License note
 
