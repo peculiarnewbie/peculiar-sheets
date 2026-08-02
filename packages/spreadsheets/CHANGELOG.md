@@ -5,6 +5,17 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - Unreleased
+
+### Performance
+
+- Replace quadratic controlled row-identity reconciliation with one batched host replacement.
+- Preserve the sparse fast path for stable row identities and cell-only updates.
+
+### Fixed
+
+- Normalize selection, editing state, row revisions, sizing metadata, and history after wholesale host replacement.
+
 ## [0.11.0] - Unreleased
 
 ### Changed

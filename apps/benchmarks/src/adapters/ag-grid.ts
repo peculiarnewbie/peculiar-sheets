@@ -4,17 +4,20 @@ import {
 	createGrid,
 	themeQuartz,
 	type ColDef,
+	type GetRowIdParams,
 } from "ag-grid-community";
-import type { BenchmarkAdapter, BenchmarkCellValue, BenchmarkController } from "../types";
+import type { BenchmarkAdapter, BenchmarkCellValue, BenchmarkController, BenchmarkDataset } from "../types";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export const adapter: BenchmarkAdapter = {
 	mount(container, dataset) {
 		const fields = Array.from({ length: dataset.columns }, (_, column) => `col${column}`);
-		const rowData = dataset.values.map((row) =>
-			Object.fromEntries(fields.map((field, column) => [field, row[column] ?? null])),
-		);
+		const toRowData = (nextDataset: BenchmarkDataset) => nextDataset.values.map((row, index) => ({
+			id: nextDataset.rowIds[index],
+			...Object.fromEntries(fields.map((field, column) => [field, row[column] ?? null])),
+		}));
+		const rowData = toRowData(dataset);
 		const columnDefs: ColDef[] = fields.map((field, column) => ({
 			field,
 			headerName: `Col ${column}`,
@@ -25,6 +28,7 @@ export const adapter: BenchmarkAdapter = {
 			theme: themeQuartz,
 			rowData,
 			columnDefs,
+			getRowId: (params: GetRowIdParams) => params.data.id as string,
 			rowHeight: 28,
 			animateRows: false,
 		});
@@ -55,6 +59,9 @@ export const adapter: BenchmarkAdapter = {
 					changedRows.add(rowNode.data);
 				}
 				api.applyTransaction({ update: [...changedRows] });
+			},
+			replaceDataset(nextDataset) {
+				api.setGridOption("rowData", toRowData(nextDataset));
 			},
 			destroy: () => api.destroy(),
 		} satisfies BenchmarkController;

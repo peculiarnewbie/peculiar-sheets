@@ -44,13 +44,13 @@ is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 Formula-free applications can upgrade without changing application code:
 
 ```bash
-npm install peculiar-sheets@0.11.0
+npm install peculiar-sheets@0.11.1
 ```
 
 Applications that use formulas can migrate to the recommended IronCalc adapter:
 
 ```bash
-npm install peculiar-sheets@0.11.0 peculiar-sheets-ironcalc@0.11.1
+npm install peculiar-sheets@0.11.1 peculiar-sheets-ironcalc@0.11.1
 ```
 
 Because IronCalc loads WASM asynchronously, create it before rendering the formula-enabled sheet.

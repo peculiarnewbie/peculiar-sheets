@@ -22,6 +22,7 @@ import FormulaRowDeletePage from "./routes/formula-row-delete";
 import CrossSheetPage from "./routes/cross-sheet";
 import CustomRenderingPage from "./routes/custom-rendering";
 import StylingPage from "./routes/styling";
+import IdentityReconcilePage from "./routes/identity-reconcile";
 
 const rootRoute = createRootRoute({
 	component: () => <Outlet />,
@@ -157,6 +158,12 @@ const stylingRoute = createRoute({
 	component: StylingPage,
 });
 
+const identityReconcileRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/identity-reconcile",
+	component: IdentityReconcilePage,
+});
+
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	basicRoute,
@@ -176,6 +183,7 @@ const routeTree = rootRoute.addChildren([
 	crossSheetRoute,
 	customRenderingRoute,
 	stylingRoute,
+	identityReconcileRoute,
 ]);
 
 const router = createRouter({ routeTree });

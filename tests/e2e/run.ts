@@ -12,6 +12,8 @@ const PORT = 3141;
 const BASE_URL = `http://localhost:${PORT}`;
 const POLL_INTERVAL = 200;
 const STARTUP_TIMEOUT = 30_000;
+const PNPM_EXECUTABLE = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const E2E_TEST_PATH = process.env.E2E_TEST_PATH ?? "tests/e2e/";
 
 function runCommand(command: string, args: string[]): Promise<void> {
 	const proc = spawn(command, args, {
@@ -46,7 +48,7 @@ async function waitForServer(url: string): Promise<void> {
 }
 
 function startDevServer(): ChildProcess {
-	const proc = spawn("pnpm", ["--filter", "@peculiarnewbie/e2e", "dev"], {
+	const proc = spawn(PNPM_EXECUTABLE, ["--filter", "@peculiarnewbie/e2e", "dev"], {
 		stdio: "pipe",
 		cwd: process.cwd(),
 	});
@@ -63,7 +65,7 @@ function startDevServer(): ChildProcess {
 }
 
 function runTests(): Promise<number> {
-	const proc = spawn("bun", ["test", "--max-concurrency=1", "--timeout=30000", "tests/e2e/"], {
+	const proc = spawn("bun", ["test", "--max-concurrency=1", "--timeout=30000", E2E_TEST_PATH], {
 		stdio: "inherit",
 		cwd: process.cwd(),
 		env: { ...process.env, E2E_BASE_URL: BASE_URL },
@@ -80,7 +82,7 @@ let server: ChildProcess | null = null;
 
 try {
 	console.log("Building peculiar-sheets for e2e…");
-	await runCommand("pnpm", ["build:lib"]);
+	await runCommand(PNPM_EXECUTABLE, ["build:lib"]);
 
 	console.log("Starting e2e dev server…");
 	server = startDevServer();

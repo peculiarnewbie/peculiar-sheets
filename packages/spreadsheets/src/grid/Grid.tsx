@@ -855,6 +855,10 @@ export default function Grid(props: GridProps) {
 			);
 			if (remappedSelection) {
 				props.store.setSelection(remappedSelection);
+			} else if (nextRenderedOrder.length > 0 && props.columns.length > 0) {
+				props.store.setSelection(selectCell({ row: visualRow(0), col: columnIdx(0) }));
+			} else {
+				props.store.setSelection(emptySelection());
 			}
 
 			const currentEditMode = untrack(() => props.store.editMode());

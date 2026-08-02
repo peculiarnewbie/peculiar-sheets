@@ -9,9 +9,8 @@
 		"typecheck:lib": "pnpm --filter peculiar-sheets typecheck",
 		"build:www": "pnpm --filter solid-sheet-www build",
 		"pack:check": "pnpm --filter peculiar-sheets pack:check && pnpm --filter peculiar-sheets-ironcalc pack:check",
-		"publish": "pnpm run publish:core && pnpm run publish:ironcalc",
+		"publish": "pnpm run publish:core",
 		"publish:core": "pnpm --filter peculiar-sheets run publish:npm",
-		"publish:ironcalc": "pnpm --filter peculiar-sheets-ironcalc run publish:npm",
 		"e2e": "bun run tests/e2e/run.ts",
 		"e2e:dev": "pnpm --filter @peculiarnewbie/e2e dev",
 		"benchmark": "bun run benchmarks/run.ts"

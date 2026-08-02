@@ -1,3 +1,4 @@
+import { batch, createSignal } from "solid-js";
 import { render } from "solid-js/web";
 import { Sheet, type CellValue, type ColumnDef, type SheetController } from "peculiar-sheets";
 import "peculiar-sheets/styles";
@@ -28,12 +29,15 @@ export const adapter: BenchmarkAdapter = {
 			width: 100,
 			editable: true,
 		}));
+		const [data, setData] = createSignal(dataset.values as CellValue[][]);
+		const [rowIds, setRowIds] = createSignal(dataset.rowIds);
 		let sheet: SheetController | null = null;
 		const dispose = render(
 			() => (
 				<Sheet
-					data={dataset.values as CellValue[][]}
+					data={data()}
 					columns={columns}
+					rowIds={rowIds()}
 					ref={(controller) => { sheet = controller; }}
 				/>
 			),
@@ -54,6 +58,18 @@ export const adapter: BenchmarkAdapter = {
 			writeCells: (writes) => controller.setCellValues(
 				writes.map((write) => ({ row: write.row, col: write.column, value: write.value as CellValue })),
 			),
+			replaceDataset(nextDataset) {
+				const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
+				const start = diagnostics ? performance.now() : 0;
+				batch(() => {
+					setData(nextDataset.values as CellValue[][]);
+					setRowIds(nextDataset.rowIds);
+				});
+				if (diagnostics) {
+					diagnostics.durations["solid.hostSignalUpdate"] =
+						(diagnostics.durations["solid.hostSignalUpdate"] ?? 0) + performance.now() - start;
+				}
+			},
 			destroy() {
 				dispose();
 				if (lifecycleDiagnosticsEnabled) {

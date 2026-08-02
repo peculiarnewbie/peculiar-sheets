@@ -17,6 +17,8 @@ const BASE_URL = `http://localhost:${PORT}`;
 const WARMUPS = Number(process.env.BENCHMARK_WARMUPS ?? 0);
 const ITERATIONS = Number(process.env.BENCHMARK_ITERATIONS ?? 3);
 const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 1);
+const OVERRIDE_ROWS = process.env.BENCHMARK_ROWS;
+const OVERRIDE_COLUMNS = process.env.BENCHMARK_COLUMNS;
 const UPDATE_BASELINE = process.env.BENCHMARK_UPDATE_BASELINE === "1";
 const OUTPUT_DIRECTORY = path.resolve(process.cwd(), ".benchmark");
 const BASELINE_PATH = path.join(OUTPUT_DIRECTORY, "baseline.json");
@@ -139,7 +141,8 @@ interface PageLike {
 }
 
 function command(commandName: string, args: string[]): Promise<void> {
-	const child = spawn(commandName, args, { cwd: process.cwd(), stdio: "inherit" });
+	const executable = process.platform === "win32" && commandName === "pnpm" ? "pnpm.cmd" : commandName;
+	const child = spawn(executable, args, { cwd: process.cwd(), stdio: "inherit" });
 	return new Promise((resolve, reject) => {
 		child.on("error", reject);
 		child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${commandName} failed with exit code ${code}`)));
@@ -247,6 +250,28 @@ function printSummary(results: readonly BenchmarkResult[]): void {
 				}
 				break;
 			}
+			case "replace": {
+				console.log("implementation       mount ms  sync ms  settled ms  steps  DOM nodes  raw MB  retained MB");
+				for (const implementation of IMPLEMENTATIONS) {
+					const samples = scenarioResults.filter((result) => result.kind === "replace" && result.implementation === implementation);
+					const firstStep = samples[0]?.replacement.steps[0];
+					if (!firstStep) continue;
+					console.log([
+						implementation.padEnd(20),
+						metric(samples, (sample) => sample.mountMs).toFixed(1).padStart(9),
+						metric(samples, (sample) => sample.replacement.steps[0]?.synchronousMs ?? 0).toFixed(1).padStart(8),
+						metric(samples, (sample) => sample.replacement.steps[0]?.settledMs ?? 0).toFixed(1).padStart(11),
+						String(firstStep.name).padStart(6),
+						metric(samples, (sample) => sample.domNodes).toFixed(0).padStart(10),
+						memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
+						memoryMetric(samples, "heapBytes").padStart(12),
+					].join(" "));
+					if (firstStep && samples[0]?.replacement.steps.length === 2) {
+						console.log(`  restore: sync ${metric(samples, (sample) => sample.replacement.steps[1]?.synchronousMs ?? 0).toFixed(1)}ms, settled ${metric(samples, (sample) => sample.replacement.steps[1]?.settledMs ?? 0).toFixed(1)}ms`);
+					}
+				}
+				break;
+			}
 		}
 	}
 }
@@ -256,6 +281,7 @@ function primaryMetric(result: BenchmarkResult): number {
 		case "mount": return result.mountMs;
 		case "scroll": return result.scroll.p95FrameMs;
 		case "writes": return result.writes.settledDurationMs;
+		case "replace": return result.replacement.steps[0]?.settledMs ?? 0;
 	}
 }
 
@@ -524,7 +550,13 @@ async function runSample(options: {
 	try {
 		await browser.init();
 		const page = await browser.context.newPage() as PageLike;
-		await page.goto(`${BASE_URL}?implementation=${options.implementation}&scenario=${options.scenario}`);
+		const query = new URLSearchParams({
+			implementation: options.implementation,
+			scenario: options.scenario,
+			...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
+			...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
+		});
+		await page.goto(`${BASE_URL}?${query}`);
 		await waitForReady(page);
 		const result = await page.evaluate(async () => {
 			if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
@@ -564,6 +596,7 @@ function formatResult(result: BenchmarkResult): string {
 		case "mount": return `mount ${result.mountMs.toFixed(1)}ms`;
 		case "scroll": return `mount ${result.mountMs.toFixed(1)}ms, ${result.scroll.axis} p95 ${result.scroll.p95FrameMs.toFixed(1)}ms`;
 		case "writes": return `mount ${result.mountMs.toFixed(1)}ms, ${result.writes.mode} ${result.writes.distribution} writes ${result.writes.operationsPerSecond.toFixed(0)}/s`;
+		case "replace": return `mount ${result.mountMs.toFixed(1)}ms, replace sync ${result.replacement.steps[0]?.synchronousMs.toFixed(1) ?? "n/a"}ms, settled ${result.replacement.steps[0]?.settledMs.toFixed(1) ?? "n/a"}ms`;
 	}
 }
 

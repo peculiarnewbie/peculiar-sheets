@@ -7,6 +7,7 @@ import type {
 	ImplementationName,
 	ScrollMetrics,
 	WriteMetrics,
+	ReplacementMetrics,
 } from "./types";
 import { IMPLEMENTATIONS, SCENARIO_NAMES } from "./types";
 import "./styles.css";
@@ -19,6 +20,12 @@ const SCENARIOS: Record<(typeof SCENARIO_NAMES)[number], BenchmarkScenario> = {
 	"visible-writes": { name: "visible-writes", kind: "writes", rows: 10_000, columns: 20, distribution: "visible", mode: "independent", count: 250 },
 	"offscreen-writes": { name: "offscreen-writes", kind: "writes", rows: 10_000, columns: 20, distribution: "offscreen", mode: "independent", count: 250 },
 	"batch-writes": { name: "batch-writes", kind: "writes", rows: 10_000, columns: 20, distribution: "offscreen", mode: "batch", count: 250 },
+	"replace-large-disjoint": { name: "replace-large-disjoint", kind: "replace", rows: 10_000, replacementRows: 10, columns: 1, replacement: "disjoint" },
+	"replace-large-retained": { name: "replace-large-retained", kind: "replace", rows: 10_000, replacementRows: 10, columns: 1, replacement: "retained" },
+	"replace-small-disjoint": { name: "replace-small-disjoint", kind: "replace", rows: 10, replacementRows: 10, columns: 1, replacement: "disjoint" },
+	"replace-small-large": { name: "replace-small-large", kind: "replace", rows: 10, replacementRows: 10_000, columns: 1, replacement: "disjoint" },
+	"replace-filter-roundtrip": { name: "replace-filter-roundtrip", kind: "replace", rows: 10_000, replacementRows: 10, columns: 1, replacement: "filter-roundtrip" },
+	"replace-few-cells": { name: "replace-few-cells", kind: "replace", rows: 10_000, replacementRows: 10_000, columns: 1, replacement: "few-cells" },
 };
 
 function parseQuery(): { implementation: ImplementationName; scenario: BenchmarkScenario } {
@@ -65,8 +72,39 @@ function createDataset({ rows, columns }: Pick<BenchmarkScenario, "rows" | "colu
 	return {
 		rows,
 		columns,
+		rowIds: Array.from({ length: rows }, (_, row) => `initial-${row}`),
 		values: Array.from({ length: rows }, (_, row) =>
 			Array.from({ length: columns }, (_, column) => row * columns + column),
+		),
+	};
+}
+
+function createReplacementDataset(
+	scenario: Extract<BenchmarkScenario, { kind: "replace" }>,
+	initial: BenchmarkDataset,
+): BenchmarkDataset {
+	if (scenario.replacement === "retained" || scenario.replacement === "filter-roundtrip") {
+		const start = Math.max(0, initial.rows - scenario.replacementRows);
+		return {
+			rows: scenario.replacementRows,
+			columns: scenario.columns,
+			rowIds: initial.rowIds.slice(start),
+			values: initial.values.slice(start).map((row) => [...row]),
+		};
+	}
+	if (scenario.replacement === "few-cells") {
+		const values = initial.values.map((row) => [...row]);
+		for (const row of [0, Math.floor(initial.rows / 2), initial.rows - 1]) {
+			if (values[row]) values[row][0] = `changed-${row}`;
+		}
+		return { ...initial, values };
+	}
+	return {
+		rows: scenario.replacementRows,
+		columns: scenario.columns,
+		rowIds: Array.from({ length: scenario.replacementRows }, (_, row) => `replacement-${row}`),
+		values: Array.from({ length: scenario.replacementRows }, (_, row) =>
+			Array.from({ length: scenario.columns }, (_, column) => 1_000_000 + row * scenario.columns + column),
 		),
 	};
 }
@@ -173,6 +211,52 @@ async function measureWrites(controller: BenchmarkController, scenario: Extract<
 	};
 }
 
+async function measureReplacement(
+	controller: BenchmarkController,
+	scenario: Extract<BenchmarkScenario, { kind: "replace" }>,
+	initial: BenchmarkDataset,
+): Promise<ReplacementMetrics> {
+	if (!controller.replaceDataset) {
+		throw new Error("Selected implementation does not support controlled replacement benchmarks");
+	}
+	window.__PECULIAR_SHEETS_RECONCILIATION__ = { counts: {}, durations: {} };
+	const replacement = createReplacementDataset(scenario, initial);
+	const steps = [];
+	const measureStep = async (name: string, from: BenchmarkDataset, to: BenchmarkDataset) => {
+		const start = performance.now();
+		controller.replaceDataset?.(to);
+		const synchronousMs = performance.now() - start;
+		await nextFrame();
+		const firstFrameMs = performance.now() - start;
+		await nextFrame();
+		const settledMs = performance.now() - start;
+		const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
+		if (diagnostics) {
+			diagnostics.durations["virtualizer.firstFrame"] =
+				(diagnostics.durations["virtualizer.firstFrame"] ?? 0) + firstFrameMs - synchronousMs;
+			diagnostics.durations["virtualizer.secondFrame"] =
+				(diagnostics.durations["virtualizer.secondFrame"] ?? 0) + settledMs - firstFrameMs;
+		}
+		if (to.rows > 0) {
+			const expected = to.values[0]?.[0] ?? null;
+			const actual = controller.readCell(0, 0);
+			if (actual !== expected) {
+				throw new Error(`Replacement integrity check failed: expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`);
+			}
+		}
+		steps.push({ name, fromRows: from.rows, toRows: to.rows, synchronousMs, settledMs });
+	};
+	await measureStep("replace", initial, replacement);
+	if (scenario.replacement === "filter-roundtrip") {
+		await measureStep("restore", replacement, initial);
+	}
+	const profile = window.__PECULIAR_SHEETS_RECONCILIATION__;
+	delete window.__PECULIAR_SHEETS_RECONCILIATION__;
+	return profile
+		? { mode: scenario.replacement, steps, profile }
+		: { mode: scenario.replacement, steps };
+}
+
 async function main(): Promise<void> {
 	const { implementation, scenario } = parseQuery();
 	const root = document.querySelector<HTMLElement>("#benchmark-root");
@@ -233,6 +317,10 @@ async function main(): Promise<void> {
 				case "writes": {
 					const writes = await measureWrites(controller, scenario);
 					return { ...snapshot(), kind: "writes", writes };
+				}
+				case "replace": {
+					const replacement = await measureReplacement(controller, scenario, dataset);
+					return { ...snapshot(), kind: "replace", replacement };
 				}
 			}
 		},

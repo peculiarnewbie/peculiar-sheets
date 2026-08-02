@@ -32,6 +32,9 @@ export const adapter: BenchmarkAdapter = {
 					"benchmark",
 				);
 			},
+			replaceDataset(nextDataset) {
+				hot.updateData(nextDataset.values.map((row) => [...row]), "benchmark-replace");
+			},
 			destroy: () => hot.destroy(),
 		} satisfies BenchmarkController;
 	},

@@ -13,8 +13,16 @@ This production-browser suite compares `peculiar-sheets` with the two reference 
 | `visible-writes` | 10,000 x 20 | 250 writes concentrated in currently visible rows |
 | `offscreen-writes` | 10,000 x 20 | 250 deterministic writes dispersed across the model |
 | `batch-writes` | 10,000 x 20 | The same 250 dispersed writes submitted as one public batch |
+| `replace-large-disjoint` | 10,000 x 1 → 10 x 1 | Controlled replacement with no retained row IDs |
+| `replace-large-retained` | 10,000 x 1 → 10 x 1 | Controlled replacement retaining the last ten row IDs |
+| `replace-small-disjoint` | 10 x 1 → 10 x 1 | Small controlled-replacement baseline |
+| `replace-small-large` | 10 x 1 → 10,000 x 1 | Controlled growth with disjoint row IDs |
+| `replace-filter-roundtrip` | 10,000 x 1 → 10 x 1 → 10,000 x 1 | Filter-like shrink and restore |
+| `replace-few-cells` | 10,000 x 1 | Stable row IDs with three changed cells |
 
 Scroll scenarios report median, p95, and maximum frame intervals plus Long Tasks API observations. Write scenarios report synchronous mutation time separately from the time to settle through two animation frames, and verify the final value before reporting throughput. Every scenario also records navigation-to-ready, mount-to-two-animation-frames, DOM node count, and JS heap before and after an explicit GC when Chromium exposes it. The pre-GC value shows allocation pressure; the post-GC value is the better retained-memory signal.
+
+Replacement scenarios exercise each grid's documented bulk data API: Peculiar Sheets replaces controlled `data` + `rowIds`, AG Grid updates keyed `rowData` through `getRowId`, and Handsontable calls `updateData`. Handsontable preserves positional table state rather than domain-row identity, so use it as a bulk-replacement baseline rather than an identity-contract comparison. The scenarios report synchronous reconciliation separately from two-frame settling; Peculiar Sheets also records internal operation counts and phase durations under `replacement.profile` in `.benchmark/latest.json`. Use `BENCHMARK_ROWS` or `BENCHMARK_COLUMNS` to override the starting dimensions for scaling diagnostics.
 
 ## Running
 

@@ -27,5 +27,7 @@ declare global {
 		__WORKBOOK_CHANGES__: WorkbookStructuralChange[];
 		/** Installed by the harness; flushes the shared mutation buffer. */
 		__HARNESS_CLEAR_MUTATIONS__?: () => void;
+		/** Controlled identity-replacement e2e fixture hook. */
+		__IDENTITY_REPLACE_WITH_DISJOINT_DATA__?: () => void;
 	}
 }

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on } from "solid-js";
+import { batch, createEffect, createSignal, on } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import type {
 	CellMutation,
@@ -20,10 +20,15 @@ import {
 } from "./brands";
 import {
 	allocateProvisionalRowIds,
-	reconcileByRowIdentity,
+	isProvisionalRowId,
+	rowIdsEqual,
 	validateRowIds,
 } from "./row-identity";
 import { emptySelection, selectCell } from "./selection";
+import {
+	incrementReconciliationCount,
+	measureReconciliation,
+} from "./reconciliationDiagnostics";
 import {
 	isFormulaValue,
 	shiftFormulaReferencesForRowInsert,
@@ -192,6 +197,7 @@ export function createSheetStore(
 	const [colWidths, setColWidths] = createSignal<Map<string, number>>(
 		new Map(columns.map((c) => [c.id, c.width ?? 120])),
 	);
+	const [columnIds, setColumnIds] = createSignal<string[]>(columns.map((column) => column.id));
 	const [rowHeights, setRowHeights] = createSignal<Map<RowId, number>>(new Map());
 	const [historyState, setHistory] = createSignal<HistoryStack>(createHistory());
 	const [hasPendingRowOp, setHasPendingRowOp] = createSignal(false);
@@ -204,6 +210,7 @@ export function createSheetStore(
 	}
 
 	function bumpStructuralRevision() {
+		incrementReconciliationCount("revision.structuralBumps");
 		setStructuralRevision((value) => value + 1);
 		bumpDataRevision();
 	}
@@ -256,91 +263,99 @@ export function createSheetStore(
 		explicitIds?: RowId[],
 		trackPending = true,
 	) {
-		const currentRowCount = dimensions().rowCount;
-		const cc = dimensions().colCount;
-		const insertAt = Math.max(0, Math.min(atIndex, currentRowCount));
-		const newRowIds = allocateNewRowIds(count, explicitIds);
+		return measureReconciliation("structure.insertTotal", () => {
+			incrementReconciliationCount("structure.insertCalls");
+			const currentRowCount = dimensions().rowCount;
+			const cc = dimensions().colCount;
+			const insertAt = Math.max(0, Math.min(atIndex, currentRowCount));
+			const newRowIds = allocateNewRowIds(count, explicitIds);
 
-		setDimensions({ rowCount: currentRowCount + count, colCount: cc });
-		setCells(
-			produce((draft) => {
-				const newRows = Array.from({ length: count }, () =>
-					new Array(cc).fill(null) as CellValue[],
-				);
-				draft.splice(insertAt, 0, ...newRows);
+			measureReconciliation("structure.insertDimensions", () =>
+				setDimensions({ rowCount: currentRowCount + count, colCount: cc }));
+			measureReconciliation("structure.insertCellStore", () => setCells(
+				produce((draft) => {
+					const newRows = Array.from({ length: count }, () =>
+						new Array(cc).fill(null) as CellValue[],
+					);
+					draft.splice(insertAt, 0, ...newRows);
 
-				// Rewrite formula references: shift refs at/below insertAt by +count
-				for (let r = 0; r < draft.length; r++) {
-					const row = draft[r];
-					if (!row) continue;
-					for (let c = 0; c < row.length; c++) {
-						const v = row[c];
-						if (typeof v === "string" && isFormulaValue(v)) {
-							row[c] = shiftFormulaReferencesForRowInsert(v, insertAt, count);
+					// Rewrite formula references: shift refs at/below insertAt by +count
+					measureReconciliation("formula.insertScan", () => {
+						for (let r = 0; r < draft.length; r++) {
+							const row = draft[r];
+							if (!row) continue;
+							for (let c = 0; c < row.length; c++) {
+								const v = row[c];
+								if (typeof v === "string" && isFormulaValue(v)) {
+									row[c] = shiftFormulaReferencesForRowInsert(v, insertAt, count);
+								}
+							}
 						}
-					}
-				}
-			}),
-		);
-		setRowIds((prev) => {
-			const next = [...prev];
-			next.splice(insertAt, 0, ...newRowIds);
-			return next;
+					});
+				}),
+			));
+			measureReconciliation("structure.insertRowIds", () => setRowIds((prev) => {
+				const next = [...prev];
+				next.splice(insertAt, 0, ...newRowIds);
+				return next;
+			}));
+			if (trackPending) {
+				setHasPendingRowOp(true);
+			}
+			measureReconciliation("structure.insertRevision", bumpStructuralRevision);
 		});
-		if (trackPending) {
-			setHasPendingRowOp(true);
-		}
-		bumpStructuralRevision();
 	}
 
 	function _deleteRows(atIndex: number, count: number, trackPending = true): CellValue[][] {
-		const currentRowCount = dimensions().rowCount;
-		const cc = dimensions().colCount;
-		const deleteAt = Math.max(0, Math.min(atIndex, currentRowCount));
-		const actualCount = Math.min(count, currentRowCount - deleteAt);
-		if (actualCount <= 0) return [];
+		return measureReconciliation("structure.deleteTotal", () => {
+			incrementReconciliationCount("structure.deleteCalls");
+			const currentRowCount = dimensions().rowCount;
+			const cc = dimensions().colCount;
+			const deleteAt = Math.max(0, Math.min(atIndex, currentRowCount));
+			const actualCount = Math.min(count, currentRowCount - deleteAt);
+			if (actualCount <= 0) return [];
 
-		// Capture the data being removed (deep copy)
-		const removedData: CellValue[][] = [];
-		for (let r = deleteAt; r < deleteAt + actualCount; r++) {
-			const row = cells[r];
-			removedData.push(row ? [...row] : new Array(cc).fill(null) as CellValue[]);
-		}
+			// Capture the data being removed (deep copy)
+			const removedData: CellValue[][] = [];
+			for (let r = deleteAt; r < deleteAt + actualCount; r++) {
+				const row = cells[r];
+				removedData.push(row ? [...row] : new Array(cc).fill(null) as CellValue[]);
+			}
 
-		setDimensions({ rowCount: currentRowCount - actualCount, colCount: cc });
-		setCells(
-			produce((draft) => {
-				draft.splice(deleteAt, actualCount);
+			measureReconciliation("structure.deleteDimensions", () =>
+				setDimensions({ rowCount: currentRowCount - actualCount, colCount: cc }));
+			measureReconciliation("structure.deleteCellStore", () => setCells(
+				produce((draft) => {
+					draft.splice(deleteAt, actualCount);
 
-				// Rewrite formula references: shift refs at/below deleteAt+actualCount by -actualCount
-				for (let r = 0; r < draft.length; r++) {
-					const row = draft[r];
-					if (!row) continue;
-					for (let c = 0; c < row.length; c++) {
-						const v = row[c];
-						if (typeof v === "string" && isFormulaValue(v)) {
-							row[c] = shiftFormulaReferencesForRowDelete(v, deleteAt, actualCount);
+					// Rewrite formula references: shift refs at/below deleteAt+actualCount by -actualCount
+					measureReconciliation("formula.deleteScan", () => {
+						for (let r = 0; r < draft.length; r++) {
+							const row = draft[r];
+							if (!row) continue;
+							for (let c = 0; c < row.length; c++) {
+								const v = row[c];
+								if (typeof v === "string" && isFormulaValue(v)) {
+									row[c] = shiftFormulaReferencesForRowDelete(v, deleteAt, actualCount);
+								}
+							}
 						}
-					}
-				}
-			}),
-		);
-		setRowIds((prev) => {
-			const next = [...prev];
-			const removedIds = next.splice(deleteAt, actualCount);
-			forgetRowRevisions(removedIds);
-			return next;
+					});
+				}),
+			));
+			measureReconciliation("structure.deleteRowIds", () => setRowIds((prev) => {
+				const next = [...prev];
+				const removedIds = next.splice(deleteAt, actualCount);
+				forgetRowRevisions(removedIds);
+				return next;
+			}));
+			if (trackPending) {
+				setHasPendingRowOp(true);
+			}
+			measureReconciliation("structure.deleteRevision", bumpStructuralRevision);
+
+			return removedData;
 		});
-		if (trackPending) {
-			setHasPendingRowOp(true);
-		}
-		bumpStructuralRevision();
-
-		return removedData;
-	}
-
-	function _insertRowsWithIds(atIndex: number, ids: RowId[], trackPending = true) {
-		_insertRows(atIndex, ids.length, ids, trackPending);
 	}
 
 	/** Internal: insert rows and fill them with given data. */
@@ -418,6 +433,148 @@ export function createSheetStore(
 		);
 		setRowIds([...nextOrder]);
 		bumpStructuralRevision();
+	}
+
+	function mapsEqual<Key, Value>(left: ReadonlyMap<Key, Value>, right: ReadonlyMap<Key, Value>): boolean {
+		if (left.size !== right.size) return false;
+		for (const [key, value] of left) {
+			if (right.get(key) !== value) return false;
+		}
+		return true;
+	}
+
+	function reconcileColumnWidths(nextColumns: readonly ColumnDef[]): void {
+		const current = colWidths();
+		const next = new Map<string, number>();
+		for (const column of nextColumns) {
+			next.set(column.id, current.get(column.id) ?? column.width ?? 120);
+		}
+		if (!mapsEqual(current, next)) {
+			setColWidths(next);
+		}
+	}
+
+	function pruneRowHeights(nextRowIds: readonly RowId[]): void {
+		const current = rowHeights();
+		const nextRowIdSet = new Set(nextRowIds);
+		const next = new Map<RowId, number>();
+		for (const [id, height] of current) {
+			if (nextRowIdSet.has(id)) next.set(id, height);
+		}
+		if (!mapsEqual(current, next)) {
+			setRowHeights(next);
+		}
+	}
+
+	function pruneRowRevisions(nextRowIds: readonly RowId[]): void {
+		const nextRowIdSet = new Set(nextRowIds);
+		setRowRevisions(
+			produce((draft) => {
+				for (const id of Object.keys(draft)) {
+					if (!nextRowIdSet.has(id as RowId)) delete draft[id];
+				}
+			}),
+		);
+	}
+
+	function materializeHostCells(data: readonly CellValue[][], colCount: number): CellValue[][] {
+		return measureReconciliation("identity.bulkMaterializeCells", () =>
+			data.map((sourceRow) => {
+				const rowLength = Math.max(sourceRow.length, colCount);
+				const row = new Array<CellValue>(rowLength);
+				for (let column = 0; column < rowLength; column++) {
+					row[column] = sourceRow[column] ?? null;
+				}
+				return row;
+			}),
+		);
+	}
+
+	function preservesPendingRowAcknowledgement(
+		previousRowIds: readonly RowId[],
+		hostRowIds: readonly RowId[],
+		wasPending: boolean,
+	): boolean {
+		if (!wasPending || previousRowIds.length !== hostRowIds.length) return false;
+		const hostRowIdSet = new Set(hostRowIds);
+		return previousRowIds.every((id) => isProvisionalRowId(id) || hostRowIdSet.has(id));
+	}
+
+	/**
+	 * Atomically adopts authoritative host structure. This intentionally does not
+	 * use user row operations: host formula text is already in its final layout.
+	 */
+	function replaceFromHostByRowIdentity(options: {
+		data: readonly CellValue[][];
+		columns: readonly ColumnDef[];
+		rowIds: readonly RowId[];
+		preserveHistory: boolean;
+	}): void {
+		measureReconciliation("identity.bulkReplace", () => {
+			incrementReconciliationCount("identity.bulkReplaceCalls");
+			incrementReconciliationCount("structure.deleteCalls", 0);
+			incrementReconciliationCount("structure.insertCalls", 0);
+			incrementReconciliationCount("formula.authoritativeHostSkips");
+			const nextCells = materializeHostCells(options.data, options.columns.length);
+
+			measureReconciliation("solid.bulkStoreTransaction", () => batch(() => {
+				setDimensions({ rowCount: nextCells.length, colCount: options.columns.length });
+				incrementReconciliationCount("structure.bulkCellStoreWrites");
+				measureReconciliation("cell.bulkStoreWrite", () => setCells(
+					produce((draft) => {
+						draft.length = 0;
+						draft.push(...nextCells);
+					}),
+				));
+				measureReconciliation("identity.bulkRowIdAdoption", () => setRowIds([...options.rowIds]));
+				setColumnIds(options.columns.map((column) => column.id));
+				measureReconciliation("state.bulkCleanup", () => {
+					pruneRowRevisions(options.rowIds);
+					pruneRowHeights(options.rowIds);
+					reconcileColumnWidths(options.columns);
+					if (!options.preserveHistory) {
+						setHistory(createHistory());
+					}
+					setHasPendingRowOp(false);
+				});
+				bumpStructuralRevision();
+			}));
+		});
+	}
+
+	function reconcileStableIdentityCells(data: readonly CellValue[][], colCount: number): boolean {
+		return measureReconciliation("identity.stableCellReconcile", () => {
+			const mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }> = [];
+			measureReconciliation("identity.stableCellDiff", () => {
+				for (let row = 0; row < data.length; row++) {
+					const sourceRow = data[row];
+					if (!sourceRow) continue;
+					const columnEnd = Math.max(sourceRow.length, colCount);
+					for (let column = 0; column < columnEnd; column++) {
+						const externalValue = sourceRow[column] ?? null;
+						const internalValue = cells[row]?.[column] ?? null;
+						if (externalValue !== internalValue) {
+							mutations.push({ row: physicalRow(row), col: column, value: externalValue });
+						}
+					}
+				}
+			});
+
+			if (mutations.length === 0) return false;
+			incrementReconciliationCount("identity.stableCellMutations", mutations.length);
+			setCells(
+				produce((draft) => {
+					for (const mutation of mutations) {
+						const row = draft[toNumber(mutation.row)];
+						if (!row) throw new Error(`Invalid draft row at index ${mutation.row}`);
+						while (row.length <= mutation.col) row.push(null);
+						row[mutation.col] = mutation.value;
+					}
+				}),
+			);
+			bumpRowRevisionsForPhysicalRows(mutations.map((mutation) => toNumber(mutation.row)));
+			return true;
+		});
 	}
 
 	interface HistorySnapshot {
@@ -756,69 +913,29 @@ export function createSheetStore(
 			}
 
 			if (useIdentity) {
-				const identityTarget = {
-					rowIds,
-					rowCount: () => dimensions().rowCount,
-					colCount: () => dimensions().colCount,
-					cells,
-					getPhysicalRowForRowId,
-					deleteRowsAt: (atIndex: number, count: number) => {
-						_deleteRows(atIndex, count, false);
-					},
-					insertRowsWithIds: (atIndex: number, ids: RowId[]) => {
-						_insertRowsWithIds(atIndex, ids, false);
-					},
-					reorderRows,
-					setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
-						if (mutations.length === 0) return;
-						setCells(
-							produce((draft) => {
-								for (const m of mutations) {
-									while (draft.length <= m.row) {
-										draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
-									}
-									const draftRow = draft[m.row];
-									if (!draftRow) {
-										throw new Error(`Invalid draft state at row ${m.row}`);
-									}
-									while (draftRow.length <= m.col) {
-										draftRow.push(null);
-									}
-									draftRow[m.col] = m.value;
-								}
-							}),
-						);
-						bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
-					},
-					resizeColumns(colCount: number) {
-						setDimensions({ rowCount: dimensions().rowCount, colCount });
-						setCells(
-							produce((draft) => {
-								for (let i = 0; i < draft.length; i++) {
-									const row = draft[i];
-									if (!row) throw new Error(`Invalid draft row at index ${i}`);
-									while (row.length < colCount) {
-										row.push(null);
-									}
-								}
-							}),
-						);
-						bumpStructuralRevision();
-					},
-				};
+				const previousRowIds = rowIds();
+				const needsStructuralReplacement = measureReconciliation("identity.structuralDiff", () => {
+					const nextColumnIds = columns.map((column) => column.id);
+					const columnsMatch =
+						nextColumnIds.length === columnIds().length &&
+						nextColumnIds.every((id, index) => id === columnIds()[index]);
+					return !columnsMatch || !rowIdsEqual(previousRowIds, hostRowIds);
+				});
 
-				if (reconcileByRowIdentity(identityTarget, data, hostRowIds, newColCount)) {
+				if (needsStructuralReplacement) {
+					replaceFromHostByRowIdentity({
+						data,
+						columns,
+						rowIds: hostRowIds,
+						preserveHistory: preservesPendingRowAcknowledgement(
+							previousRowIds,
+							hostRowIds,
+							pending,
+						),
+					});
 					didChange = true;
-				}
-
-				for (const col of columns) {
-					if (!colWidths().has(col.id)) {
-						setColWidths((prev) => {
-							const next = new Map(prev);
-							next.set(col.id, col.width ?? 120);
-							return next;
-						});
-					}
+				} else if (reconcileStableIdentityCells(data, newColCount)) {
+					didChange = true;
 				}
 
 				lastHostRowCount = newRowCount;
