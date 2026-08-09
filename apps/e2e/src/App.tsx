@@ -4,9 +4,12 @@ import {
 	createRoute,
 	RouterProvider,
 	Outlet,
+	lazyRouteComponent,
 } from "@tanstack/solid-router";
+import { Suspense } from "solid-js";
 import BasicPage from "./routes/basic";
 import FormulasPage from "./routes/formulas";
+import FormulaMountPage from "./routes/formula-mount";
 import ClipboardPage from "./routes/clipboard";
 import AutofillPage from "./routes/autofill";
 import HistoryPage from "./routes/history";
@@ -23,6 +26,9 @@ import CrossSheetPage from "./routes/cross-sheet";
 import CustomRenderingPage from "./routes/custom-rendering";
 import StylingPage from "./routes/styling";
 import IdentityReconcilePage from "./routes/identity-reconcile";
+import ContractsPage from "./routes/contracts";
+
+const FormulaLazyPage = lazyRouteComponent(() => import("./routes/formula-lazy"));
 
 const rootRoute = createRootRoute({
 	component: () => <Outlet />,
@@ -37,6 +43,7 @@ const indexRoute = createRoute({
 			<ul>
 				<li><a href="/basic">Basic</a></li>
 				<li><a href="/formulas">Formulas</a></li>
+				<li><a href="/formula-mount">Formula Mount</a></li>
 				<li><a href="/clipboard">Clipboard</a></li>
 				<li><a href="/autofill">Autofill</a></li>
 				<li><a href="/history">History</a></li>
@@ -158,16 +165,40 @@ const stylingRoute = createRoute({
 	component: StylingPage,
 });
 
+const formulaMountRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/formula-mount",
+	component: FormulaMountPage,
+});
+
+const formulaLazyRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/formula-lazy",
+	component: () => (
+		<Suspense fallback={<div data-testid="lazy-fallback">Loading formula sheet…</div>}>
+			<FormulaLazyPage />
+		</Suspense>
+	),
+});
+
 const identityReconcileRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/identity-reconcile",
 	component: IdentityReconcilePage,
 });
 
+const contractsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "/contracts",
+	component: ContractsPage,
+});
+
 const routeTree = rootRoute.addChildren([
 	indexRoute,
 	basicRoute,
 	formulasRoute,
+	formulaMountRoute,
+	formulaLazyRoute,
 	clipboardRoute,
 	autofillRoute,
 	historyRoute,
@@ -184,6 +215,7 @@ const routeTree = rootRoute.addChildren([
 	customRenderingRoute,
 	stylingRoute,
 	identityReconcileRoute,
+	contractsRoute,
 ]);
 
 const router = createRouter({ routeTree });

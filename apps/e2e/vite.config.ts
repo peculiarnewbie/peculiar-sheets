@@ -6,8 +6,9 @@ export default defineConfig({
 	plugins: [solid()],
 	resolve: {
 		alias: {
-			"peculiar-sheets/styles": path.resolve(__dirname, "../../packages/spreadsheets/dist/sheet.css"),
-			"peculiar-sheets": path.resolve(__dirname, "../../packages/spreadsheets/dist/index.js"),
+			"@tanstack/solid-virtual": path.resolve(import.meta.dirname, "src/virtualizer-instrumentation.ts"),
+			"peculiar-sheets/styles": path.resolve(import.meta.dirname, "../../packages/spreadsheets/dist/sheet.css"),
+			"peculiar-sheets": path.resolve(import.meta.dirname, "../../packages/spreadsheets/dist/index.js"),
 		},
 	},
 	server: {

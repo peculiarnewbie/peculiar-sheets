@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 
 interface CellEditorProps {
 	value: string;
+	ariaLabel: string;
 	left: number;
 	top: number;
 	width: number;
@@ -62,6 +63,7 @@ export default function CellEditor(props: CellEditorProps) {
 				props.inputRef?.(element);
 			}}
 			class="se-cell-editor"
+			aria-label={props.ariaLabel}
 			style={{
 				position: "absolute",
 				left: `${props.left}px`,

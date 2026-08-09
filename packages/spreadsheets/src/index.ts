@@ -49,6 +49,7 @@ export type {
 	RowReorderMutation,
 	ResizeMode,
 	ResizeSessionState,
+	RowClassContext,
 	ScrollPosition,
 	Selection,
 	SheetController,

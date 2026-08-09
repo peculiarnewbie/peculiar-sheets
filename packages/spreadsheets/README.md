@@ -18,7 +18,8 @@ existing HyperFormula integrations remain supported through a compatibility adap
 - **Column resizing**, pinning, external/view/mutation sorting, and group headers
 - **Cell search** with match highlighting
 - **Context menu** support
-- **Fully customizable** row headers, cell classes, address labels, and formula display
+- **First-class theming** through documented `--ps-*` variables on the sheet root
+- **Fully customizable** rows, row headers, cells, empty states, address labels, and formula display
 
 ## Installation
 
@@ -212,8 +213,10 @@ Notes:
 | `sortState` | `SortState \| null` | Controlled sort state |
 | `defaultSortState` | `SortState \| null` | Initial uncontrolled sort state |
 | `customization` | `SheetCustomization?` | Visual customization hooks |
+| `ariaLabel` | `string?` | Accessible grid name (default `"Spreadsheet"`) |
+| `emptyState` | `JSX.Element?` | Content shown when no rows exist (default `"No data"`) |
 | `ref` | `(controller: SheetController) => void` | Imperative API handle |
-| `class` | `string?` | CSS class for the root element |
+| `class` | `string?` | CSS class applied to the `.se-grid` root; set theme variables here |
 
 ### Event Callbacks
 
@@ -278,6 +281,8 @@ ctrl.setCellValues([
 	data={data}
 	columns={columns}
 	customization={{
+		getRowClass: (_row, context) =>
+			context.containsFocus ? "focused-record" : "",
 		getRowHeaderLabel: (row) => `Row ${row + 1}`,
 		getRowHeaderSublabel: (row) => (row === 0 ? "first" : null),
 		getCellClass: (row, col) => (col === 0 ? "font-bold" : ""),
@@ -287,6 +292,100 @@ ctrl.setCellValues([
 	}}
 />
 ```
+
+`getRowClass(rowIndex, context)` is evaluated per rendered row and reevaluated when its generic
+interaction state changes. `rowIndex` is the backing/model row index. The class is placed on the row
+wrapper, row header, and every currently rendered data cell, including pinned cells. The context contains:
+
+- `rowId`: the stable `RowId` for the backing row
+- `visualRowIndex`: its current position after view sorting
+- `dataRowIndex`: its backing/model index (the same value as `rowIndex`)
+- `containsFocus`: the row contains the keyboard-focused cell
+- `intersectsSelection`: at least one selection range crosses the row
+- `containsActiveEditor`: the inline editor is in the row
+
+This keeps row styling tied to stable row identity while virtualization recycles rendered rows.
+The existing `getCellClass`, `getCellStyle`, and `getRowHeaderClass` hooks remain supported.
+
+## Theming
+
+Import `peculiar-sheets/styles`, pass a root class, and set variables on that class. Consumers do
+not need to override internal `.se-*` selectors:
+
+```css
+.my-sheet {
+	--ps-grid-background: #f7f3e8;
+	--ps-text-primary: #2b261e;
+	--ps-surface-header: #d7c39d;
+	--ps-surface-header-cell: #e3d4b7;
+	--ps-cell-border: #d2c5aa;
+	--ps-focus: #b5582b;
+	--ps-selection-background: rgba(181, 88, 43, 0.14);
+	--ps-selection-focus-background: rgba(181, 88, 43, 0.24);
+}
+```
+
+```tsx
+<Sheet class="my-sheet" data={data} columns={columns} />
+```
+
+`.se-grid` defines the previous dark appearance as the fallback, so existing sheets look the same
+without host variables. Variables inherit per instance. The defaults use the zero-specificity
+`:where(.se-grid)` selector, so variables on the host root class win even when the host stylesheet
+loads before `peculiar-sheets/styles`; consumers do not need `!important` or internal selectors.
+
+### CSS variable reference
+
+| Variables | Purpose |
+|---|---|
+| `--ps-grid-background`, `--ps-grid-border` | Root grid surface and border |
+| `--ps-surface-formula-bar`, `--ps-surface-header`, `--ps-surface-header-secondary`, `--ps-surface-header-cell` | Formula bar and primary/secondary header surfaces |
+| `--ps-surface-elevated`, `--ps-surface-hover` | Raised and hover surfaces |
+| `--ps-border-default`, `--ps-border-strong`, `--ps-border-input`, `--ps-cell-border` | Structural, emphasized, input, and cell borders |
+| `--ps-text-primary`, `--ps-text-secondary`, `--ps-text-muted`, `--ps-text-subtle`, `--ps-text-accent` | Text hierarchy and accent text |
+| `--ps-focus`, `--ps-focus-contrast` | Grid/cell focus ring and contrasting handle edge |
+| `--ps-selection-background`, `--ps-selection-focus-background`, `--ps-selection-overlay-background` | Selected cells, focused cell, and range overlay |
+| `--ps-active-row-background`, `--ps-active-row-header-background` | Active-row cells and row header |
+| `--ps-editor-background`, `--ps-editor-border`, `--ps-editor-focus`, `--ps-editor-focus-shadow` | Inline editor states |
+| `--ps-menu-background`, `--ps-menu-hover-background`, `--ps-menu-shadow` | Context menu surfaces and elevation |
+| `--ps-search-background`, `--ps-search-input-background`, `--ps-search-match-background`, `--ps-search-current-background`, `--ps-search-accent` | Search UI and match states |
+| `--ps-resize-indicator`, `--ps-resize-background` | Resize handles, guides, and active header tint |
+| `--ps-clipboard-indicator` | Copied-range outline |
+| `--ps-reference-indicator`, `--ps-reference-background` | Formula-reference outline and fill |
+| `--ps-fill-indicator`, `--ps-fill-hover`, `--ps-fill-background` | Autofill handle and preview |
+| `--ps-disabled-text`, `--ps-disabled-control` | Disabled menu and search controls |
+| `--ps-state-info`, `--ps-state-success`, `--ps-state-warning`, `--ps-state-danger` | Generic host/application state palette |
+
+## Keyboard and focus contract
+
+- Arrow keys move the focused cell; Shift+Arrow extends from the selection anchor.
+- Enter and F2 enter edit mode. A printable character replaces the focused cell's editor text.
+- Escape cancels an edit without committing and restores focus to the grid.
+- Tab/Shift+Tab commit and move one column right/left. The grid does not wrap rows.
+- Enter/Shift+Enter commit and move one row down/up. At a vertical boundary, focus stays on the boundary cell.
+- At the first cell, Shift+Tab moves focus to the previous focusable element outside the sheet. At the last cell, Tab moves focus to the next focusable element outside the sheet. This applies while navigating and while committing an edit, so the sheet is not a keyboard trap.
+- Selection movement scrolls the focused cell into view; focus remains on the grid after in-grid navigation.
+- Sheet-level and column-level read-only cells reject Enter, F2, printable-key, pointer, formula-bar, and imperative edit entry.
+
+The root grid exposes row/column counts and an accessible name. Rendered rows/cells expose 1-based
+indices, cells expose `aria-selected`/`aria-readonly`, and the grid uses `aria-activedescendant` to
+announce the focused virtualized cell. The inline editor is labeled with its A1 address. Focus,
+selection, editing, and active-row visuals use separate theme variables, with forced-colors and
+`prefers-reduced-motion` fallbacks.
+
+## Empty state
+
+`emptyState` accepts host JSX while preserving `No data` by default:
+
+```tsx
+<Sheet
+	data={[]}
+	columns={columns}
+	emptyState={<button onClick={createFirstRow}>Create first row</button>}
+/>
+```
+
+Loading, error, retry, and domain-specific state management remain host responsibilities.
 
 ## Types
 
@@ -302,6 +401,7 @@ import type {
 	EditModeState,
 	FormulaEngineConfig,
 	FormulaEngine,
+	RowClassContext,
 	Selection,
 	SheetController,
 	SheetCustomization,

@@ -9,6 +9,7 @@ interface FormulaBarProps {
 	onTab: (shift: boolean) => void;
 	onSelectionChange: (start: number, end: number) => void;
 	inputRef?: (element: HTMLInputElement) => void;
+	readOnly: boolean;
 }
 
 export default function FormulaBar(props: FormulaBarProps) {
@@ -37,11 +38,14 @@ export default function FormulaBar(props: FormulaBarProps) {
 
 	return (
 		<div class="se-formula-bar">
-			<div class="se-formula-bar__address">{props.address}</div>
-			<div class="se-formula-bar__fx">fx</div>
+			<div class="se-formula-bar__address" aria-hidden="true">{props.address}</div>
+			<div class="se-formula-bar__fx" aria-hidden="true">fx</div>
 			<input
 				ref={props.inputRef}
 				class="se-formula-bar__input"
+				aria-label={`Formula for ${props.address}`}
+				aria-readonly={props.readOnly || undefined}
+				readOnly={props.readOnly}
 				value={props.value}
 				onFocus={props.onFocus}
 				onBlur={props.onBlur}

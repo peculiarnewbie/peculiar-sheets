@@ -83,5 +83,17 @@ const getCellStyle = createRangeStyles([
 ]);
 
 export default function StylingSheet() {
-  return <Sheet data={data} columns={columns} customization={{ getCellStyle }} />;
+  return (
+    <Sheet
+      class="ledger-sheet"
+      data={data}
+      columns={columns}
+      showReferenceHeaders
+      customization={{
+        getCellStyle,
+        getRowClass: (_rowIndex, context) =>
+          context.containsFocus ? "ledger-sheet__focused-row" : "",
+      }}
+    />
+  );
 }

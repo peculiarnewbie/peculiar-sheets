@@ -152,6 +152,9 @@ export function Sheet(props: SheetProps) {
 				sortBehavior={props.sortBehavior ?? "view"}
 				sortState={props.sortState}
 				defaultSortState={props.defaultSortState ?? null}
+				rootClass={props.class}
+				ariaLabel={props.ariaLabel ?? "Spreadsheet"}
+				emptyState={props.emptyState}
 			/>
 		</SheetCustomizationContext.Provider>
 	);

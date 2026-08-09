@@ -276,6 +276,22 @@ export interface ResizeSessionState {
  */
 export type CellStyle = JSX.CSSProperties;
 
+/** Generic state for a rendered row, independent of host application concepts. */
+export interface RowClassContext {
+	/** Stable identity for the backing row, including while view sorting is active. */
+	rowId: RowId;
+	/** Current rendered position after view sorting. */
+	visualRowIndex: number;
+	/** Backing/model position for this row. This is also passed as `rowIndex`. */
+	dataRowIndex: number;
+	/** True when this row contains the grid's keyboard-focused cell. */
+	containsFocus: boolean;
+	/** True when at least one selected range crosses this row. */
+	intersectsSelection: boolean;
+	/** True when this row contains the active inline editor. */
+	containsActiveEditor: boolean;
+}
+
 export interface SheetCustomization {
 	/** Custom row header label. Return a string to override the default row number. */
 	getRowHeaderLabel?: (rowIndex: number) => string;
@@ -283,6 +299,12 @@ export interface SheetCustomization {
 	getRowHeaderSublabel?: (rowIndex: number) => string | null;
 	/** CSS class applied to the row header cell at the given row index. */
 	getRowHeaderClass?: (rowIndex: number) => string;
+	/**
+	 * CSS class applied to the rendered row, its row header, and every rendered
+	 * data cell in that row. `rowIndex` is the backing/model row index; use the
+	 * context for the current visual position, stable row ID, and interaction state.
+	 */
+	getRowClass?: (rowIndex: number, context: RowClassContext) => string | undefined;
 	/** CSS class applied to each data cell at the given position. */
 	getCellClass?: (row: number, col: number) => string;
 	/**
@@ -354,6 +376,10 @@ export interface SheetProps {
 	sortBehavior?: SortBehavior;
 	sortState?: SortState | null;
 	defaultSortState?: SortState | null;
+	/** Accessible name for the grid (default `"Spreadsheet"`). */
+	ariaLabel?: string;
+	/** Host-provided JSX shown when there are no rows. Defaults to `"No data"`. */
+	emptyState?: JSX.Element;
 
 	/**
 	 * Visual and formula-display customization hooks.
@@ -390,6 +416,7 @@ export interface SheetProps {
 	/** Imperative handle callback — receives the controller on mount. */
 	ref?: (controller: SheetController) => void;
 
+	/** Additional class applied to the `.se-grid` root; CSS variables may be set here. */
 	class?: string;
 }
 

@@ -9,11 +9,17 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
 const PORT = 3141;
-const BASE_URL = `http://localhost:${PORT}`;
+const HOST = "127.0.0.1";
+const BASE_URL = `http://${HOST}:${PORT}`;
 const POLL_INTERVAL = 200;
 const STARTUP_TIMEOUT = 30_000;
 const PNPM_EXECUTABLE = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const E2E_TEST_PATH = process.env.E2E_TEST_PATH ?? "tests/e2e/";
+const cliArgs = process.argv.slice(2);
+const productionBundle = cliArgs.includes("--production");
+const testPathArg = cliArgs.find((arg) => arg.startsWith("--test="));
+const E2E_TEST_PATH = testPathArg?.slice("--test=".length)
+	?? process.env.E2E_TEST_PATH
+	?? "tests/e2e/";
 
 function runCommand(command: string, args: string[]): Promise<void> {
 	const proc = spawn(command, args, {
@@ -47,18 +53,13 @@ async function waitForServer(url: string): Promise<void> {
 	throw new Error(`Server at ${url} did not become ready within ${STARTUP_TIMEOUT}ms`);
 }
 
-function startDevServer(): ChildProcess {
-	const proc = spawn(PNPM_EXECUTABLE, ["--filter", "@peculiarnewbie/e2e", "dev"], {
-		stdio: "pipe",
+function startServer(): ChildProcess {
+	const command = productionBundle
+		? ["--filter", "@peculiarnewbie/e2e", "preview", "--host", HOST, "--port", String(PORT)]
+		: ["--filter", "@peculiarnewbie/e2e", "dev", "--host", HOST];
+	const proc = spawn(PNPM_EXECUTABLE, command, {
+		stdio: "inherit",
 		cwd: process.cwd(),
-	});
-
-	// Surface Vite errors but keep the rest quiet
-	proc.stderr?.on("data", (chunk: Buffer) => {
-		const text = chunk.toString();
-		if (text.includes("ERROR") || text.includes("error")) {
-			process.stderr.write(`[vite] ${text}`);
-		}
 	});
 
 	return proc;
@@ -68,7 +69,11 @@ function runTests(): Promise<number> {
 	const proc = spawn("bun", ["test", "--max-concurrency=1", "--timeout=30000", E2E_TEST_PATH], {
 		stdio: "inherit",
 		cwd: process.cwd(),
-		env: { ...process.env, E2E_BASE_URL: BASE_URL },
+		env: {
+			...process.env,
+			E2E_BASE_URL: BASE_URL,
+			E2E_PRODUCTION_BUNDLE: productionBundle ? "true" : "false",
+		},
 	});
 
 	return new Promise<number>((resolve) => {
@@ -76,28 +81,42 @@ function runTests(): Promise<number> {
 	});
 }
 
+async function stopServer(proc: ChildProcess): Promise<void> {
+	if (proc.exitCode !== null || proc.pid === undefined) return;
+
+	if (process.platform === "win32") {
+		await runCommand("taskkill", ["/pid", String(proc.pid), "/T", "/F"]);
+		return;
+	}
+
+	proc.kill("SIGTERM");
+	await new Promise<void>((resolve) => proc.once("close", () => resolve()));
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 
 let server: ChildProcess | null = null;
+let exitCode = 1;
 
 try {
 	console.log("Building peculiar-sheets for e2e…");
 	await runCommand(PNPM_EXECUTABLE, ["build:lib"]);
+	if (productionBundle) {
+		console.log("Building production e2e consumer…");
+		await runCommand(PNPM_EXECUTABLE, ["--filter", "@peculiarnewbie/e2e", "build"]);
+	}
 
-	console.log("Starting e2e dev server…");
-	server = startDevServer();
+	console.log(`Starting e2e ${productionBundle ? "production preview" : "dev server"}…`);
+	server = startServer();
 
 	await waitForServer(BASE_URL);
 	console.log(`Dev server ready at ${BASE_URL}\n`);
 
-	const exitCode = await runTests();
-
-	server.kill("SIGTERM");
-	server = null;
-
-	process.exit(exitCode);
+	exitCode = await runTests();
 } catch (err) {
 	console.error(err);
-	server?.kill("SIGTERM");
-	process.exit(1);
+} finally {
+	if (server) await stopServer(server);
 }
+
+process.exit(exitCode);

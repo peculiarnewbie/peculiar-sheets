@@ -1,8 +1,9 @@
-import { For, Index, Show } from "solid-js";
-import type { CellValue, ColumnDef, PhysicalCellAddress, VisualCellAddress } from "../types";
-import { type ColumnIndex, type VisualRowIndex, columnIdx, toNumber, visualRow } from "../core/brands";
+import { createMemo, For, Index, Show } from "solid-js";
+import type { CellValue, ColumnDef, PhysicalCellAddress, RowClassContext, Selection, VisualCellAddress } from "../types";
+import { type ColumnIndex, type RowId, type VisualRowIndex, columnIdx, toNumber, visualRow } from "../core/brands";
 import { useSheetCustomization } from "../customization";
 import { defaultFormatCellValue } from "../core/formatting";
+import { normalizeRange, selectionContains } from "../core/selection";
 import GridCell from "./GridCell";
 import type { RowMetrics } from "./rowMetrics";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
@@ -18,6 +19,8 @@ interface GridBodyProps {
 	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
 	getRowHeaderIndex: (visualRow: VisualRowIndex) => number;
+	getRowId: (visualRow: VisualRowIndex) => RowId;
+	getCellId: (address: VisualCellAddress) => string;
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
@@ -32,6 +35,7 @@ interface GridBodyProps {
 	getRawValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
 	/** Visual address of the currently-editing cell (if any). Used to set `isEditing` on custom renderers. */
 	editingAddress: VisualCellAddress | null;
+	selection: Selection;
 	onCellMouseDown: (addr: VisualCellAddress, event: MouseEvent) => void;
 	onCellMouseEnter?: (addr: VisualCellAddress, event: MouseEvent) => void;
 	onRowHeaderMouseDown?: (row: VisualRowIndex, event: MouseEvent) => void;
@@ -64,9 +68,32 @@ export default function GridBody(props: GridBodyProps) {
 					const vRow = () => visualRow(rowIdx());
 					const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
 					const rowHeaderTooltip = () => props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
+					const containsFocus = () => props.selection.focus.row === vRow();
+					const intersectsSelection = () => props.selection.ranges.some((range) => {
+						const normalized = normalizeRange(range);
+						return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
+					});
+					const containsActiveEditor = () => props.editingAddress?.row === vRow();
+					const rowClassContext = createMemo<RowClassContext>(() => ({
+						rowId: props.getRowId(vRow()),
+						visualRowIndex: rowIdx(),
+						dataRowIndex: rowHeaderIndex(),
+						containsFocus: containsFocus(),
+						intersectsSelection: intersectsSelection(),
+						containsActiveEditor: containsActiveEditor(),
+					}));
+					const customRowClass = createMemo(() =>
+						customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
+					);
+					const rowHeaderClass = () => customization?.getRowHeaderClass?.(rowHeaderIndex()) ?? "";
 					return (
 						<div
-							class="se-row"
+							class={`se-row${customRowClass() ? ` ${customRowClass()}` : ""}`}
+							classList={{
+								"se-row--active": containsFocus(),
+								"se-row--selected": intersectsSelection(),
+								"se-row--editing": containsActiveEditor(),
+							}}
 							role="row"
 							aria-rowindex={rowIdx() + 1}
 							style={{
@@ -78,9 +105,12 @@ export default function GridBody(props: GridBodyProps) {
 						>
 							<Show when={props.showReferenceHeaders}>
 								<div
-									class={`se-row-header-cell${customization?.getRowHeaderClass ? ` ${customization.getRowHeaderClass(rowHeaderIndex())}` : ""}`}
+									class={`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`}
 									classList={{
 										"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
+										"se-row-header-cell--active": containsFocus(),
+										"se-row-header-cell--selected": intersectsSelection(),
+										"se-row-header-cell--editing": containsActiveEditor(),
 									}}
 									role="rowheader"
 									style={{
@@ -111,50 +141,60 @@ export default function GridBody(props: GridBodyProps) {
 								{(virtualColumn) => {
 									const col = () => virtualColumn().column;
 									const cidx = () => columnIdx(virtualColumn().index);
-								const addr = (): VisualCellAddress => ({ row: vRow(), col: cidx() });
-								const rawValue = () => props.getRawValue(vRow(), cidx());
-								const displayValue = () => props.getDisplayValue(vRow(), cidx());
-								const formattedText = () => {
-									const formatValue = col().formatValue;
-									return formatValue
-										? formatValue(displayValue(), { row: rowIdx(), col: toNumber(cidx()) })
-										: defaultFormatCellValue(displayValue());
-								};
-								const titleOverride = () =>
-									col().getCellTitle?.(rawValue(), { row: rowIdx(), col: toNumber(cidx()) });
-								const isEditing = () =>
-									props.editingAddress?.row === vRow() &&
-									props.editingAddress?.col === cidx();
+									const addr = (): VisualCellAddress => ({ row: vRow(), col: cidx() });
+									const rawValue = () => props.getRawValue(vRow(), cidx());
+									const displayValue = () => props.getDisplayValue(vRow(), cidx());
+									const formattedText = () => {
+										const formatValue = col().formatValue;
+										return formatValue
+											? formatValue(displayValue(), { row: rowIdx(), col: toNumber(cidx()) })
+											: defaultFormatCellValue(displayValue());
+									};
+									const titleOverride = () =>
+										col().getCellTitle?.(rawValue(), { row: rowIdx(), col: toNumber(cidx()) });
+									const isEditing = () =>
+										props.editingAddress?.row === vRow() &&
+										props.editingAddress?.col === cidx();
+									const isFocused = () =>
+										props.selection.focus.row === vRow() &&
+										props.selection.focus.col === cidx();
+									const isSelected = () => selectionContains(props.selection, addr());
+									const cellClass = () => customization?.getCellClass?.(rowIdx(), toNumber(cidx())) ?? "";
+									const combinedClass = () => [customRowClass(), cellClass()].filter(Boolean).join(" ");
 
-								return (
-									<GridCell
-										rawValue={rawValue()}
-										formattedText={formattedText()}
-										row={vRow()}
-										width={virtualColumn().size}
-										height={rowHeight()}
-										layoutLeft={props.rowGutterWidth + virtualColumn().start}
-										colIndex={cidx()}
-										readOnly={props.readOnly ?? false}
-										pinnedLeft={props.pinnedLeftOffsets?.[virtualColumn().index] ?? -1}
-										isLastPinned={virtualColumn().index === props.lastPinnedIndex}
-										searchMatch={props.searchMatchSet.has(`${rowIdx()},${toNumber(cidx())}`)}
-										searchCurrent={addressMatchesCurrent(addr(), props.searchCurrentAddress)}
-										isEditing={isEditing()}
-										{...(titleOverride() !== undefined ? { title: titleOverride() as string } : {})}
-										{...(col().renderCell ? { renderCell: col().renderCell } : {})}
-										{...(customization?.getCellClass ? { customClass: customization.getCellClass(rowIdx(), toNumber(cidx())) } : {})}
-										{...(customization?.getCellStyle
-											? (() => {
-													const style = customization.getCellStyle(rowIdx(), toNumber(cidx()));
-													return style ? { inlineStyle: style } : {};
-												})()
-											: {})}
-										onMouseDown={(e) => props.onCellMouseDown(addr(), e)}
-										onMouseEnter={(e) => props.onCellMouseEnter?.(addr(), e)}
-										onDblClick={() => props.onCellDblClick(addr())}
-									/>
-								);
+									return (
+										<GridCell
+											id={props.getCellId(addr())}
+											rawValue={rawValue()}
+											formattedText={formattedText()}
+											row={vRow()}
+											width={virtualColumn().size}
+											height={rowHeight()}
+											layoutLeft={props.rowGutterWidth + virtualColumn().start}
+											colIndex={cidx()}
+											readOnly={(props.readOnly ?? false) || col().editable === false}
+											pinnedLeft={props.pinnedLeftOffsets?.[virtualColumn().index] ?? -1}
+											isLastPinned={virtualColumn().index === props.lastPinnedIndex}
+											searchMatch={props.searchMatchSet.has(`${rowIdx()},${toNumber(cidx())}`)}
+											searchCurrent={addressMatchesCurrent(addr(), props.searchCurrentAddress)}
+											isEditing={isEditing()}
+											isFocused={isFocused()}
+											isSelected={isSelected()}
+											isActiveRow={containsFocus()}
+											{...(titleOverride() !== undefined ? { title: titleOverride() as string } : {})}
+											{...(col().renderCell ? { renderCell: col().renderCell } : {})}
+											{...(combinedClass() ? { customClass: combinedClass() } : {})}
+											{...(customization?.getCellStyle
+												? (() => {
+														const style = customization.getCellStyle(rowIdx(), toNumber(cidx()));
+														return style ? { inlineStyle: style } : {};
+													})()
+												: {})}
+											onMouseDown={(e) => props.onCellMouseDown(addr(), e)}
+											onMouseEnter={(e) => props.onCellMouseEnter?.(addr(), e)}
+											onDblClick={() => props.onCellDblClick(addr())}
+										/>
+									);
 								}}
 							</Index>
 						</div>

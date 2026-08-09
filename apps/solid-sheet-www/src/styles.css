@@ -1217,3 +1217,36 @@ a:hover {
     opacity: 0.6;
   }
 }
+
+/* Host-owned theme for the styling demo. No internal sheet selector overrides. */
+.ledger-sheet {
+  --ps-grid-background: #10201d;
+  --ps-grid-border: #49645c;
+  --ps-surface-formula-bar: #0d1917;
+  --ps-surface-header: #18302b;
+  --ps-surface-header-secondary: #142824;
+  --ps-surface-header-cell: #1d3832;
+  --ps-surface-elevated: #24443d;
+  --ps-surface-hover: #294f46;
+  --ps-border-default: #2d4d46;
+  --ps-border-strong: #49645c;
+  --ps-cell-border: #243d37;
+  --ps-text-primary: #f4ecd8;
+  --ps-text-secondary: #d5c9ab;
+  --ps-text-muted: #9eb0a8;
+  --ps-text-accent: #e6bd68;
+  --ps-focus: #e6bd68;
+  --ps-selection-background: rgba(230, 189, 104, 0.16);
+  --ps-selection-focus-background: rgba(230, 189, 104, 0.24);
+  --ps-selection-overlay-background: rgba(230, 189, 104, 0.07);
+  --ps-active-row-background: rgba(105, 190, 159, 0.06);
+  --ps-active-row-header-background: rgba(230, 189, 104, 0.17);
+  --ps-editor-background: #132722;
+  --ps-editor-border: #e6bd68;
+  --ps-editor-focus: #f2d18c;
+}
+
+.ledger-sheet__focused-row {
+  --ps-active-row-background: rgba(105, 190, 159, 0.1);
+  --ps-active-row-header-background: rgba(230, 189, 104, 0.22);
+}

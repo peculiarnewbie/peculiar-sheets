@@ -8,6 +8,19 @@ import type {
 } from "peculiar-sheets";
 
 declare global {
+	interface VirtualizerDiagnostic {
+		options: {
+			horizontal: boolean;
+			onChange(instance: VirtualizerDiagnostic, sync: boolean): void;
+		};
+		scrollElement: Element | Window | null;
+		targetWindow: Window | null;
+		scrollRect: { width: number; height: number } | null;
+		range: { startIndex: number; endIndex: number } | null;
+		getVirtualItems(): ReadonlyArray<unknown>;
+		_didMount(): () => void;
+	}
+
 	interface Window {
 		/** Current cell data — updated reactively by the test harness. */
 		__SHEET_DATA__: CellValue[][];
@@ -19,6 +32,8 @@ declare global {
 		__SORT_STATE__: SortState | null;
 		/** Imperative sheet controller for programmatic access. */
 		__SHEET_CONTROLLER__: SheetController | null;
+		/** Virtualizers captured by the production e2e-only module wrapper. */
+		__VIRTUALIZERS__?: VirtualizerDiagnostic[];
 		/** Workbook route state by sheet key. */
 		__WORKBOOK_DATA__: Record<string, CellValue[][]>;
 		/** Workbook route controllers by sheet key. */

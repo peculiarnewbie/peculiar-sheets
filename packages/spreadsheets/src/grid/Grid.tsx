@@ -1,6 +1,13 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import { createComputed, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount, Show, untrack } from "solid-js";
+import type { JSX } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { createVirtualizer } from "@tanstack/solid-virtual";
+import {
+	Virtualizer,
+	elementScroll,
+	observeElementOffset,
+	observeElementRect,
+} from "@tanstack/solid-virtual";
+import type { VirtualItem, VirtualizerOptions } from "@tanstack/solid-virtual";
 import type {
 	CellMutation,
 	CellRange,
@@ -93,6 +100,9 @@ interface GridProps {
 	sortBehavior: SortBehavior;
 	sortState?: SortState | null | undefined;
 	defaultSortState: SortState | null;
+	rootClass: string | undefined;
+	ariaLabel: string;
+	emptyState: JSX.Element | undefined;
 }
 
 interface CaretRange {
@@ -192,8 +202,26 @@ type ContextMenuState =
 	| { x: number; y: number; kind: "grid" }
 	| { x: number; y: number; kind: "column-header"; col: ColumnIndex };
 
+type VirtualItemSnapshot = Pick<VirtualItem, "index" | "start" | "size">;
+type GridVirtualizer = Virtualizer<HTMLDivElement, HTMLElement>;
+
+function snapshotVirtualItems<TScrollElement extends Element, TItemElement extends Element>(
+	virtualizer: Virtualizer<TScrollElement, TItemElement>,
+): VirtualItemSnapshot[] {
+	return virtualizer.getVirtualItems().map((item) => ({
+		index: item.index,
+		start: item.start,
+		size: item.size,
+	}));
+}
+
+function hasUsableRect(rect: { width: number; height: number } | null): boolean {
+	return Boolean(rect && rect.width > 0 && rect.height > 0);
+}
+
 export default function Grid(props: GridProps) {
 	const customization = useSheetCustomization();
+	const gridInstanceId = createUniqueId().replaceAll(":", "");
 	const workbookCoordinator = () => props.workbook?.coordinator ?? null;
 	const workbookSheetKey = () => props.workbook?.sheetKey ?? null;
 
@@ -336,23 +364,113 @@ export default function Grid(props: GridProps) {
 		}
 		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
 	});
+	// Keep explicit snapshots from the virtualizer callback. The Solid adapter's
+	// proxied item store can miss an invalidation when a synchronous external
+	// update (such as formula-engine initialization) interleaves with mounting.
+	// TanStack still owns all measurement, range, and scroll calculations.
+	const [virtualRows, setVirtualRows] = createSignal<VirtualItemSnapshot[]>([]);
+	const [virtualColumnItems, setVirtualColumnItems] = createSignal<VirtualItemSnapshot[]>([]);
 
-	const rowVirtualizer = createVirtualizer({
-		get count() {
-			return props.store.rowCount();
-		},
-		getScrollElement: () => viewportRef ?? null,
-		estimateSize: (index) => rowMetrics().getRowHeight(visualRow(index)),
-		overscan: 3,
+	function rowVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
+		return {
+			count: props.store.rowCount(),
+			getScrollElement: () => viewportRef ?? null,
+			estimateSize: (index) => rowMetrics().getRowHeight(visualRow(index)),
+			observeElementRect,
+			observeElementOffset,
+			scrollToFn: elementScroll,
+			overscan: 3,
+			onChange: (instance) => {
+				setVirtualRows(snapshotVirtualItems(instance));
+			},
+		};
+	}
+
+	function columnVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
+		return {
+			count: props.columns.length,
+			getScrollElement: () => viewportRef ?? null,
+			estimateSize: (index) => columnWidths()[index] ?? DEFAULT_COL_WIDTH,
+			observeElementRect,
+			observeElementOffset,
+			scrollToFn: elementScroll,
+			horizontal: true,
+			overscan: 2,
+			onChange: (instance) => {
+				setVirtualColumnItems(snapshotVirtualItems(instance));
+			},
+		};
+	}
+
+	// Own the core virtualizer lifecycle at the Grid component boundary. The
+	// Solid adapter registers its cleanup inside an onMount effect; lazy route
+	// and Suspense lifecycles can dispose that effect while preserving the DOM
+	// branch, leaving the core instance detached from its still-live viewport.
+	const rowVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(rowVirtualizerOptions());
+	const columnVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(columnVirtualizerOptions());
+	const disposeRowVirtualizer = rowVirtualizer._didMount();
+	const disposeColumnVirtualizer = columnVirtualizer._didMount();
+	let viewportObserver: ResizeObserver | null = null;
+	let virtualizerAttachTimer: ReturnType<typeof setTimeout> | undefined;
+
+	createComputed(() => {
+		rowVirtualizer.setOptions(rowVirtualizerOptions());
+		rowVirtualizer._willUpdate();
+		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
 	});
-	const columnVirtualizer = createVirtualizer({
-		get count() {
-			return props.columns.length;
-		},
-		getScrollElement: () => viewportRef ?? null,
-		estimateSize: (index) => columnWidths()[index] ?? DEFAULT_COL_WIDTH,
-		horizontal: true,
-		overscan: 2,
+	createComputed(() => {
+		columnVirtualizer.setOptions(columnVirtualizerOptions());
+		columnVirtualizer._willUpdate();
+		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+	});
+
+	function attachVirtualizer(virtualizer: GridVirtualizer, viewport: HTMLDivElement): void {
+		const expectedWindow = viewport.ownerDocument.defaultView;
+		const viewportRect = viewport.getBoundingClientRect();
+		const staleAttachment = virtualizer.scrollElement === viewport && (
+			virtualizer.targetWindow !== expectedWindow
+			|| (!hasUsableRect(virtualizer.scrollRect) && viewportRect.width > 0 && viewportRect.height > 0)
+		);
+
+		if (staleAttachment) {
+			// _willUpdate only attaches when the element identity changes. Clear
+			// the stale identity first so core reinstalls its window and observers.
+			virtualizer._didMount()();
+		}
+		virtualizer._willUpdate();
+	}
+
+	function attachAndSnapshotVirtualizers(): void {
+		if (!viewportRef) return;
+		attachVirtualizer(rowVirtualizer, viewportRef);
+		attachVirtualizer(columnVirtualizer, viewportRef);
+		rowVirtualizer.measure();
+		columnVirtualizer.measure();
+		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
+		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+	}
+
+	onMount(() => {
+		if (!viewportRef) return;
+		attachAndSnapshotVirtualizers();
+		// A lazy route or Suspense owner can tear down TanStack's observation
+		// after child mounts have run but before the browser reaches its next
+		// task. Repeat attachment there so the final lifecycle state wins.
+		virtualizerAttachTimer = setTimeout(attachAndSnapshotVirtualizers, 0);
+		const targetWindow = viewportRef.ownerDocument.defaultView;
+		if (targetWindow?.ResizeObserver) {
+			viewportObserver = new targetWindow.ResizeObserver(attachAndSnapshotVirtualizers);
+			viewportObserver.observe(viewportRef);
+		}
+	});
+
+	onCleanup(() => {
+		if (virtualizerAttachTimer !== undefined) {
+			clearTimeout(virtualizerAttachTimer);
+		}
+		viewportObserver?.disconnect();
+		disposeRowVirtualizer();
+		disposeColumnVirtualizer();
 	});
 
 	createEffect(
@@ -364,14 +482,6 @@ export default function Grid(props: GridProps) {
 		on(columnWidths, () => {
 			columnVirtualizer.measure();
 		}),
-	);
-
-	const virtualRows = createMemo(() =>
-		rowVirtualizer.getVirtualItems().map((item) => ({
-			index: item.index,
-			start: item.start,
-			size: item.size,
-		})),
 	);
 
 	const totalWidth = createMemo(() =>
@@ -406,6 +516,20 @@ export default function Grid(props: GridProps) {
 	function getRowIdAtVisualRow(visualRow: VisualRowIndex): RowId | null {
 		if (!isViewSortActive()) return props.store.getRowIdAtPhysicalRow(physicalRow(toNumber(visualRow)));
 		return visualRowIds()?.[toNumber(visualRow)] ?? null;
+	}
+
+	function getStableRowIdAtVisualRow(visualRowIndex: VisualRowIndex): RowId {
+		const id = getRowIdAtVisualRow(visualRowIndex);
+		if (id !== null) return id;
+
+		// A virtual item can briefly outlive a row-count reconciliation. Keep that
+		// render frame non-fatal; the tracked row-ID lookup re-runs as soon as the
+		// store and virtualizer settle on the same row set.
+		return rowId(String(toNumber(getPhysicalRowForVisualRow(visualRowIndex))));
+	}
+
+	function getCellId(address: VisualCellAddress): string {
+		return `ps-${gridInstanceId}-cell-${toNumber(address.row)}-${toNumber(address.col)}`;
 	}
 
 	function getVisualRowForRowId(id: RowId): VisualRowIndex | null {
@@ -527,7 +651,7 @@ export default function Grid(props: GridProps) {
 	);
 	const virtualColumns = createMemo(() => {
 		const rendered = new Map<number, { index: number; start: number; size: number; column: ColumnDef }>();
-		for (const item of columnVirtualizer.getVirtualItems()) {
+		for (const item of virtualColumnItems()) {
 			const column = props.columns[item.index];
 			if (column) rendered.set(item.index, { index: item.index, start: item.start, size: item.size, column });
 		}
@@ -1092,6 +1216,7 @@ export default function Grid(props: GridProps) {
 			selectAll?: boolean;
 		},
 	) {
+		if (props.readOnly) return;
 		const colDef = props.columns[toNumber(addr.col)];
 		if (colDef?.editable === false) return;
 
@@ -1193,6 +1318,42 @@ export default function Grid(props: GridProps) {
 		});
 	}
 
+	function focusOutsideGrid(backwards: boolean) {
+		const grid = gridRef;
+		if (!grid) return;
+
+		const selector = [
+			'a[href]',
+			'button:not([disabled])',
+			'input:not([disabled])',
+			'select:not([disabled])',
+			'textarea:not([disabled])',
+			'[tabindex]:not([tabindex="-1"])',
+		].join(',');
+		const candidates = Array.from(document.querySelectorAll<HTMLElement>(selector))
+			.filter((element) => !grid.contains(element) && element.getClientRects().length > 0);
+		const ordered = backwards ? candidates.reverse() : candidates;
+		const relation = backwards
+			? Node.DOCUMENT_POSITION_PRECEDING
+			: Node.DOCUMENT_POSITION_FOLLOWING;
+		const target = ordered.find((element) => Boolean(grid.compareDocumentPosition(element) & relation));
+
+		if (target) {
+			target.focus();
+		} else {
+			grid.blur();
+		}
+	}
+
+	function canNavigateSelection(direction: "up" | "down" | "left" | "right"): boolean {
+		const current = props.store.selection();
+		const next = moveSelection(current, direction, false, false, {
+			rowCount: props.store.rowCount(),
+			colCount: props.store.colCount(),
+		});
+		return next.anchor.row !== current.anchor.row || next.anchor.col !== current.anchor.col;
+	}
+
 	function handleEditorCommit(options?: { refocus?: boolean }) {
 		const editMode = props.store.editMode();
 		if (!editMode) return;
@@ -1233,15 +1394,16 @@ export default function Grid(props: GridProps) {
 	}
 
 	function handleEditTab(shift: boolean) {
-		handleNavigateAfterEdit(shift ? "left" : "right");
+		const direction = shift ? "left" : "right";
+		if (!canNavigateSelection(direction)) {
+			queueMicrotask(() => focusOutsideGrid(shift));
+			return;
+		}
+		handleNavigateAfterEdit(direction);
 		focusGridAfterNavigate();
 	}
 
 	function handleEditEnter(shift: boolean) {
-		if (isFormulaText(editorText())) {
-			focusGridAfterNavigate();
-			return;
-		}
 		handleNavigateAfterEdit(shift ? "up" : "down");
 		focusGridAfterNavigate();
 	}
@@ -2050,6 +2212,11 @@ export default function Grid(props: GridProps) {
 
 		const command = mapKeyToCommand(event);
 		if (!command) return;
+		if (command.type === "editCommit" && !canNavigateSelection(command.direction)) {
+			event.preventDefault();
+			focusOutsideGrid(command.direction === "left");
+			return;
+		}
 
 		if (shouldPreventDefault(command)) {
 			event.preventDefault();
@@ -2500,11 +2667,17 @@ export default function Grid(props: GridProps) {
 	return (
 		<div
 			ref={gridRef}
-			class="se-grid"
+			class={`se-grid${props.rootClass ? ` ${props.rootClass}` : ""}`}
 			role="grid"
-			aria-label="Spreadsheet"
+			aria-label={props.ariaLabel}
 			aria-rowcount={props.store.rowCount()}
 			aria-colcount={props.store.colCount()}
+			aria-readonly={props.readOnly || undefined}
+			aria-activedescendant={
+				props.store.rowCount() > 0 && props.store.colCount() > 0
+					? getCellId(props.store.selection().focus)
+					: undefined
+			}
 			tabIndex={0}
 			onKeyDown={handleKeyDown}
 			onContextMenu={handleContextMenu}
@@ -2513,6 +2686,7 @@ export default function Grid(props: GridProps) {
 				<FormulaBar
 					address={formulaBarAddress()}
 					value={formulaBarValue()}
+					readOnly={props.readOnly}
 					inputRef={(element) => {
 						formulaBarInputRef = element;
 					}}
@@ -2570,7 +2744,7 @@ export default function Grid(props: GridProps) {
 						when={props.store.rowCount() > 0}
 						fallback={
 							<div class="se-empty-state" role="status">
-								<span>No data</span>
+								{props.emptyState ?? <span>No data</span>}
 							</div>
 						}
 					>
@@ -2580,6 +2754,8 @@ export default function Grid(props: GridProps) {
 							rowGutterWidth={rowGutterWidth()}
 							showReferenceHeaders={props.showReferenceHeaders}
 							getRowHeaderIndex={(visualRow) => getPhysicalRowForVisualRow(visualRow)}
+							getRowId={getStableRowIdAtVisualRow}
+							getCellId={getCellId}
 							getRowHeaderTooltip={(visualRow) =>
 								isViewSortActive() ? `View row ${visualRow + 1}` : null
 							}
@@ -2591,6 +2767,7 @@ export default function Grid(props: GridProps) {
 							getDisplayValue={getDisplayCellValue}
 							getRawValue={getRawCellValue}
 							editingAddress={props.store.editMode()?.address ?? null}
+							selection={props.store.selection()}
 							onCellMouseDown={handleCellMouseDown}
 							onCellMouseEnter={handleCellMouseEnter}
 							onRowHeaderMouseDown={handleRowHeaderMouseDown}
@@ -2639,6 +2816,7 @@ export default function Grid(props: GridProps) {
 							{(r) => (
 								<CellEditor
 									value={editorText()}
+									ariaLabel={`Edit ${addressToA1(props.store.editMode()?.address ?? selectedAddress())}`}
 									inputRef={(element) => {
 										cellEditorInputRef = element;
 									}}

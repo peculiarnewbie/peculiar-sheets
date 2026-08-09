@@ -5,6 +5,7 @@ import { type ColumnIndex, type VisualRowIndex } from "../core/brands";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
 interface GridCellProps {
+	id: string;
 	/** Raw cell value (pre-format). Passed to renderCell / title hooks. */
 	rawValue: CellValue;
 	/** Text to render in the default inner span (already passed through formatValue or the default). */
@@ -38,6 +39,9 @@ interface GridCellProps {
 	renderCell?: (ctx: CellRenderContext) => JSX.Element;
 	/** True while the CellEditor overlays this cell. */
 	isEditing?: boolean;
+	isFocused?: boolean;
+	isSelected?: boolean;
+	isActiveRow?: boolean;
 	onMouseDown: (event: MouseEvent) => void;
 	onMouseEnter?: (event: MouseEvent) => void;
 	onDblClick: () => void;
@@ -70,15 +74,21 @@ export default function GridCell(props: GridCellProps) {
 
 	return (
 		<div
+			id={props.id}
 			class={`se-cell${props.customClass ? ` ${props.customClass}` : ""}`}
 			classList={{
 				"se-cell--pinned": isPinned(),
 				"se-cell--pinned-last": !!props.isLastPinned,
 				"se-cell--search-match": !!props.searchMatch,
 				"se-cell--search-current": !!props.searchCurrent,
+				"se-cell--active-row": !!props.isActiveRow,
+				"se-cell--range": !!props.isSelected,
+				"se-cell--focus": !!props.isFocused,
+				"se-cell--editing": !!props.isEditing,
 			}}
 			role="gridcell"
 			aria-colindex={props.colIndex + 1}
+			aria-selected={props.isSelected ?? false}
 			aria-readonly={props.readOnly || undefined}
 			title={resolveTitle(props.title, props.formattedText)}
 			style={{

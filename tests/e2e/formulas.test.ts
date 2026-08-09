@@ -73,3 +73,36 @@ describe("formulas", () => {
 		expect(display).toBe(120);
 	});
 });
+
+describe("formula-enabled mount", () => {
+	let sh: Stagehand;
+
+	beforeAll(async () => {
+		sh = await getStagehand();
+		await newPage();
+		await navigateTo(sh, "/formula-mount");
+	});
+
+	afterAll(async () => {
+		await closePage();
+	});
+
+	it("renders virtual rows and evaluates an edited formula", async () => {
+		const rendered = await getPage().evaluate(() => ({
+			rowOne: document.querySelector('.se-row[aria-rowindex="1"]') !== null,
+			rowHeaders: document.querySelectorAll(".se-row-header-cell").length,
+			cells: document.querySelectorAll(".se-cell").length,
+		}));
+		expect(rendered.rowOne).toBe(true);
+		expect(rendered.rowHeaders).toBeGreaterThan(0);
+		expect(rendered.cells).toBeGreaterThan(0);
+
+		await doubleClickCell(sh, 0, 0);
+		await typeIntoCell(sh, "=1+2");
+
+		const display = await withSheetCtrlMaybe(
+			(controller) => controller?.getDisplayCellValue(0, 0),
+		);
+		expect(display).toBe(3);
+	});
+});
