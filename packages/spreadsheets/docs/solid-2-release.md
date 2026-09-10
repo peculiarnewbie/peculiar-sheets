@@ -25,6 +25,7 @@ from the `latest` tag (Solid's `latest` still points to 1.x).
 | `vitest` | `5.0.0` | Component test runner |
 | `@tanstack/virtual-core` | `3.17.9` | Framework-neutral virtualization |
 | `@tanstack/solid-router` | `2.0.0-rc.7` | Test application's lazy-route coverage only |
+| `better-result` | `3.0.1` | Internal orchestration and tagged runtime failures |
 
 The legacy `vite-plugin-solid@3.0.0-next.27` wrapper's tag was stale relative to
 the renamed official package. Use `@solidjs/vite-plugin` above. The published
@@ -158,6 +159,6 @@ installs alongside the core with deduplicated rc.7 peers and no Solid runtime im
 Local tarballs are in the git-ignored `dist/releases/` directory:
 
 - `peculiar-sheets-0.13.0.tgz`
-  SHA-256: `58dd23d60174f78efc19b0da7426fb62e2d5de072a34b92ed0bc3f580afa53d7`
+  SHA-256: `5976f36c831d871cff44fbfb6d776c0c24bf03c7605d6537650d26a1c27893f8`
 - `peculiar-sheets-ironcalc-0.13.0.tgz`
   SHA-256: `e59c8a328dc788d24eaddee2080a82b22e35b741b8bd0b32a8cfa3dbf3afd6db`

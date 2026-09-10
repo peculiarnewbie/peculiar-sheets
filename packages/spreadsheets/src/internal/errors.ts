@@ -5,21 +5,21 @@ export class ClipboardAccessError extends TaggedError("ClipboardAccessError")<{
 	operation: "read" | "write";
 	message: string;
 	cause: unknown;
-}>() {}
+}> {}
 
 export class FormulaSheetResolutionError extends TaggedError("FormulaSheetResolutionError")<{
 	operation: string;
 	formulaName: string;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaEngineSubscriptionError extends TaggedError("FormulaEngineSubscriptionError")<{
 	operation: "subscribe" | "unsubscribe";
 	formulaName: string;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaEngineSyncError extends TaggedError("FormulaEngineSyncError")<{
 	operation: "syncAll";
@@ -27,7 +27,7 @@ export class FormulaEngineSyncError extends TaggedError("FormulaEngineSyncError"
 	sheetId: FormulaSheetId;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaCellUpdateError extends TaggedError("FormulaCellUpdateError")<{
 	operation: "setCell";
@@ -37,7 +37,7 @@ export class FormulaCellUpdateError extends TaggedError("FormulaCellUpdateError"
 	col: ColumnIndex;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaBatchUpdateError extends TaggedError("FormulaBatchUpdateError")<{
 	operation: "setCells";
@@ -48,7 +48,7 @@ export class FormulaBatchUpdateError extends TaggedError("FormulaBatchUpdateErro
 	/** True when at least one written cell could not be restored after the failed batch. */
 	engineInconsistent: boolean;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaDisplayValueError extends TaggedError("FormulaDisplayValueError")<{
 	operation: "getDisplayValue";
@@ -58,7 +58,7 @@ export class FormulaDisplayValueError extends TaggedError("FormulaDisplayValueEr
 	col: ColumnIndex;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class FormulaRowOrderError extends TaggedError("FormulaRowOrderError")<{
 	operation: "setRowOrder";
@@ -67,21 +67,21 @@ export class FormulaRowOrderError extends TaggedError("FormulaRowOrderError")<{
 	indexOrder: number[];
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookSheetNotRegisteredError extends TaggedError(
 	"WorkbookSheetNotRegisteredError",
 )<{
 	sheetKey: string;
 	message: string;
-}>() {}
+}> {}
 
 export class WorkbookBindingMismatchError extends TaggedError("WorkbookBindingMismatchError")<{
 	sheetKey: string;
 	expectedFormulaName: string;
 	receivedFormulaName: string;
 	message: string;
-}>() {}
+}> {}
 
 export class WorkbookDuplicateFormulaNameError extends TaggedError(
 	"WorkbookDuplicateFormulaNameError",
@@ -90,21 +90,21 @@ export class WorkbookDuplicateFormulaNameError extends TaggedError(
 	formulaName: string;
 	existingSheetKey: string;
 	message: string;
-}>() {}
+}> {}
 
 export class WorkbookSnapshotBuildError extends TaggedError("WorkbookSnapshotBuildError")<{
 	sheetKey: string;
 	sheetId: FormulaSheetId;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookSnapshotRestoreError extends TaggedError("WorkbookSnapshotRestoreError")<{
 	sheetKey: string;
 	sheetId: FormulaSheetId;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookReferenceInsertError extends TaggedError("WorkbookReferenceInsertError")<{
 	operation: string;
@@ -112,7 +112,7 @@ export class WorkbookReferenceInsertError extends TaggedError("WorkbookReference
 	targetSheetKey: string;
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookStructuralOperationError extends TaggedError(
 	"WorkbookStructuralOperationError",
@@ -126,7 +126,7 @@ export class WorkbookStructuralOperationError extends TaggedError(
 	indexOrder?: PhysicalRowIndex[];
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookStructuralRollbackError extends TaggedError(
 	"WorkbookStructuralRollbackError",
@@ -141,13 +141,13 @@ export class WorkbookStructuralRollbackError extends TaggedError(
 	engineInconsistent: boolean;
 	cause?: unknown;
 	rollbackCause?: unknown;
-}>() {}
+}> {}
 
 export class WorkbookHistoryError extends TaggedError("WorkbookHistoryError")<{
 	operation: "undo" | "redo";
 	message: string;
 	cause?: unknown;
-}>() {}
+}> {}
 
 export type FormulaBridgeError =
 	| FormulaSheetResolutionError

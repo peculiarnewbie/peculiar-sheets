@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgrade `better-result` from 2.x to `3.0.1` and migrate internal tagged errors
+  to its stable v3 API.
 - **Breaking runtime compatibility:** requires exactly `solid-js@2.0.0-rc.7` and
   `@solidjs/web@2.0.0-rc.7`. Solid 1 applications must remain on `0.12.4`.
 - Compile distributed JavaScript with `@solidjs/compiler@2.0.0-rc.7`; keep both

@@ -38,15 +38,15 @@ export type ActionStep =
 	| { kind: "wait"; ms: number; caption?: string }
 	| { kind: "resetSheet"; caption?: string }
 	| {
-		kind: "custom";
-		/**
-		 * Escape hatch for scenarios that don't fit the standard action set
-		 * (editor introspection, raw key dispatch, etc.). The runner passes the
-		 * live driver; custom steps can inspect `d.kind` to branch on Stagehand vs DOM.
-		 */
-		run: (d: Driver) => Promise<void>;
-		caption?: string;
-	};
+			kind: "custom";
+			/**
+			 * Escape hatch for scenarios that don't fit the standard action set
+			 * (editor introspection, raw key dispatch, etc.). The runner passes the
+			 * live driver; custom steps can inspect `d.kind` to branch on Stagehand vs DOM.
+			 */
+			run: (d: Driver) => Promise<void>;
+			caption?: string;
+	  };
 
 // ── Assertion steps ─────────────────────────────────────────────────────────
 
@@ -55,12 +55,12 @@ export type AssertStep =
 	| { kind: "assertCellValue"; at: CellRef; value: CellValue; mode?: AssertMode; caption?: string }
 	| { kind: "assertDisplayValue"; at: CellRef; text: string; mode?: AssertMode; caption?: string }
 	| {
-		kind: "assertMutation";
-		index: number;
-		match: Partial<MutationSnapshot>;
-		mode?: AssertMode;
-		caption?: string;
-	}
+			kind: "assertMutation";
+			index: number;
+			match: Partial<MutationSnapshot>;
+			mode?: AssertMode;
+			caption?: string;
+	  }
 	| { kind: "assertMutationCount"; count: number; mode?: AssertMode; caption?: string };
 
 export type Step = ActionStep | AssertStep;
@@ -116,7 +116,11 @@ export interface Driver {
 	reset(): Promise<void>;
 
 	// Actions
-	click(row: number, col: number, opts?: { shift?: boolean; button?: "left" | "right" }): Promise<void>;
+	click(
+		row: number,
+		col: number,
+		opts?: { shift?: boolean; button?: "left" | "right" },
+	): Promise<void>;
 	doubleClick(row: number, col: number): Promise<void>;
 	clickColumnHeader(label: string): Promise<void>;
 	rightClickCell(row: number, col: number): Promise<void>;
@@ -149,11 +153,11 @@ export class AssertionError extends TaggedError("ScenarioAssertionError")<{
 	message: string;
 	stepIndex: number;
 	stepKind: string;
-}>() {}
+}> {}
 
 export class StepError extends TaggedError("ScenarioStepError")<{
 	message: string;
 	stepIndex: number;
 	stepKind: string;
 	cause: unknown;
-}>() {}
+}> {}
