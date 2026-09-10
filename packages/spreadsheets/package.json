@@ -6,7 +6,8 @@
 	"author": "peculiarnewbie",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/peculiarnewbie/spreadsheets"
+		"url": "git+https://github.com/peculiarnewbie/peculiar-sheets",
+		"directory": "packages/spreadsheets"
 	},
 	"homepage": "https://sheets.peculiarnewbie.com",
 	"type": "module",
