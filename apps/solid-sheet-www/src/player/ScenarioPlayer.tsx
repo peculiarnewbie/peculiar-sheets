@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 /**
  * ScenarioPlayer — the UI shell for replaying scenarios against a live
  * `<Sheet>`. Reads scenarios from `sheet-scenarios/scenarios`, drives them
@@ -13,7 +14,7 @@
  * playback continues to the last step. Action-step errors still halt.
  */
 
-import { createEffect, createSignal, For, Show, createMemo, type JSX, onCleanup } from "solid-js";
+import { createEffect, createSignal, For, Show, createMemo, onCleanup } from "solid-js";
 import {
 	DomDriver,
 	isScenarioAbortError,
@@ -89,9 +90,7 @@ function formatStep(step: Step): string {
 }
 
 export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
-	const [selectedId, setSelectedId] = createSignal<string>(
-		props.scenarios[0]?.id ?? "",
-	);
+	const [selectedId, setSelectedId] = createSignal<string>(props.scenarios[0]?.id ?? "");
 	const [isRunning, setIsRunning] = createSignal(false);
 	const [currentStepIndex, setCurrentStepIndex] = createSignal<number | null>(null);
 	const [caption, setCaption] = createSignal<string>("");
@@ -117,8 +116,8 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 		}
 	}
 
-	const activeScenario = createMemo(() =>
-		props.scenarios.find((s) => s.id === selectedId()) ?? props.scenarios[0],
+	const activeScenario = createMemo(
+		() => props.scenarios.find((s) => s.id === selectedId()) ?? props.scenarios[0],
 	);
 
 	onCleanup(() => {
@@ -133,29 +132,29 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 	//   - user picks a different scenario from the dropdown.
 	// Cancels any pending loop timer so we don't race a stale restart
 	// against the fresh run.
-	createEffect(() => {
-		const id = selectedId();
-		const host = props.host;
+	createEffect(
+		() => ({ id: selectedId(), host: props.host, autoPlay: props.autoPlay }),
+		({ id, host, autoPlay }) => {
+			setCurrentStepIndex(null);
+			setCaption("");
+			setPips([]);
+			setErrorMessage(null);
+			cancelLoopTimer();
 
-		setCurrentStepIndex(null);
-		setCaption("");
-		setPips([]);
-		setErrorMessage(null);
-		cancelLoopTimer();
+			if (!(autoPlay ?? true)) return;
+			if (!host) return;
+			if (!id) return;
 
-		if (!(props.autoPlay ?? true)) return;
-		if (!host) return;
-		if (!id) return;
-
-		// Defer one tick so the sheet has painted and any previous in-flight
-		// run has released its iteration before we start firing events.
-		queueMicrotask(() => {
-			if (aborted) return;
-			if (isRunning()) return;
-			if (selectedId() !== id) return;
-			void play();
-		});
-	});
+			// Defer one tick so the sheet has painted and any previous in-flight
+			// run has released its iteration before we start firing events.
+			queueMicrotask(() => {
+				if (aborted) return;
+				if (isRunning()) return;
+				if (selectedId() !== id) return;
+				void play();
+			});
+		},
+	);
 
 	function handleEvent(event: ScenarioEvent): void {
 		switch (event.type) {
@@ -176,9 +175,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 				setCaption(formatStep(event.step));
 				break;
 			case "assert-pass":
-				setPips((prev) =>
-					prev.map((p) => (p.index === event.index ? { ...p, state: "pass" } : p)),
-				);
+				setPips((prev) => prev.map((p) => (p.index === event.index ? { ...p, state: "pass" } : p)));
 				break;
 			case "assert-fail":
 				setPips((prev) =>
@@ -253,7 +250,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 	const failCount = createMemo(() => pips().filter((p) => p.state === "fail").length);
 
 	return (
-		<div class="replay-player" classList={{ "replay-player--active": isRunning() }}>
+		<div class={["replay-player", { "replay-player--active": isRunning() }]}>
 			<GhostCursor ref={(h) => (cursor = h)} />
 
 			<div class="replay-player__controls">
@@ -263,9 +260,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 					onChange={(e) => setSelectedId(e.currentTarget.value)}
 					disabled={isRunning()}
 				>
-					<For each={props.scenarios}>
-						{(s) => <option value={s.id}>{s.title}</option>}
-					</For>
+					<For each={props.scenarios}>{(s) => <option value={s.id}>{s.title}</option>}</For>
 				</select>
 
 				<button
@@ -278,9 +273,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 					<Show when={isRunning()} fallback={<span aria-hidden="true">▶</span>}>
 						<span aria-hidden="true">⏵</span>
 					</Show>
-					<span class="replay-player__play-label">
-						{isRunning() ? "Running" : "Play"}
-					</span>
+					<span class="replay-player__play-label">{isRunning() ? "Running" : "Play"}</span>
 				</button>
 			</div>
 
@@ -294,10 +287,13 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 				<Show
 					when={errorMessage()}
 					fallback={
-						<Show when={caption()} fallback={<span class="replay-player__caption-hint">Pick a scenario and press Play.</span>}>
-							<span class="replay-player__caption-step">
-								Step {((currentStepIndex() ?? 0) + 1)}
-							</span>
+						<Show
+							when={caption()}
+							fallback={
+								<span class="replay-player__caption-hint">Pick a scenario and press Play.</span>
+							}
+						>
+							<span class="replay-player__caption-step">Step {(currentStepIndex() ?? 0) + 1}</span>
 							<span class="replay-player__caption-text">{caption()}</span>
 						</Show>
 					}
@@ -311,11 +307,7 @@ export function ScenarioPlayer(props: ScenarioPlayerProps): JSX.Element {
 							{(pip) => (
 								<span
 									class={`replay-pip replay-pip--${pip.state}`}
-									title={
-										pip.state === "fail"
-											? `${pip.kind}: ${pip.message}`
-											: pip.kind
-									}
+									title={pip.state === "fail" ? `${pip.kind}: ${pip.message}` : pip.kind}
 								>
 									{pip.state === "pass" ? "●" : pip.state === "fail" ? "✖" : "○"}
 								</span>

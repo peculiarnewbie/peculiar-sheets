@@ -14,8 +14,8 @@
 		"isolatedModules": true,
 		"noEmit": true,
 		"jsx": "preserve",
-		"jsxImportSource": "solid-js",
+		"jsxImportSource": "@solidjs/web",
 		"skipLibCheck": true
 	},
-	"include": ["src"]
+	"include": ["src", "../../apps/e2e/src/global.d.ts"]
 }

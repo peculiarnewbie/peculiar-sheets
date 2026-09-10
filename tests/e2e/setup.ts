@@ -1,5 +1,10 @@
 import { Stagehand } from "@browserbasehq/stagehand";
-import type { CellMutation, CellValue, SheetController, WorkbookStructuralChange } from "peculiar-sheets";
+import type {
+	CellMutation,
+	CellValue,
+	SheetController,
+	WorkbookStructuralChange,
+} from "peculiar-sheets";
 
 interface LocatorLike {
 	click(options?: { clickCount?: number }): Promise<void>;
@@ -8,7 +13,8 @@ interface LocatorLike {
 }
 
 interface E2EPage {
-	goto(url: string): Promise<void>;
+	goto(url: string): Promise<unknown>;
+	reload(): Promise<unknown>;
 	waitForSelector(selector: string): Promise<unknown>;
 	waitForTimeout(ms: number): Promise<void>;
 	evaluate<T>(fn: () => T | Promise<T>): Promise<T>;
@@ -17,7 +23,13 @@ interface E2EPage {
 	type(value: string): Promise<void>;
 	keyPress(key: string): Promise<void>;
 	sendCDP(method: "Input.dispatchMouseEvent", params: Record<string, unknown>): Promise<void>;
-	dragAndDrop(startX: number, startY: number, targetX: number, targetY: number, options?: { steps?: number }): Promise<void>;
+	dragAndDrop(
+		startX: number,
+		startY: number,
+		targetX: number,
+		targetY: number,
+		options?: { steps?: number },
+	): Promise<void>;
 	close(): Promise<void>;
 }
 
@@ -54,7 +66,7 @@ export async function getStagehand(): Promise<Stagehand> {
 /** Open a fresh page in the shared Stagehand context. */
 export async function newPage(): Promise<E2EPage> {
 	const sh = await getStagehand();
-	_page = await sh.context.newPage() as E2EPage;
+	_page = (await sh.context.newPage()) as unknown as E2EPage;
 	return _page;
 }
 
@@ -129,11 +141,17 @@ export function withSheetCtrlMaybe<T>(fn: (ctrl: SheetController | null) => T): 
 }
 
 /** Run a callback with typed access to `window.__WORKBOOK_CONTROLLERS__[sheetKey]` (allows null). */
-export function withWorkbookCtrl<T>(sheetKey: string, fn: (ctrl: SheetController | null) => T): Promise<T> {
-	return getPage().evaluate((args: { key: string; fn: string }) => {
-		const ctrl = window.__WORKBOOK_CONTROLLERS__[args.key] ?? null;
-		return (0, eval)(`(${args.fn})`)(ctrl);
-	}, { key: sheetKey, fn: fn.toString() });
+export function withWorkbookCtrl<T>(
+	sheetKey: string,
+	fn: (ctrl: SheetController | null) => T,
+): Promise<T> {
+	return getPage().evaluate(
+		(args: { key: string; fn: string }) => {
+			const ctrl = window.__WORKBOOK_CONTROLLERS__[args.key] ?? null;
+			return (0, eval)(`(${args.fn})`)(ctrl);
+		},
+		{ key: sheetKey, fn: fn.toString() },
+	);
 }
 
 /** Read the current workbook data for a sheet. */
@@ -154,11 +172,7 @@ export async function getSheetData(_sh: Stagehand): Promise<CellValue[][]> {
 }
 
 /** Read a single cell value from the harness. */
-export async function getCellValue(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-): Promise<CellValue> {
+export async function getCellValue(_sh: Stagehand, row: number, col: number): Promise<CellValue> {
 	return getPage().evaluate(
 		({ r, c }: { r: number; c: number }) => window.__SHEET_DATA__[r]?.[c] ?? null,
 		{ r: row, c: col },
@@ -217,9 +231,7 @@ function cellLocator(row: number, col: number) {
 }
 
 function rowHeaderLocator(row: number) {
-	return getPage().locator(
-		`[role="row"][aria-rowindex="${row + 1}"] [role="rowheader"]`,
-	);
+	return getPage().locator(`[role="row"][aria-rowindex="${row + 1}"] [role="rowheader"]`);
 }
 
 async function getColumnHeaderCenter(label: string): Promise<{ x: number; y: number }> {
@@ -242,37 +254,38 @@ async function getColumnHeaderCenter(label: string): Promise<{ x: number; y: num
 }
 
 /** Click a cell at the given (0-indexed) row/col position. */
-export async function clickCell(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-) {
+export async function clickCell(_sh: Stagehand, row: number, col: number) {
 	await cellLocator(row, col).click();
 }
 
 /** Click a column header in the main header row by its label text. */
-export async function clickColumnHeader(
-	_sh: Stagehand,
-	label: string,
-) {
+export async function clickColumnHeader(_sh: Stagehand, label: string) {
 	const page = getPage();
 	const { x, y } = await getColumnHeaderCenter(label);
 
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseMoved", x, y, button: "none",
+		type: "mouseMoved",
+		x,
+		y,
+		button: "none",
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mousePressed", x, y, button: "left", clickCount: 1,
+		type: "mousePressed",
+		x,
+		y,
+		button: "left",
+		clickCount: 1,
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseReleased", x, y, button: "left", clickCount: 1,
+		type: "mouseReleased",
+		x,
+		y,
+		button: "left",
+		clickCount: 1,
 	});
 }
 
-export async function rightClickColumnHeader(
-	_sh: Stagehand,
-	label: string,
-) {
+export async function rightClickColumnHeader(_sh: Stagehand, label: string) {
 	const page = getPage();
 	await page.evaluate((targetLabel: string) => {
 		const headers = Array.from(
@@ -287,61 +300,53 @@ export async function rightClickColumnHeader(
 		const rect = header.getBoundingClientRect();
 		const clientX = rect.left + rect.width / 2;
 		const clientY = rect.top + rect.height / 2;
-		header.dispatchEvent(new MouseEvent("mousedown", {
-			bubbles: true,
-			button: 2,
-			buttons: 2,
-			clientX,
-			clientY,
-		}));
-		header.dispatchEvent(new MouseEvent("contextmenu", {
-			bubbles: true,
-			button: 2,
-			buttons: 2,
-			clientX,
-			clientY,
-		}));
-		header.dispatchEvent(new MouseEvent("mouseup", {
-			bubbles: true,
-			button: 2,
-			buttons: 0,
-			clientX,
-			clientY,
-		}));
+		header.dispatchEvent(
+			new MouseEvent("mousedown", {
+				bubbles: true,
+				button: 2,
+				buttons: 2,
+				clientX,
+				clientY,
+			}),
+		);
+		header.dispatchEvent(
+			new MouseEvent("contextmenu", {
+				bubbles: true,
+				button: 2,
+				buttons: 2,
+				clientX,
+				clientY,
+			}),
+		);
+		header.dispatchEvent(
+			new MouseEvent("mouseup", {
+				bubbles: true,
+				button: 2,
+				buttons: 0,
+				clientX,
+				clientY,
+			}),
+		);
 	}, label);
 
 	await poll(() => Boolean(document.querySelector(".se-context-menu")));
 }
 
 /** Double-click a cell to enter edit mode. */
-export async function doubleClickCell(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-) {
+export async function doubleClickCell(_sh: Stagehand, row: number, col: number) {
 	await cellLocator(row, col).click({ clickCount: 2 });
 }
 
 /** Get the displayed text content of a cell element. */
-export async function getCellText(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-): Promise<string> {
+export async function getCellText(_sh: Stagehand, row: number, col: number): Promise<string> {
 	return (await cellLocator(row, col).textContent()) ?? "";
 }
 
-export async function getRowHeaderText(
-	_sh: Stagehand,
-	row: number,
-): Promise<string> {
+export async function getRowHeaderText(_sh: Stagehand, row: number): Promise<string> {
 	return ((await rowHeaderLocator(row).textContent()) ?? "").trim();
 }
 
-export async function getRowHeaderTitle(
-	_sh: Stagehand,
-	row: number,
-): Promise<string | null> {
+export async function getRowHeaderTitle(_sh: Stagehand, row: number): Promise<string | null> {
 	return getPage().evaluate((targetRow: number) => {
 		const rowHeader = document.querySelector<HTMLElement>(
 			`[role="row"][aria-rowindex="${targetRow + 1}"] [role="rowheader"]`,
@@ -390,22 +395,29 @@ export async function getRowCount(_sh: Stagehand): Promise<number> {
  * Uses CDP to dispatch a right-button click since Stagehand's Locator
  * doesn't natively support right-click.
  */
-export async function rightClickCell(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-) {
+export async function rightClickCell(_sh: Stagehand, row: number, col: number) {
 	const page = getPage();
 	const { x, y } = await cellLocator(row, col).centroid();
 
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseMoved", x, y, button: "none",
+		type: "mouseMoved",
+		x,
+		y,
+		button: "none",
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mousePressed", x, y, button: "right", clickCount: 1,
+		type: "mousePressed",
+		x,
+		y,
+		button: "right",
+		clickCount: 1,
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseReleased", x, y, button: "right", clickCount: 1,
+		type: "mouseReleased",
+		x,
+		y,
+		button: "right",
+		clickCount: 1,
 	});
 
 	// Wait for the context menu to appear
@@ -416,18 +428,13 @@ export async function rightClickCell(
  * Click a context menu item by its label text.
  * Must call rightClickCell() first to open the menu.
  */
-export async function clickContextMenuItem(
-	_sh: Stagehand,
-	label: string,
-) {
+export async function clickContextMenuItem(_sh: Stagehand, label: string) {
 	const page = getPage();
 	await page.evaluate((targetLabel: string) => {
 		const items = Array.from(
 			document.querySelectorAll<HTMLButtonElement>(".se-context-menu__item"),
 		);
-		const item = items.find((element) =>
-			(element.textContent ?? "").includes(targetLabel),
-		);
+		const item = items.find((element) => (element.textContent ?? "").includes(targetLabel));
 		if (!item) {
 			throw new Error(`Context menu item not found: ${targetLabel}`);
 		}
@@ -442,23 +449,32 @@ export async function clickContextMenuItem(
  * Dispatches the full mouse sequence via CDP with the Shift modifier flag
  * since Stagehand v3 Locator.click() doesn't support modifier keys.
  */
-export async function shiftClickCell(
-	_sh: Stagehand,
-	row: number,
-	col: number,
-) {
+export async function shiftClickCell(_sh: Stagehand, row: number, col: number) {
 	const page = getPage();
 	const { x, y } = await cellLocator(row, col).centroid();
 
 	const modifiers = 8; // Shift
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseMoved", x, y, modifiers,
+		type: "mouseMoved",
+		x,
+		y,
+		modifiers,
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mousePressed", x, y, button: "left", clickCount: 1, modifiers,
+		type: "mousePressed",
+		x,
+		y,
+		button: "left",
+		clickCount: 1,
+		modifiers,
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseReleased", x, y, button: "left", clickCount: 1, modifiers,
+		type: "mouseReleased",
+		x,
+		y,
+		button: "left",
+		clickCount: 1,
+		modifiers,
 	});
 }
 
@@ -469,11 +485,7 @@ export async function shiftClickCell(
  * primary selection. Uses Stagehand v3's `page.dragAndDrop()` which dispatches
  * mouseMoved → mousePressed → mouseMoved (steps) → mouseReleased via CDP.
  */
-export async function dragFillHandle(
-	_sh: Stagehand,
-	targetRow: number,
-	targetCol: number,
-) {
+export async function dragFillHandle(_sh: Stagehand, targetRow: number, targetCol: number) {
 	const page = getPage();
 	const handle = page.locator(".se-fill-handle");
 
@@ -496,10 +508,17 @@ export async function startFillHandleDrag() {
 
 	// Move to handle and press
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mouseMoved", x, y, button: "none",
+		type: "mouseMoved",
+		x,
+		y,
+		button: "none",
 	});
 	await page.sendCDP("Input.dispatchMouseEvent", {
-		type: "mousePressed", x, y, button: "left", clickCount: 1,
+		type: "mousePressed",
+		x,
+		y,
+		button: "left",
+		clickCount: 1,
 	});
 
 	return {
@@ -507,7 +526,10 @@ export async function startFillHandleDrag() {
 		async moveTo(row: number, col: number) {
 			const { x: tx, y: ty } = await cellLocator(row, col).centroid();
 			await page.sendCDP("Input.dispatchMouseEvent", {
-				type: "mouseMoved", x: tx, y: ty, button: "left",
+				type: "mouseMoved",
+				x: tx,
+				y: ty,
+				button: "left",
 			});
 		},
 		/** Release the mouse at the last moved position. */
@@ -515,11 +537,19 @@ export async function startFillHandleDrag() {
 			if (atRow !== undefined && atCol !== undefined) {
 				const { x: rx, y: ry } = await cellLocator(atRow, atCol).centroid();
 				await page.sendCDP("Input.dispatchMouseEvent", {
-					type: "mouseReleased", x: rx, y: ry, button: "left", clickCount: 1,
+					type: "mouseReleased",
+					x: rx,
+					y: ry,
+					button: "left",
+					clickCount: 1,
 				});
 			} else {
 				await page.sendCDP("Input.dispatchMouseEvent", {
-					type: "mouseReleased", x, y, button: "left", clickCount: 1,
+					type: "mouseReleased",
+					x,
+					y,
+					button: "left",
+					clickCount: 1,
 				});
 			}
 		},

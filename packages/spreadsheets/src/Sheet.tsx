@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js";
+import { onCleanup, onSettled, untrack } from "solid-js";
 import type { SheetController, SheetProps } from "./types";
 import { DEFAULT_ROW_HEIGHT } from "./types";
 import { createReconciler, createSheetStore } from "./core/state";
@@ -9,7 +9,7 @@ import Grid from "./grid/Grid";
 import { getWorkbookCoordinatorInternals } from "./workbook/coordinator";
 
 export function Sheet(props: SheetProps) {
-	if (props.formulaEngine && props.workbook) {
+	if (untrack(() => props.formulaEngine && props.workbook)) {
 		throw new Error("Sheet props `formulaEngine` and `workbook` are mutually exclusive.");
 	}
 
@@ -29,7 +29,7 @@ export function Sheet(props: SheetProps) {
 		props.workbook
 			? requireWorkbookInternals().getFormulaEngineConfig(props.workbook)
 			: props.formulaEngine;
-	const formulaBridgeResult = createFormulaBridge(resolvedFormulaEngine());
+	const formulaBridgeResult = createFormulaBridge(untrack(resolvedFormulaEngine));
 	if (Result.isError(formulaBridgeResult)) {
 		throw new Error(formulaBridgeResult.error.message);
 	}
@@ -60,7 +60,7 @@ export function Sheet(props: SheetProps) {
 
 	// ── Create Store ───────────────────────────────────────────────────────
 
-	const store = createSheetStore(props.data, props.columns, props.rowIds);
+	const store = untrack(() => createSheetStore(props.data, props.columns, props.rowIds));
 	const workbookDataGetter = () => store.cells.map((row) => [...row]);
 
 	// ── Data Reconciliation ────────────────────────────────────────────────
@@ -75,7 +75,7 @@ export function Sheet(props: SheetProps) {
 		},
 	);
 
-	onMount(() => {
+	onSettled(() => {
 		if (props.workbook) {
 			requireWorkbookInternals().attachDataGetter(props.workbook.sheetKey, workbookDataGetter);
 		}
@@ -96,14 +96,14 @@ export function Sheet(props: SheetProps) {
 	// ── Render ─────────────────────────────────────────────────────────────
 
 	return (
-		<SheetCustomizationContext.Provider value={props.customization}>
+		<SheetCustomizationContext value={props.customization ?? null}>
 			<Grid
 				store={store}
 				columns={columns()}
 				rowHeight={rowHeight()}
 				readOnly={readOnly()}
 				onSelectionChange={props.onSelectionChange}
-					onOperation={props.onOperation}
+				onOperation={props.onOperation}
 				onEditModeChange={(state) => {
 					if (props.workbook) {
 						requireWorkbookInternals().handleEditModeChange(props.workbook.sheetKey, state);
@@ -122,14 +122,22 @@ export function Sheet(props: SheetProps) {
 				onSortChange={props.onSortChange}
 				onCellPointerDown={(address, event) => {
 					const handledByWorkbook = props.workbook
-						? requireWorkbookInternals().handleCellPointerDown(props.workbook.sheetKey, address, event)
+						? requireWorkbookInternals().handleCellPointerDown(
+								props.workbook.sheetKey,
+								address,
+								event,
+							)
 						: false;
 					if (handledByWorkbook) return true;
 					return props.onCellPointerDown?.(address, event) ?? false;
 				}}
 				onCellPointerMove={(address, event) => {
 					const handledByWorkbook = props.workbook
-						? requireWorkbookInternals().handleCellPointerMove(props.workbook.sheetKey, address, event)
+						? requireWorkbookInternals().handleCellPointerMove(
+								props.workbook.sheetKey,
+								address,
+								event,
+							)
 						: false;
 					if (handledByWorkbook) return true;
 					return props.onCellPointerMove?.(address, event) ?? false;
@@ -156,6 +164,6 @@ export function Sheet(props: SheetProps) {
 				ariaLabel={props.ariaLabel ?? "Spreadsheet"}
 				emptyState={props.emptyState}
 			/>
-		</SheetCustomizationContext.Provider>
+		</SheetCustomizationContext>
 	);
 }

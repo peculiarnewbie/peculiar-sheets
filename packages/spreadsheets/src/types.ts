@@ -1,4 +1,4 @@
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { WorkbookSheetBinding } from "./workbook/types";
 import type {
 	ColumnIndex,
@@ -321,7 +321,10 @@ export interface SheetCustomization {
 	 * editing. Receives the editing cell address and the clicked cell address.
 	 * Return `null` to use the default behavior (bare A1 reference).
 	 */
-	getReferenceText?: (editingAddress: PhysicalCellAddress, clickedAddress: PhysicalCellAddress) => string | null;
+	getReferenceText?: (
+		editingAddress: PhysicalCellAddress,
+		clickedAddress: PhysicalCellAddress,
+	) => string | null;
 	/**
 	 * Translate a formula string for display in the formula bar.
 	 * Called when showing the formula of the selected cell.
@@ -371,7 +374,6 @@ export interface SheetProps {
 	onRowResize?: (rowId: RowId, height: number) => void;
 	onSort?: (columnId: string, direction: SortDirection | null) => void;
 	onSortChange?: (state: SortState | null) => void;
-
 
 	sortBehavior?: SortBehavior;
 	sortState?: SortState | null;

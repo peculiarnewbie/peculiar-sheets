@@ -1,6 +1,12 @@
 import HyperFormula from "hyperformula";
-import { onMount } from "solid-js";
-import { Sheet, formulaSheetId, type CellValue, type ColumnDef, type SheetController } from "peculiar-sheets";
+import { onSettled } from "solid-js";
+import {
+	Sheet,
+	formulaSheetId,
+	type CellValue,
+	type ColumnDef,
+	type SheetController,
+} from "peculiar-sheets";
 
 const columns: ColumnDef[] = Array.from({ length: 10 }, (_, index) => ({
 	id: `column-${index}`,
@@ -22,7 +28,7 @@ export default function FormulaMountPage() {
 	const setController = (controller: SheetController) => {
 		window.__SHEET_CONTROLLER__ = controller;
 	};
-	onMount(() => {
+	onSettled(() => {
 		window.__SHEET_DATA__ = data;
 	});
 

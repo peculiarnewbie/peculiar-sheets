@@ -1,4 +1,4 @@
-import { onMount } from "solid-js";
+import { onSettled } from "solid-js";
 import {
 	Sheet,
 	rowId,
@@ -25,14 +25,17 @@ const data: CellValue[][] = Array.from({ length: 80 }, (_, index) => [
 const rowIds = data.map((_, index) => rowId(`contract-${index}`));
 
 const customization: SheetCustomization = {
-	getRowClass: (_rowIndex, context) => [
-		`row-id-${context.rowId}`,
-		`data-row-${context.dataRowIndex}`,
-		`visual-row-${context.visualRowIndex}`,
-		context.containsFocus ? "row-has-focus" : "",
-		context.intersectsSelection ? "row-intersects-selection" : "",
-		context.containsActiveEditor ? "row-has-editor" : "",
-	].filter(Boolean).join(" "),
+	getRowClass: (_rowIndex, context) =>
+		[
+			`row-id-${context.rowId}`,
+			`data-row-${context.dataRowIndex}`,
+			`visual-row-${context.visualRowIndex}`,
+			context.containsFocus ? "row-has-focus" : "",
+			context.intersectsSelection ? "row-intersects-selection" : "",
+			context.containsActiveEditor ? "row-has-editor" : "",
+		]
+			.filter(Boolean)
+			.join(" "),
 	getRowHeaderClass: (rowIndex) => `legacy-header-${rowIndex}`,
 	getCellClass: (rowIndex) => `legacy-cell-row-${rowIndex}`,
 };
@@ -40,7 +43,7 @@ const customization: SheetCustomization = {
 export default function ContractsPage() {
 	let controller: SheetController | null = null;
 
-	onMount(() => {
+	onSettled(() => {
 		window.__SHEET_DATA__ = data;
 		window.__SHEET_CONTROLLER__ = controller;
 	});
@@ -63,7 +66,9 @@ export default function ContractsPage() {
 				.row-has-focus { --ps-active-row-background: rgba(181, 88, 43, 0.16); }
 			`}</style>
 
-			<button id="before-grid" type="button">Before grid</button>
+			<button id="before-grid" type="button">
+				Before grid
+			</button>
 			<section class="contracts-page__main">
 				<Sheet
 					class="contract-theme"
@@ -80,7 +85,9 @@ export default function ContractsPage() {
 					}}
 				/>
 			</section>
-			<button id="after-grid" type="button">After grid</button>
+			<button id="after-grid" type="button">
+				After grid
+			</button>
 
 			<section class="contracts-page__empty">
 				<Sheet class="default-empty" ariaLabel="Default empty grid" data={[]} columns={columns} />
@@ -89,7 +96,11 @@ export default function ContractsPage() {
 					ariaLabel="Custom empty grid"
 					data={[]}
 					columns={columns}
-					emptyState={<button id="create-first-row" type="button">Create first row</button>}
+					emptyState={
+						<button id="create-first-row" type="button">
+							Create first row
+						</button>
+					}
 				/>
 			</section>
 		</main>

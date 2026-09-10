@@ -1,4 +1,5 @@
-import { createComputed, createRoot, createSignal, on } from "solid-js/dist/solid.js";
+import { flush } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import { describe, expect, it } from "bun:test";
 import { createActiveSearchScanSource } from "./search";
 
@@ -17,22 +18,30 @@ describe("active search scan source", () => {
 				formulaRevision,
 			});
 
-			createComputed(on(source, (scan) => scans.push(scan?.query ?? null)));
+			createEffect(source, (scan) => {
+				scans.push(scan?.query ?? null);
+			});
+			flush();
 			expect(scans).toEqual([null]);
 
 			setDataRevision(1);
 			setFormulaRevision(1);
+			flush();
 			expect(scans).toEqual([null]);
 
 			setQuery("needle");
+			flush();
 			expect(scans).toEqual([null, "needle"]);
 			setDataRevision(2);
+			flush();
 			expect(scans).toEqual([null, "needle", "needle"]);
 
 			setQuery("");
+			flush();
 			expect(scans).toEqual([null, "needle", "needle", null]);
 			setDataRevision(3);
 			setFormulaRevision(2);
+			flush();
 			expect(scans).toEqual([null, "needle", "needle", null]);
 			dispose();
 		});

@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 /**
  * ReplayHost — wraps a `<Sheet>` and surfaces the live controller + mutation
  * buffer so the showcase's `ScenarioPlayer` can drive scenarios through the
@@ -13,7 +14,7 @@
  * defs, customization, etc.). That keeps ReplayHost demo-agnostic.
  */
 
-import { createSignal, onCleanup, type JSX } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 import {
 	createMutationBuffer,
 	type MutationBuffer,

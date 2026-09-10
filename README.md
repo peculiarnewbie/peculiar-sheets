@@ -13,13 +13,13 @@ engines.
 Formula-free:
 
 ```bash
-npm install peculiar-sheets
+npm install --save-exact peculiar-sheets@0.13.0 solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 ```
 
 Recommended formula support:
 
 ```bash
-npm install peculiar-sheets peculiar-sheets-ironcalc
+npm install --save-exact peculiar-sheets-ironcalc@0.13.0
 ```
 
 IronCalc initializes asynchronously. Create the engine with
@@ -29,7 +29,7 @@ IronCalc initializes asynchronously. Create the engine with
 Existing direct HyperFormula configurations remain valid after adding it as an explicit dependency:
 
 ```bash
-npm install peculiar-sheets hyperformula
+npm install --save-exact hyperformula@3.3.0
 ```
 
 See [the package README](./packages/spreadsheets/README.md) for usage, migration, workbook APIs,
@@ -39,11 +39,18 @@ and the complete feature reference.
 
 ```bash
 pnpm install
-bun test
+pnpm test
+pnpm test:solid2
 pnpm typecheck
 pnpm build
 pnpm pack:check
+pnpm test:consumer
 ```
+
+These are prepared, unpublished releases. Install the packed tarballs until
+publication. See [Solid 2 release notes](./packages/spreadsheets/docs/solid-2-release.md)
+for the exact compiler setup and UE Shed migration. pnpm owns dependency installation;
+the obsolete Bun lockfile has been removed. Bun is used to execute unit tests and scripts.
 
 ## License
 

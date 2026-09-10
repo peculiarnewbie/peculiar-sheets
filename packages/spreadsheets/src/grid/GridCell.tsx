@@ -1,5 +1,5 @@
 import { createMemo, Show } from "solid-js";
-import type { JSX } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { CellRenderContext, CellStyle, CellValue } from "../types";
 import { type ColumnIndex, type VisualRowIndex } from "../core/brands";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
@@ -75,21 +75,23 @@ export default function GridCell(props: GridCellProps) {
 	return (
 		<div
 			id={props.id}
-			class={`se-cell${props.customClass ? ` ${props.customClass}` : ""}`}
-			classList={{
-				"se-cell--pinned": isPinned(),
-				"se-cell--pinned-last": !!props.isLastPinned,
-				"se-cell--search-match": !!props.searchMatch,
-				"se-cell--search-current": !!props.searchCurrent,
-				"se-cell--active-row": !!props.isActiveRow,
-				"se-cell--range": !!props.isSelected,
-				"se-cell--focus": !!props.isFocused,
-				"se-cell--editing": !!props.isEditing,
-			}}
+			class={[
+				`se-cell${props.customClass ? ` ${props.customClass}` : ""}`,
+				{
+					"se-cell--pinned": isPinned(),
+					"se-cell--pinned-last": !!props.isLastPinned,
+					"se-cell--search-match": !!props.searchMatch,
+					"se-cell--search-current": !!props.searchCurrent,
+					"se-cell--active-row": !!props.isActiveRow,
+					"se-cell--range": !!props.isSelected,
+					"se-cell--focus": !!props.isFocused,
+					"se-cell--editing": !!props.isEditing,
+				},
+			]}
 			role="gridcell"
 			aria-colindex={props.colIndex + 1}
-			aria-selected={props.isSelected ?? false}
-			aria-readonly={props.readOnly || undefined}
+			aria-selected={props.isSelected ? "true" : "false"}
+			aria-readonly={props.readOnly ? "true" : "false"}
 			title={resolveTitle(props.title, props.formattedText)}
 			style={{
 				// Host-provided styles first so the grid's layout overrides win.
@@ -98,7 +100,11 @@ export default function GridCell(props: GridCellProps) {
 				height: `${props.height}px`,
 				"min-width": `${props.width}px`,
 				position: isPinned() ? undefined : props.layoutLeft === undefined ? undefined : "absolute",
-				left: isPinned() ? `${props.pinnedLeft}px` : props.layoutLeft === undefined ? undefined : `${props.layoutLeft}px`,
+				left: isPinned()
+					? `${props.pinnedLeft}px`
+					: props.layoutLeft === undefined
+						? undefined
+						: `${props.layoutLeft}px`,
 			}}
 			onMouseDown={props.onMouseDown}
 			onMouseEnter={(event) => props.onMouseEnter?.(event)}

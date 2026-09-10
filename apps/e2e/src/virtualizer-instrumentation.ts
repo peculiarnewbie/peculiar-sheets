@@ -1,6 +1,6 @@
-import * as TanStackVirtual from "../../../packages/spreadsheets/node_modules/@tanstack/solid-virtual/dist/esm/index.js";
+import * as TanStackVirtual from "../../../packages/spreadsheets/node_modules/@tanstack/virtual-core/dist/esm/index.js";
 
-export * from "../../../packages/spreadsheets/node_modules/@tanstack/solid-virtual/dist/esm/index.js";
+export * from "../../../packages/spreadsheets/node_modules/@tanstack/virtual-core/dist/esm/index.js";
 
 function trackVirtualizer<T extends VirtualizerDiagnostic>(virtualizer: T): T {
 	window.__VIRTUALIZERS__ ??= [];
@@ -12,9 +12,11 @@ interface VirtualizerConstructor {
 	new (options: unknown): VirtualizerDiagnostic;
 }
 
-const TanStackVirtualizer = (TanStackVirtual as unknown as {
-	Virtualizer: VirtualizerConstructor;
-}).Virtualizer;
+const TanStackVirtualizer = (
+	TanStackVirtual as unknown as {
+		Virtualizer: VirtualizerConstructor;
+	}
+).Virtualizer;
 
 export class Virtualizer extends TanStackVirtualizer {
 	constructor(options: unknown) {

@@ -17,11 +17,11 @@ function fail(message: string): never {
 	process.exit(1);
 }
 
-const pack = spawnSync(
-	"pnpm",
-	["pack", "--pack-destination", packDir],
-	{ cwd: packageDir, encoding: "utf8", shell: true },
-);
+const pack = spawnSync("pnpm", ["pack", "--pack-destination", packDir], {
+	cwd: packageDir,
+	encoding: "utf8",
+	shell: true,
+});
 
 if (pack.status !== 0) {
 	fail(`pnpm pack failed:\n${pack.stdout}\n${pack.stderr}`);
@@ -32,16 +32,15 @@ if (!tgzMatch) {
 	fail(`Could not locate packed tarball in pack output:\n${pack.stdout}\n${pack.stderr}`);
 }
 
-const tarball = tgzMatch[0]!.includes(packDir)
-	? tgzMatch[0]!
-	: join(packDir, tgzMatch[0]!.split(/[/\\]/).pop()!);
+const tarballName = tgzMatch[0].split(/[/\\]/).pop();
+if (!tarballName) fail("Missing tarball filename");
+const tarball = join(packDir, tarballName);
 
 const extractDir = join(packDir, "extract");
-const extract = spawnSync(
-	"tar",
-	["-xzf", tarball, "-C", packDir],
-	{ encoding: "utf8", shell: true },
-);
+const extract = spawnSync("tar", ["-xzf", tarball, "-C", packDir], {
+	encoding: "utf8",
+	shell: true,
+});
 if (extract.status !== 0) {
 	// Windows often lacks tar flags consistency; fall back to PowerShell.
 	const ps = spawnSync(
@@ -94,6 +93,27 @@ if ("hyperformula" in (manifest.peerDependencies ?? {})) {
 		"Packed peculiar-sheets still declares hyperformula as a peerDependency. Keep HyperFormula only in local devDependencies.",
 	);
 }
+
+for (const dependency of ["solid-js", "@solidjs/web"]) {
+	if (manifest.peerDependencies?.[dependency] !== "2.0.0-rc.7") {
+		fail(
+			`Packed ${dependency} peer must explicitly support the verified 2.0.0-rc.7 release candidate.`,
+		);
+	}
+	if (dependency in productionDeps)
+		fail(`${dependency} must remain a peer, not an installed private runtime.`);
+}
+if ("@tanstack/solid-virtual" in productionDeps) fail("Solid 1 virtualizer adapter is forbidden.");
+const javascript = readFileSync(join(packDir, "package", "dist", "index.js"), "utf8");
+const declarations = readFileSync(join(packDir, "package", "dist", "index.d.ts"), "utf8");
+if (/['"]solid-js\//.test(javascript + declarations))
+	fail("Packed adapter contains an obsolete Solid subpath import.");
+if (!/from ["']@solidjs\/web["']/.test(javascript))
+	fail("Packed JavaScript was not compiled for the Solid 2 web runtime.");
+if (!/from ["']solid-js["']/.test(javascript))
+	fail("Packed JavaScript must import the external Solid runtime.");
+if (/\b(createComputed|onMount|insertExpression|classList)\s*[,}]/.test(javascript))
+	fail("Packed JavaScript contains obsolete Solid 1 helpers.");
 
 const packedReadme = readFileSync(join(packDir, "package", "README.md"), "utf8");
 if (packedReadme.includes("peculiar-sheets-hyperformula")) {

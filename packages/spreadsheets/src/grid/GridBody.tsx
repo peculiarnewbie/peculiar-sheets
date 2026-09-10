@@ -1,6 +1,20 @@
-import { createMemo, For, Index, Show } from "solid-js";
-import type { CellValue, ColumnDef, PhysicalCellAddress, RowClassContext, Selection, VisualCellAddress } from "../types";
-import { type ColumnIndex, type RowId, type VisualRowIndex, columnIdx, toNumber, visualRow } from "../core/brands";
+import { createMemo, For, Show } from "solid-js";
+import type {
+	CellValue,
+	ColumnDef,
+	PhysicalCellAddress,
+	RowClassContext,
+	Selection,
+	VisualCellAddress,
+} from "../types";
+import {
+	type ColumnIndex,
+	type RowId,
+	type VisualRowIndex,
+	columnIdx,
+	toNumber,
+	visualRow,
+} from "../core/brands";
 import { useSheetCustomization } from "../customization";
 import { defaultFormatCellValue } from "../core/formatting";
 import { normalizeRange, selectionContains } from "../core/selection";
@@ -8,9 +22,14 @@ import GridCell from "./GridCell";
 import type { RowMetrics } from "./rowMetrics";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
-function addressMatchesCurrent(addr: VisualCellAddress, current: PhysicalCellAddress | null): boolean {
+function addressMatchesCurrent(
+	addr: VisualCellAddress,
+	current: PhysicalCellAddress | null,
+): boolean {
 	if (!current) return false;
-	return toNumber(current.row) === toNumber(addr.row) && toNumber(current.col) === toNumber(addr.col);
+	return (
+		toNumber(current.row) === toNumber(addr.row) && toNumber(current.col) === toNumber(addr.col)
+	);
 }
 
 interface GridBodyProps {
@@ -67,12 +86,14 @@ export default function GridBody(props: GridBodyProps) {
 					const rowTop = () => virtualRow.start;
 					const vRow = () => visualRow(rowIdx());
 					const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
-					const rowHeaderTooltip = () => props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
+					const rowHeaderTooltip = () =>
+						props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
 					const containsFocus = () => props.selection.focus.row === vRow();
-					const intersectsSelection = () => props.selection.ranges.some((range) => {
-						const normalized = normalizeRange(range);
-						return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
-					});
+					const intersectsSelection = () =>
+						props.selection.ranges.some((range) => {
+							const normalized = normalizeRange(range);
+							return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
+						});
 					const containsActiveEditor = () => props.editingAddress?.row === vRow();
 					const rowClassContext = createMemo<RowClassContext>(() => ({
 						rowId: props.getRowId(vRow()),
@@ -82,18 +103,20 @@ export default function GridBody(props: GridBodyProps) {
 						intersectsSelection: intersectsSelection(),
 						containsActiveEditor: containsActiveEditor(),
 					}));
-					const customRowClass = createMemo(() =>
-						customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
+					const customRowClass = createMemo(
+						() => customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
 					);
 					const rowHeaderClass = () => customization?.getRowHeaderClass?.(rowHeaderIndex()) ?? "";
 					return (
 						<div
-							class={`se-row${customRowClass() ? ` ${customRowClass()}` : ""}`}
-							classList={{
-								"se-row--active": containsFocus(),
-								"se-row--selected": intersectsSelection(),
-								"se-row--editing": containsActiveEditor(),
-							}}
+							class={[
+								`se-row${customRowClass() ? ` ${customRowClass()}` : ""}`,
+								{
+									"se-row--active": containsFocus(),
+									"se-row--selected": intersectsSelection(),
+									"se-row--editing": containsActiveEditor(),
+								},
+							]}
 							role="row"
 							aria-rowindex={rowIdx() + 1}
 							style={{
@@ -105,13 +128,15 @@ export default function GridBody(props: GridBodyProps) {
 						>
 							<Show when={props.showReferenceHeaders}>
 								<div
-									class={`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`}
-									classList={{
-										"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
-										"se-row-header-cell--active": containsFocus(),
-										"se-row-header-cell--selected": intersectsSelection(),
-										"se-row-header-cell--editing": containsActiveEditor(),
-									}}
+									class={[
+										`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`,
+										{
+											"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
+											"se-row-header-cell--active": containsFocus(),
+											"se-row-header-cell--selected": intersectsSelection(),
+											"se-row-header-cell--editing": containsActiveEditor(),
+										},
+									]}
 									role="rowheader"
 									style={{
 										width: `${props.rowGutterWidth}px`,
@@ -124,7 +149,8 @@ export default function GridBody(props: GridBodyProps) {
 									<Show when={customization?.getRowHeaderSublabel?.(rowHeaderIndex())}>
 										{(sub) => <span class="se-row-header-sublabel">{sub()}</span>}
 									</Show>
-									{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ?? String(rowHeaderIndex() + 1)}
+									{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ??
+										String(rowHeaderIndex() + 1)}
 									<Show when={props.onRowResizeStart}>
 										<div
 											class="se-row-resize-handle"
@@ -137,7 +163,7 @@ export default function GridBody(props: GridBodyProps) {
 									</Show>
 								</div>
 							</Show>
-							<Index each={props.virtualColumns}>
+							<For keyed={false} each={props.virtualColumns}>
 								{(virtualColumn) => {
 									const col = () => virtualColumn().column;
 									const cidx = () => columnIdx(virtualColumn().index);
@@ -153,14 +179,14 @@ export default function GridBody(props: GridBodyProps) {
 									const titleOverride = () =>
 										col().getCellTitle?.(rawValue(), { row: rowIdx(), col: toNumber(cidx()) });
 									const isEditing = () =>
-										props.editingAddress?.row === vRow() &&
-										props.editingAddress?.col === cidx();
+										props.editingAddress?.row === vRow() && props.editingAddress?.col === cidx();
 									const isFocused = () =>
-										props.selection.focus.row === vRow() &&
-										props.selection.focus.col === cidx();
+										props.selection.focus.row === vRow() && props.selection.focus.col === cidx();
 									const isSelected = () => selectionContains(props.selection, addr());
-									const cellClass = () => customization?.getCellClass?.(rowIdx(), toNumber(cidx())) ?? "";
-									const combinedClass = () => [customRowClass(), cellClass()].filter(Boolean).join(" ");
+									const cellClass = () =>
+										customization?.getCellClass?.(rowIdx(), toNumber(cidx())) ?? "";
+									const combinedClass = () =>
+										[customRowClass(), cellClass()].filter(Boolean).join(" ");
 
 									return (
 										<GridCell
@@ -181,7 +207,9 @@ export default function GridBody(props: GridBodyProps) {
 											isFocused={isFocused()}
 											isSelected={isSelected()}
 											isActiveRow={containsFocus()}
-											{...(titleOverride() !== undefined ? { title: titleOverride() as string } : {})}
+											{...(titleOverride() !== undefined
+												? { title: titleOverride() as string }
+												: {})}
 											{...(col().renderCell ? { renderCell: col().renderCell } : {})}
 											{...(combinedClass() ? { customClass: combinedClass() } : {})}
 											{...(customization?.getCellStyle
@@ -196,7 +224,7 @@ export default function GridBody(props: GridBodyProps) {
 										/>
 									);
 								}}
-							</Index>
+							</For>
 						</div>
 					);
 				}}

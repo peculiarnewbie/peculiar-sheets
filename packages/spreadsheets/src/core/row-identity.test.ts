@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, expect, it } from "bun:test";
 import type { CellValue, ColumnDef } from "../types";
 import { autoRowId, columnIdx, physicalRow, rowId, visualRow } from "./brands";
@@ -19,10 +20,12 @@ function makeData(rows: CellValue[][]): CellValue[][] {
 
 describe("validateRowIds", () => {
 	it("throws on length mismatch", () => {
+		flush();
 		expect(() => validateRowIds([rowId("a")], 2)).toThrow(/length/);
 	});
 
 	it("throws on duplicate keys", () => {
+		flush();
 		expect(() => validateRowIds([rowId("a"), rowId("a")], 2)).toThrow(/Duplicate/);
 	});
 });
@@ -50,8 +53,11 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			[rowId("a"), rowId("c")],
 		);
 
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a"), rowId("c")]);
+		flush();
 		expect(store.cells[0]?.[0]).toBe("a");
+		flush();
 		expect(store.cells[1]?.[0]).toBe("c");
 	});
 
@@ -76,9 +82,13 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			[rowId("c"), rowId("a"), rowId("b")],
 		);
 
+		flush();
 		expect(store.rowIds()).toEqual([rowId("c"), rowId("a"), rowId("b")]);
+		flush();
 		expect(store.cells[0]?.[0]).toBe("c");
+		flush();
 		expect(store.cells[1]?.[0]).toBe("a");
+		flush();
 		expect(store.cells[2]?.[0]).toBe("b");
 	});
 
@@ -102,21 +112,22 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			[rowId("a"), rowId("new"), rowId("c")],
 		);
 
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a"), rowId("new"), rowId("c")]);
+		flush();
 		expect(store.cells[1]?.[0]).toBeNull();
+		flush();
 		expect(store.cells[2]?.[0]).toBe("c");
 	});
 
 	it("replaces provisional insert keys when host assigns a domain key", () => {
-		const store = createSheetStore(
-			makeData([["a", 1]]),
-			columns,
-			[rowId("a")],
-		);
+		const store = createSheetStore(makeData([["a", 1]]), columns, [rowId("a")]);
 
 		store.insertRows(1, 1);
 		const provisional = store.rowIds()[1];
+		flush();
 		expect(provisional).toBeDefined();
+		flush();
 		expect(isProvisionalRowId(provisional!)).toBe(true);
 
 		store.reconcileFromHost(
@@ -128,7 +139,9 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			[rowId("a"), rowId("NewRow")],
 		);
 
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a"), rowId("NewRow")]);
+		flush();
 		expect(store.rowCount()).toBe(2);
 	});
 
@@ -151,16 +164,14 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			{ lastHostRowCount: 1 },
 		);
 
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a"), rowId("new")]);
+		flush();
 		expect(store.canUndo()).toBe(true);
 	});
 
 	it("discards a staged row when host shrinks after adopting the new key", () => {
-		const store = createSheetStore(
-			makeData([["a", 1]]),
-			columns,
-			[rowId("a")],
-		);
+		const store = createSheetStore(makeData([["a", 1]]), columns, [rowId("a")]);
 
 		store.insertRows(1, 1);
 		store.reconcileFromHost(
@@ -172,16 +183,14 @@ describe("identity reconciliation via reconcileFromHost", () => {
 			[rowId("a"), rowId("NewRow")],
 			{ lastHostRowCount: 1 },
 		);
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a"), rowId("NewRow")]);
 
-		store.reconcileFromHost(
-			makeData([["a", 1]]),
-			columns,
-			[rowId("a")],
-			{ lastHostRowCount: 2 },
-		);
+		store.reconcileFromHost(makeData([["a", 1]]), columns, [rowId("a")], { lastHostRowCount: 2 });
 
+		flush();
 		expect(store.rowCount()).toBe(1);
+		flush();
 		expect(store.rowIds()).toEqual([rowId("a")]);
 	});
 
@@ -209,20 +218,33 @@ describe("identity reconciliation via reconcileFromHost", () => {
 
 		const profile = diagnosticHost.__PECULIAR_SHEETS_RECONCILIATION__;
 		delete diagnosticHost.__PECULIAR_SHEETS_RECONCILIATION__;
+		flush();
 		expect(profile?.counts["identity.bulkReplaceCalls"]).toBe(1);
+		flush();
 		expect(profile?.counts["structure.bulkCellStoreWrites"]).toBe(1);
+		flush();
 		expect(profile?.counts["revision.structuralBumps"]).toBe(1);
+		flush();
 		expect(profile?.counts["structure.deleteCalls"] ?? 0).toBe(0);
+		flush();
 		expect(profile?.counts["structure.insertCalls"] ?? 0).toBe(0);
+		flush();
 		expect(profile?.durations["formula.deleteScan"] ?? 0).toBe(0);
+		flush();
 		expect(profile?.durations["formula.insertScan"] ?? 0).toBe(0);
+		flush();
 		expect(store.rowIds()).toEqual(nextIds);
+		flush();
 		expect(store.cells).toEqual(nextIds.map((_, index) => [`next-${index}`, null]));
 	});
 
 	it("keeps the sparse path for stable row identity and only bumps changed rows", () => {
 		const ids = Array.from({ length: 100 }, (_, index) => rowId(`row-${index}`));
-		const store = createSheetStore(ids.map((_, index) => [index]), columns, ids);
+		const store = createSheetStore(
+			ids.map((_, index) => [index]),
+			columns,
+			ids,
+		);
 		const nextData: CellValue[][] = ids.map((_, index) => [index]);
 		nextData[0] = ["changed-0"];
 		nextData[50] = ["changed-50"];
@@ -239,11 +261,17 @@ describe("identity reconciliation via reconcileFromHost", () => {
 
 		const profile = diagnosticHost.__PECULIAR_SHEETS_RECONCILIATION__;
 		delete diagnosticHost.__PECULIAR_SHEETS_RECONCILIATION__;
+		flush();
 		expect(profile?.counts["identity.bulkReplaceCalls"] ?? 0).toBe(0);
+		flush();
 		expect(profile?.counts["identity.stableCellMutations"]).toBe(3);
+		flush();
 		expect(profile?.counts["revision.structuralBumps"] ?? 0).toBe(0);
+		flush();
 		expect(store.rowRevision(ids[0]!)).toBe(1);
+		flush();
 		expect(store.rowRevision(ids[50]!)).toBe(1);
+		flush();
 		expect(store.rowRevision(ids[99]!)).toBe(1);
 	});
 
@@ -255,41 +283,46 @@ describe("identity reconciliation via reconcileFromHost", () => {
 		store.setRowHeight(ids[0], 48);
 		store.setRowHeight(ids[1], 52);
 		store.pushMutations(
-			[{
-				address: { row: physicalRow(0), col: columnIdx(0) },
-				rowId: ids[0],
-				columnId: "col0",
-				oldValue: "gone",
-				newValue: "edited",
-				source: "external",
-			}],
+			[
+				{
+					address: { row: physicalRow(0), col: columnIdx(0) },
+					rowId: ids[0],
+					columnId: "col0",
+					oldValue: "gone",
+					newValue: "edited",
+					source: "external",
+				},
+			],
 			store.selection(),
 			store.selection(),
 		);
 
 		store.reconcileFromHost([["retained-host"]], columns, [ids[1]!]);
 
+		flush();
 		expect(store.cells).toEqual([["retained-host", null]]);
+		flush();
 		expect(store.rowIds()).toEqual([ids[1]]);
+		flush();
 		expect(store.rowHeights().has(ids[0]!)).toBe(false);
+		flush();
 		expect(store.rowHeights().get(ids[1]!)).toBe(52);
+		flush();
 		expect(store.rowRevision(ids[0]!)).toBe(0);
+		flush();
 		expect(store.canUndo()).toBe(false);
 	});
 
 	it("uses host formula text exactly during a structural replacement", () => {
-		const store = createSheetStore(
-			[["discard"], ["=A2"], [10]],
-			columns,
-			[rowId("discard"), rowId("formula"), rowId("value")],
-		);
+		const store = createSheetStore([["discard"], ["=A2"], [10]], columns, [
+			rowId("discard"),
+			rowId("formula"),
+			rowId("value"),
+		]);
 
-		store.reconcileFromHost(
-			[["=A2"], [10]],
-			columns,
-			[rowId("formula"), rowId("value")],
-		);
+		store.reconcileFromHost([["=A2"], [10]], columns, [rowId("formula"), rowId("value")]);
 
+		flush();
 		expect(store.cells[0]?.[0]).toBe("=A2");
 	});
 });
@@ -298,7 +331,9 @@ describe("auto-generated row IDs", () => {
 	it("uses string indices when rowIds omitted", () => {
 		const columns = makeColumns(2);
 		const store = createSheetStore(makeData([["a", 1]]), columns);
+		flush();
 		expect(store.hasHostRowIds()).toBe(false);
+		flush();
 		expect(store.rowIds()).toEqual([autoRowId(0)]);
 	});
 });

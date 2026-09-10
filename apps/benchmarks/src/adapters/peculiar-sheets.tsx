@@ -1,5 +1,5 @@
-import { batch, createSignal } from "solid-js";
-import { render } from "solid-js/web";
+import { createSignal } from "solid-js";
+import { render } from "@solidjs/web";
 import { Sheet, type CellValue, type ColumnDef, type SheetController } from "peculiar-sheets";
 import "peculiar-sheets/styles";
 import type { BenchmarkAdapter, BenchmarkController } from "../types";
@@ -19,7 +19,8 @@ function createLifecycleCounts() {
 
 export const adapter: BenchmarkAdapter = {
 	mount(container, dataset) {
-		const lifecycleDiagnosticsEnabled = new URLSearchParams(location.search).get("lifecycle") === "1";
+		const lifecycleDiagnosticsEnabled =
+			new URLSearchParams(location.search).get("lifecycle") === "1";
 		if (lifecycleDiagnosticsEnabled) {
 			window.__PECULIAR_SHEETS_LIFECYCLE__ = createLifecycleCounts();
 		}
@@ -38,7 +39,9 @@ export const adapter: BenchmarkAdapter = {
 					data={data()}
 					columns={columns}
 					rowIds={rowIds()}
-					ref={(controller) => { sheet = controller; }}
+					ref={(controller) => {
+						sheet = controller;
+					}}
 				/>
 			),
 			container,
@@ -55,16 +58,21 @@ export const adapter: BenchmarkAdapter = {
 			readCell: (row, column) => controller.getRawCellValue(row, column),
 			scrollToRow: (row) => controller.scrollToCell(row, 0),
 			writeCell: (row, column, value) => controller.setCellValue(row, column, value as CellValue),
-			writeCells: (writes) => controller.setCellValues(
-				writes.map((write) => ({ row: write.row, col: write.column, value: write.value as CellValue })),
-			),
+			writeCells: (writes) =>
+				controller.setCellValues(
+					writes.map((write) => ({
+						row: write.row,
+						col: write.column,
+						value: write.value as CellValue,
+					})),
+				),
 			replaceDataset(nextDataset) {
 				const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
 				const start = diagnostics ? performance.now() : 0;
-				batch(() => {
+				(() => {
 					setData(nextDataset.values as CellValue[][]);
 					setRowIds(nextDataset.rowIds);
-				});
+				})();
 				if (diagnostics) {
 					diagnostics.durations["solid.hostSignalUpdate"] =
 						(diagnostics.durations["solid.hostSignalUpdate"] ?? 0) + performance.now() - start;

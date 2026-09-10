@@ -8,7 +8,7 @@ existing HyperFormula integrations remain supported through a compatibility adap
 ## Features
 
 - **SolidJS-native** fine-grained reactivity -- no unnecessary re-renders
-- **Virtual scrolling** via `@tanstack/solid-virtual` for large datasets
+- **Virtual scrolling** via framework-neutral `@tanstack/virtual-core` for large datasets
 - **Optional formula engines** through an engine-neutral adapter and workbook API
 - **Selection system** with multi-range (Ctrl+click), shift-extend, and keyboard navigation
 - **Inline editing** with optional formula bar and reference insertion mode
@@ -26,21 +26,82 @@ existing HyperFormula integrations remain supported through a compatibility adap
 Formula-free grid (no HyperFormula installed):
 
 ```bash
-npm install peculiar-sheets
+npm install --save-exact peculiar-sheets@0.13.0 solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 # or
-bun add peculiar-sheets
+bun add --exact peculiar-sheets@0.13.0 solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
 ```
 
 Recommended formulas (MIT/Apache-2.0 IronCalc path):
 
 ```bash
-npm install peculiar-sheets peculiar-sheets-ironcalc
+npm install --save-exact peculiar-sheets-ironcalc@0.13.0
 ```
 
 Legacy HyperFormula integrations can instead install `hyperformula@^3.0.0` directly. HyperFormula
 is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 
-## Migrating from 0.10.x
+## Migrating to Solid 2 (including UE Shed Workbench)
+
+`0.13.0` is a prepared regular release, not yet published. Until publication,
+install the locally packed tarball in place of `peculiar-sheets@0.13.0` above.
+Solid 1 consumers must stay on `0.12.4`. Only Solid `2.0.0-rc.7` is admitted by
+this release's peers; later RCs require verification before widening them.
+
+Remove the isolated Solid 1 renderer, runtime aliases, and compatibility component.
+Use `Sheet` directly inside your existing Solid 2 application; do not create an
+additional render root for it. `Sheet` props, controller methods, and CSS import
+are unchanged. JSX returned by custom cell renderers must also be compiled for Solid 2.
+
+```tsx
+import { createSignal } from "solid-js";
+import { Sheet, type CellValue, type ColumnDef } from "peculiar-sheets";
+import "peculiar-sheets/styles";
+
+const columns: ColumnDef[] = [{ id: "name", header: "Name", editable: true }];
+
+export function WorkbenchSheet() {
+	const [data, setData] = createSignal<CellValue[][]>([["Example"]]);
+	return <Sheet data={data()} columns={columns} onOperation={operation => {
+		if (operation.type !== "cell-edit" && operation.type !== "batch-edit") return;
+		const edits = operation.type === "cell-edit" ? [operation.mutation] : operation.mutations;
+		setData(previous => {
+			const next = previous.map(row => [...row]);
+			for (const edit of edits) {
+				const row = next[edit.address.row];
+				if (row) row[edit.address.col] = edit.newValue;
+			}
+			return next;
+		});
+	}} />;
+}
+```
+
+Keep your existing row-operation handling if insertion/deletion is enabled.
+Host prop updates and DOM rendering settle on Solid 2's microtask flush; tests
+can call `flush()` from `solid-js` before asserting. Controller cell writes and
+chained editor commands remain immediately readable.
+
+For a Vite consumer, use exact compatible build packages:
+
+```bash
+npm install -D --save-exact @solidjs/vite-plugin@3.0.0-next.40 @solidjs/compiler@2.0.0-rc.7 vite@8.2.2
+```
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import solid from "@solidjs/vite-plugin";
+export default defineConfig({ plugins: [solid()] });
+```
+
+Set `compilerOptions.jsx` to `"preserve"` and `jsxImportSource` to `"@solidjs/web"`.
+Import DOM rendering and JSX types from `@solidjs/web`, not `solid-js/web` or
+`solid-js`. The library ships DOM-compiled JavaScript; server-side rendering and
+hydration of the grid are not supported. Formula engine/workbook bindings are
+mount-time configuration: remount the Sheet to replace them, and dispose a
+host-owned engine after unmounting all Sheets that use it.
+
+## Historical migration from 0.10.x to 0.11.x
 
 Formula-free applications can upgrade without changing application code:
 
@@ -90,7 +151,6 @@ function App() {
 ## Recommended formulas with IronCalc
 
 ```tsx
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Sheet } from "peculiar-sheets";
 import { createIronCalcFormulaEngine } from "peculiar-sheets-ironcalc";
 import "peculiar-sheets/styles";
@@ -106,30 +166,21 @@ const data = [
 	["=SUM(A1:B2)", null],
 ];
 
+// Initialize before mounting the formula-enabled application.
+const engine = await createIronCalcFormulaEngine();
+
 function App() {
-	const [engine, setEngine] = createSignal<Awaited<
-		ReturnType<typeof createIronCalcFormulaEngine>
-	> | null>(null);
-	let created: Awaited<ReturnType<typeof createIronCalcFormulaEngine>> | null = null;
-
-	onMount(async () => {
-		created = await createIronCalcFormulaEngine();
-		setEngine(created);
-	});
-	onCleanup(() => created?.dispose?.());
-
 	return (
-		<Show when={engine()}>
-			{(ready) => <Sheet
+			<Sheet
 				data={data}
 				columns={columns}
-				formulaEngine={{ instance: ready() }}
+				formulaEngine={{ instance: engine }}
 				showFormulaBar
 				showReferenceHeaders
-			/>}
-		</Show>
+			/>
 	);
 }
+// Dispose the host-owned engine after unmounting all Sheets that use it.
 ```
 
 The core stays formula-free. `peculiar-sheets-ironcalc` owns WASM initialization and coordinate,

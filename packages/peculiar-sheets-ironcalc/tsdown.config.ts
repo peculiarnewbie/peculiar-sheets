@@ -6,5 +6,6 @@ export default defineConfig({
 	outDir: "./dist",
 	dts: true,
 	hash: false,
-	external: ["@ironcalc/wasm", "peculiar-sheets"],
+	deps: { neverBundle: ["@ironcalc/wasm", "peculiar-sheets"] },
+	outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
 });

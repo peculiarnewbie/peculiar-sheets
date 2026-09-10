@@ -1,5 +1,5 @@
 import HyperFormula from "hyperformula";
-import { createResource, createSignal, onCleanup, onMount } from "solid-js";
+import { createMemo, createSignal, onCleanup, onSettled } from "solid-js";
 import {
 	Sheet,
 	formulaSheetId,
@@ -18,7 +18,9 @@ const columns: ColumnDef[] = Array.from({ length: 10 }, (_, index) => ({
 const data: CellValue[][] = Array.from({ length: 50 }, () => Array<CellValue>(10).fill(null));
 
 export default function FormulaLazyPage() {
-	const shouldSimulateLateDetach = new URLSearchParams(window.location.search).has("simulate-late-detach");
+	const shouldSimulateLateDetach = new URLSearchParams(window.location.search).has(
+		"simulate-late-detach",
+	);
 	const nativeResizeObserver = window.ResizeObserver;
 	if (shouldSimulateLateDetach) {
 		class SilentResizeObserver implements ResizeObserver {
@@ -33,8 +35,9 @@ export default function FormulaLazyPage() {
 		});
 	}
 
-	const [routeEpoch, setRouteEpoch] = createSignal<number>();
-	const [routeReady] = createResource(routeEpoch, async () => {
+	const [routeEpoch, setRouteEpoch] = createSignal(0);
+	const routeReady = createMemo(async () => {
+		routeEpoch();
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		return "ready";
 	});
@@ -46,10 +49,10 @@ export default function FormulaLazyPage() {
 		throw new Error(`HyperFormula did not resolve sheet "${sheetName}".`);
 	}
 
-	onMount(() => {
+	onSettled(() => {
 		window.__SHEET_DATA__ = data;
 		// Exercise the route transition Electroswag hits: the lazy route first
-		// mounts, then a route-owned resource briefly returns to its Suspense
+		// mounts, then a route-owned resource briefly returns to its Loading
 		// fallback while preserving the content branch.
 		queueMicrotask(() => {
 			if (shouldSimulateLateDetach) {

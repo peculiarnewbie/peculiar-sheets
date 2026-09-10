@@ -41,14 +41,14 @@
 	],
 	"peerDependencies": {
 		"peculiar-sheets": "workspace:*",
-		"solid-js": "^1.9.0"
+		"solid-js": "2.0.0-rc.7"
 	},
 	"dependencies": {
 		"hyperformula": "^3.0.0"
 	},
 	"devDependencies": {
 		"peculiar-sheets": "workspace:*",
-		"tsdown": "^0.12.0",
+		"tsdown": "0.23.0",
 		"typescript": "^5.8.0"
 	}
 }

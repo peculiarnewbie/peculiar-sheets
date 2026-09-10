@@ -1,0 +1,4 @@
+{
+	"extends": "../../packages/spreadsheets/tsconfig.json",
+	"include": ["./sheet.test.tsx"]
+}

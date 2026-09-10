@@ -6,7 +6,7 @@ import {
 	Outlet,
 	lazyRouteComponent,
 } from "@tanstack/solid-router";
-import { Suspense } from "solid-js";
+import { Loading } from "solid-js";
 import BasicPage from "./routes/basic";
 import FormulasPage from "./routes/formulas";
 import FormulaMountPage from "./routes/formula-mount";
@@ -41,23 +41,57 @@ const indexRoute = createRoute({
 		<nav style={{ padding: "2rem", "font-family": "sans-serif" }}>
 			<h1>E2E Test Routes</h1>
 			<ul>
-				<li><a href="/basic">Basic</a></li>
-				<li><a href="/formulas">Formulas</a></li>
-				<li><a href="/formula-mount">Formula Mount</a></li>
-				<li><a href="/clipboard">Clipboard</a></li>
-				<li><a href="/autofill">Autofill</a></li>
-				<li><a href="/history">History</a></li>
-				<li><a href="/readonly">Readonly</a></li>
-				<li><a href="/large">Large Dataset</a></li>
-				<li><a href="/sort-external">Sort External</a></li>
-				<li><a href="/sort-view">Sort View</a></li>
-				<li><a href="/sort-mutation">Sort Mutation</a></li>
-				<li><a href="/sort-mutation-formulas">Sort Mutation Formulas</a></li>
-				<li><a href="/formula-rows">Formula + Row Ops</a></li>
-				<li><a href="/formula-row-delete">Formula + Row Delete</a></li>
-				<li><a href="/cross-sheet">Cross Sheet</a></li>
-				<li><a href="/custom-rendering">Custom Rendering</a></li>
-				<li><a href="/styling">Styling</a></li>
+				<li>
+					<a href="/basic">Basic</a>
+				</li>
+				<li>
+					<a href="/formulas">Formulas</a>
+				</li>
+				<li>
+					<a href="/formula-mount">Formula Mount</a>
+				</li>
+				<li>
+					<a href="/clipboard">Clipboard</a>
+				</li>
+				<li>
+					<a href="/autofill">Autofill</a>
+				</li>
+				<li>
+					<a href="/history">History</a>
+				</li>
+				<li>
+					<a href="/readonly">Readonly</a>
+				</li>
+				<li>
+					<a href="/large">Large Dataset</a>
+				</li>
+				<li>
+					<a href="/sort-external">Sort External</a>
+				</li>
+				<li>
+					<a href="/sort-view">Sort View</a>
+				</li>
+				<li>
+					<a href="/sort-mutation">Sort Mutation</a>
+				</li>
+				<li>
+					<a href="/sort-mutation-formulas">Sort Mutation Formulas</a>
+				</li>
+				<li>
+					<a href="/formula-rows">Formula + Row Ops</a>
+				</li>
+				<li>
+					<a href="/formula-row-delete">Formula + Row Delete</a>
+				</li>
+				<li>
+					<a href="/cross-sheet">Cross Sheet</a>
+				</li>
+				<li>
+					<a href="/custom-rendering">Custom Rendering</a>
+				</li>
+				<li>
+					<a href="/styling">Styling</a>
+				</li>
 			</ul>
 		</nav>
 	),
@@ -175,9 +209,9 @@ const formulaLazyRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "/formula-lazy",
 	component: () => (
-		<Suspense fallback={<div data-testid="lazy-fallback">Loading formula sheet…</div>}>
+		<Loading fallback={<div data-testid="lazy-fallback">Loading formula sheet…</div>}>
 			<FormulaLazyPage />
-		</Suspense>
+		</Loading>
 	),
 });
 

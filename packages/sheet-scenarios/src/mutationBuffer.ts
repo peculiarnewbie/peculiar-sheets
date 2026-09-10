@@ -9,7 +9,7 @@
  * build on top of this.
  */
 
-import { batch, createSignal, type Accessor } from "solid-js";
+import { createSignal, type Accessor } from "solid-js";
 import type {
 	CellMutation,
 	CellValue,
@@ -47,9 +47,7 @@ export interface CreateMutationBufferParams {
 	columnCount: number;
 }
 
-export function createMutationBuffer(
-	params: CreateMutationBufferParams,
-): MutationBuffer {
+export function createMutationBuffer(params: CreateMutationBufferParams): MutationBuffer {
 	const snapshot = () => structuredClone(params.initialData);
 	const [data, setData] = createSignal<CellValue[][]>(snapshot());
 	const [mutations, setMutations] = createSignal<CellMutation[]>([]);
@@ -90,18 +88,18 @@ export function createMutationBuffer(
 		rowReorders,
 
 		clear() {
-			batch(() => {
+			(() => {
 				setMutations([]);
 				setRowReorders([]);
-			});
+			})();
 		},
 
 		reset() {
-			batch(() => {
+			(() => {
 				setData(snapshot());
 				setMutations([]);
 				setRowReorders([]);
-			});
+			})();
 		},
 
 		bindings(getController) {
@@ -109,16 +107,16 @@ export function createMutationBuffer(
 				onOperation(operation) {
 					switch (operation.type) {
 						case "cell-edit":
-							batch(() => {
+							(() => {
 								setMutations((prev) => [...prev, operation.mutation]);
 								applyMutation(operation.mutation);
-							});
+							})();
 							break;
 						case "batch-edit":
-							batch(() => {
+							(() => {
 								setMutations((prev) => [...prev, ...operation.mutations]);
 								for (const m of operation.mutations) applyMutation(m);
-							});
+							})();
 							break;
 						case "row-insert":
 							setData((prev) => {
@@ -142,20 +140,24 @@ export function createMutationBuffer(
 							rereadAllFromController(params.columnCount, getController);
 							break;
 						case "row-reorder":
-							batch(() => {
+							(() => {
 								setRowReorders((prev) => [...prev, operation.mutation]);
 								setData((prev) => {
 									const next = new Array<CellValue[]>(prev.length)
 										.fill(null as unknown as CellValue[])
 										.map(() => [] as CellValue[]);
-									for (let oldIndex = 0; oldIndex < operation.mutation.indexOrder.length; oldIndex++) {
+									for (
+										let oldIndex = 0;
+										oldIndex < operation.mutation.indexOrder.length;
+										oldIndex++
+									) {
 										const newIndex = operation.mutation.indexOrder[oldIndex];
 										if (newIndex === undefined || newIndex < 0) continue;
 										next[newIndex] = [...(prev[oldIndex] ?? [])];
 									}
 									return next;
 								});
-							});
+							})();
 							break;
 					}
 				},

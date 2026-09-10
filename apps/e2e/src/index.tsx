@@ -1,5 +1,5 @@
 /* @refresh reload */
-import { render } from "solid-js/web";
+import { render } from "@solidjs/web";
 import "./host-theme-before-package.css";
 import App from "./App";
 

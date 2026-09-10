@@ -38,14 +38,18 @@ export default function FormulaBar(props: FormulaBarProps) {
 
 	return (
 		<div class="se-formula-bar">
-			<div class="se-formula-bar__address" aria-hidden="true">{props.address}</div>
-			<div class="se-formula-bar__fx" aria-hidden="true">fx</div>
+			<div class="se-formula-bar__address" aria-hidden="true">
+				{props.address}
+			</div>
+			<div class="se-formula-bar__fx" aria-hidden="true">
+				fx
+			</div>
 			<input
 				ref={props.inputRef}
 				class="se-formula-bar__input"
 				aria-label={`Formula for ${props.address}`}
-				aria-readonly={props.readOnly || undefined}
-				readOnly={props.readOnly}
+				aria-readonly={props.readOnly ? "true" : "false"}
+				readonly={props.readOnly}
 				value={props.value}
 				onFocus={props.onFocus}
 				onBlur={props.onBlur}

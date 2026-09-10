@@ -1,5 +1,5 @@
-import { createEffect, onCleanup, onMount } from "solid-js";
-import { createStore } from "solid-js/store";
+import { createEffect, onSettled } from "solid-js";
+import { createStore } from "solid-js";
 import HyperFormula from "hyperformula";
 import {
 	Sheet,
@@ -69,12 +69,12 @@ export default function CrossSheetPage() {
 
 	function applyMutation(sheetKey: string, mutation: CellMutation) {
 		const { row, col } = mutation.address;
-		setSheetState(sheetKey, (prevRows) => {
-			const next = prevRows.map((dataRow) => [...dataRow]);
+		setSheetState((draft) => {
+			const next = (draft[sheetKey] ?? []).map((row) => [...row]);
 			while (next.length <= row) next.push([]);
 			while (next[row]!.length <= col) next[row]!.push(null);
 			next[row]![col] = mutation.newValue;
-			return next;
+			draft[sheetKey] = next;
 		});
 	}
 
@@ -94,24 +94,29 @@ export default function CrossSheetPage() {
 		};
 	}
 
-	onMount(() => {
+	onSettled(() => {
 		window.__WORKBOOK_CHANGES__ = [];
 		syncWindowState();
 
 		const unsubscribe = coordinator.subscribe((change) => {
 			window.__WORKBOOK_CHANGES__.push(change);
 			for (const snapshot of change.snapshots) {
-				setSheetState(snapshot.sheetKey, snapshot.cells.map((row) => [...row]));
+				setSheetState((draft) => {
+					draft[snapshot.sheetKey] = snapshot.cells.map((row) => [...row]);
+				});
 			}
 			syncWindowState();
 		});
 
-		onCleanup(() => unsubscribe());
+		return unsubscribe;
 	});
 
-	createEffect(() => {
-		syncWindowState();
-	});
+	createEffect(
+		() => cloneSheetMap(sheetState),
+		() => {
+			syncWindowState();
+		},
+	);
 
 	return (
 		<div

@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
 
 export type ContextMenuEntry =
 	| { type?: "action"; label: string; shortcut?: string; disabled?: boolean; action: () => void }
@@ -110,12 +110,19 @@ export default function ContextMenu(props: ContextMenuProps) {
 		}
 	}
 
-	onMount(() => {
+	onSettled(() => {
 		document.addEventListener("mousedown", handleClickOutside);
+		let disposed = false;
 		const firstEnabled = actionItems().findIndex((item) => !item.disabled);
 		if (firstEnabled >= 0) {
-			queueMicrotask(() => focusItem(firstEnabled));
+			queueMicrotask(() => {
+				if (!disposed) focusItem(firstEnabled);
+			});
 		}
+		return () => {
+			disposed = true;
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
 	});
 
 	onCleanup(() => {
@@ -143,15 +150,19 @@ export default function ContextMenu(props: ContextMenuProps) {
 					const ai = r.actionIndex;
 					return (
 						<button
-							ref={(el) => { itemRefs[ai] = el; }}
-							class="se-context-menu__item"
-							classList={{
-								"se-context-menu__item--disabled": item.disabled,
-								"se-context-menu__item--focused": ai === focusedIndex(),
+							ref={(el) => {
+								itemRefs[ai] = el;
 							}}
+							class={[
+								"se-context-menu__item",
+								{
+									"se-context-menu__item--disabled": !!item.disabled,
+									"se-context-menu__item--focused": ai === focusedIndex(),
+								},
+							]}
 							role="menuitem"
-							tabIndex={ai === focusedIndex() ? 0 : -1}
-							aria-disabled={item.disabled || undefined}
+							tabindex={ai === focusedIndex() ? 0 : -1}
+							aria-disabled={item.disabled ? "true" : "false"}
 							onClick={() => handleClick(item)}
 							onMouseEnter={() => {
 								if (!item.disabled) focusItem(ai);

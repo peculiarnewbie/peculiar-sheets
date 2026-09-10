@@ -1,10 +1,10 @@
 import { createContext, useContext } from "solid-js";
 import type { SheetCustomization } from "./types";
 
-const SheetCustomizationContext = createContext<SheetCustomization>();
+const SheetCustomizationContext = createContext<SheetCustomization | null>(null);
 
 export function useSheetCustomization(): SheetCustomization | undefined {
-	return useContext(SheetCustomizationContext);
+	return useContext(SheetCustomizationContext) ?? undefined;
 }
 
 export { SheetCustomizationContext };

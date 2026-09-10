@@ -1,5 +1,5 @@
-import { batch, createEffect, createSignal, on } from "solid-js";
-import { createStore, produce } from "solid-js/store";
+import { createEffect, createSignal, latest, untrack } from "solid-js";
+import { createStore } from "solid-js";
 import type {
 	CellMutation,
 	CellValue,
@@ -25,10 +25,7 @@ import {
 	validateRowIds,
 } from "./row-identity";
 import { emptySelection, selectCell } from "./selection";
-import {
-	incrementReconciliationCount,
-	measureReconciliation,
-} from "./reconciliationDiagnostics";
+import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
 import {
 	isFormulaValue,
 	shiftFormulaReferencesForRowInsert,
@@ -135,8 +132,16 @@ export interface SheetStore {
 	clearPendingRowOp(): void;
 
 	// History
-	pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection): void;
-	pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection): void;
+	pushMutations(
+		mutations: CellMutation[],
+		selectionBefore: Selection,
+		selectionAfter: Selection,
+	): void;
+	pushRowOperation(
+		rowOp: RowOperation,
+		selectionBefore: Selection,
+		selectionAfter: Selection,
+	): void;
 	pushRowReorder(
 		rowReorder: Omit<RowReorderMutation, "indexOrder" | "source">,
 		selectionBefore: Selection,
@@ -179,30 +184,51 @@ export function createSheetStore(
 	// Deep copy initial data to avoid shared references
 	const initialCells = initialData.map((row) => [...row]);
 
-	const [cells, setCells] = createStore<CellValue[][]>(initialCells);
-	const [dimensions, setDimensions] = createSignal({ rowCount, colCount });
+	// Command data is synchronous; Solid revisions notify renderers at the next flush.
+	// This also avoids a deep proxy/snapshot allocation for every virtual cell read.
+	const cells = initialCells;
+	const setCells = (update: (draft: CellValue[][]) => void) => update(cells);
+	const [committedDimensions, setDimensions] = createSignal({ rowCount, colCount });
+	const dimensions = () => latest(committedDimensions);
 
 	const initialRowIds: RowId[] = hostRowIds
 		? [...hostRowIds]
 		: Array.from({ length: rowCount }, (_, index) => autoRowId(index));
-	const [rowIds, setRowIds] = createSignal<RowId[]>(initialRowIds);
+	const [committedRowIds, setRowIds] = createSignal<RowId[]>(initialRowIds);
+	const rowIds = () => latest(committedRowIds);
 
-	const [hostProvidesRowIds] = createSignal(hostRowIds !== undefined);
-	const [nextAutoRowId, setNextAutoRowId] = createSignal(rowCount);
-	const [nextProvisionalCounter, setNextProvisionalCounter] = createSignal(0);
-	const [selection, setSelection] = createSignal<Selection>(
-		rowCount > 0 && colCount > 0 ? selectCell({ row: visualRow(0), col: columnIdx(0) }) : emptySelection(),
+	const [committedHostProvidesRowIds] = createSignal(hostRowIds !== undefined);
+	const hostProvidesRowIds = () => latest(committedHostProvidesRowIds);
+	const [committedNextAutoRowId, setNextAutoRowId] = createSignal(rowCount);
+	const nextAutoRowId = () => latest(committedNextAutoRowId);
+	const [committedNextProvisionalCounter, setNextProvisionalCounter] = createSignal(0);
+	const nextProvisionalCounter = () => latest(committedNextProvisionalCounter);
+	const [committedSelection, setSelection] = createSignal<Selection>(
+		rowCount > 0 && colCount > 0
+			? selectCell({ row: visualRow(0), col: columnIdx(0) })
+			: emptySelection(),
 	);
-	const [editMode, setEditMode] = createSignal<EditModeState | null>(null);
-	const [colWidths, setColWidths] = createSignal<Map<string, number>>(
+	const selection = () => latest(committedSelection);
+	const [committedEditMode, setEditMode] = createSignal<EditModeState | null>(null);
+	const editMode = () => latest(committedEditMode);
+	const [committedColWidths, setColWidths] = createSignal<Map<string, number>>(
 		new Map(columns.map((c) => [c.id, c.width ?? 120])),
 	);
-	const [columnIds, setColumnIds] = createSignal<string[]>(columns.map((column) => column.id));
-	const [rowHeights, setRowHeights] = createSignal<Map<RowId, number>>(new Map());
-	const [historyState, setHistory] = createSignal<HistoryStack>(createHistory());
-	const [hasPendingRowOp, setHasPendingRowOp] = createSignal(false);
-	const [dataRevision, setDataRevision] = createSignal(0);
-	const [structuralRevision, setStructuralRevision] = createSignal(0);
+	const colWidths = () => latest(committedColWidths);
+	const [committedColumnIds, setColumnIds] = createSignal<string[]>(
+		columns.map((column) => column.id),
+	);
+	const columnIds = () => latest(committedColumnIds);
+	const [committedRowHeights, setRowHeights] = createSignal<Map<RowId, number>>(new Map());
+	const rowHeights = () => latest(committedRowHeights);
+	const [committedHistoryState, setHistory] = createSignal<HistoryStack>(createHistory());
+	const historyState = () => latest(committedHistoryState);
+	const [committedHasPendingRowOp, setHasPendingRowOp] = createSignal(false);
+	const hasPendingRowOp = () => latest(committedHasPendingRowOp);
+	const [committedDataRevision, setDataRevision] = createSignal(0);
+	const dataRevision = () => latest(committedDataRevision);
+	const [committedStructuralRevision, setStructuralRevision] = createSignal(0);
+	const structuralRevision = () => latest(committedStructuralRevision);
 	const [rowRevisions, setRowRevisions] = createStore<Record<string, number>>({});
 
 	function bumpDataRevision() {
@@ -224,19 +250,19 @@ export function createSheetStore(
 		}
 		if (unique.size === 0) return;
 		for (const id of unique) {
-			setRowRevisions(id, (value = 0) => value + 1);
+			setRowRevisions((draft) => {
+				draft[id] = (draft[id] ?? 0) + 1;
+			});
 		}
 		bumpDataRevision();
 	}
 
 	function forgetRowRevisions(ids: Iterable<RowId>) {
-		setRowRevisions(
-			produce((draft) => {
-				for (const id of ids) {
-					delete draft[id];
-				}
-			}),
-		);
+		setRowRevisions((draft) => {
+			for (const id of ids) {
+				delete draft[id];
+			}
+		});
 	}
 
 	function allocateNewRowIds(count: number, explicitIds?: RowId[]): RowId[] {
@@ -257,12 +283,7 @@ export function createSheetStore(
 	}
 
 	/** Internal: splice empty rows into the cells array and update dimensions. */
-	function _insertRows(
-		atIndex: number,
-		count: number,
-		explicitIds?: RowId[],
-		trackPending = true,
-	) {
+	function _insertRows(atIndex: number, count: number, explicitIds?: RowId[], trackPending = true) {
 		return measureReconciliation("structure.insertTotal", () => {
 			incrementReconciliationCount("structure.insertCalls");
 			const currentRowCount = dimensions().rowCount;
@@ -271,11 +292,13 @@ export function createSheetStore(
 			const newRowIds = allocateNewRowIds(count, explicitIds);
 
 			measureReconciliation("structure.insertDimensions", () =>
-				setDimensions({ rowCount: currentRowCount + count, colCount: cc }));
-			measureReconciliation("structure.insertCellStore", () => setCells(
-				produce((draft) => {
-					const newRows = Array.from({ length: count }, () =>
-						new Array(cc).fill(null) as CellValue[],
+				setDimensions({ rowCount: currentRowCount + count, colCount: cc }),
+			);
+			measureReconciliation("structure.insertCellStore", () =>
+				setCells((draft) => {
+					const newRows = Array.from(
+						{ length: count },
+						() => new Array(cc).fill(null) as CellValue[],
 					);
 					draft.splice(insertAt, 0, ...newRows);
 
@@ -293,12 +316,14 @@ export function createSheetStore(
 						}
 					});
 				}),
-			));
-			measureReconciliation("structure.insertRowIds", () => setRowIds((prev) => {
-				const next = [...prev];
-				next.splice(insertAt, 0, ...newRowIds);
-				return next;
-			}));
+			);
+			measureReconciliation("structure.insertRowIds", () =>
+				setRowIds((prev) => {
+					const next = [...prev];
+					next.splice(insertAt, 0, ...newRowIds);
+					return next;
+				}),
+			);
 			if (trackPending) {
 				setHasPendingRowOp(true);
 			}
@@ -319,13 +344,14 @@ export function createSheetStore(
 			const removedData: CellValue[][] = [];
 			for (let r = deleteAt; r < deleteAt + actualCount; r++) {
 				const row = cells[r];
-				removedData.push(row ? [...row] : new Array(cc).fill(null) as CellValue[]);
+				removedData.push(row ? [...row] : (new Array(cc).fill(null) as CellValue[]));
 			}
 
 			measureReconciliation("structure.deleteDimensions", () =>
-				setDimensions({ rowCount: currentRowCount - actualCount, colCount: cc }));
-			measureReconciliation("structure.deleteCellStore", () => setCells(
-				produce((draft) => {
+				setDimensions({ rowCount: currentRowCount - actualCount, colCount: cc }),
+			);
+			measureReconciliation("structure.deleteCellStore", () =>
+				setCells((draft) => {
 					draft.splice(deleteAt, actualCount);
 
 					// Rewrite formula references: shift refs at/below deleteAt+actualCount by -actualCount
@@ -342,13 +368,15 @@ export function createSheetStore(
 						}
 					});
 				}),
-			));
-			measureReconciliation("structure.deleteRowIds", () => setRowIds((prev) => {
-				const next = [...prev];
-				const removedIds = next.splice(deleteAt, actualCount);
-				forgetRowRevisions(removedIds);
-				return next;
-			}));
+			);
+			measureReconciliation("structure.deleteRowIds", () =>
+				setRowIds((prev) => {
+					const next = [...prev];
+					const removedIds = next.splice(deleteAt, actualCount);
+					forgetRowRevisions(removedIds);
+					return next;
+				}),
+			);
 			if (trackPending) {
 				setHasPendingRowOp(true);
 			}
@@ -362,31 +390,27 @@ export function createSheetStore(
 	function _insertRowsWithData(atIndex: number, data: CellValue[][]) {
 		_insertRows(atIndex, data.length);
 		// Restore the saved cell data
-		setCells(
-			produce((draft) => {
-				for (let r = 0; r < data.length; r++) {
-					const row = data[r];
+		setCells((draft) => {
+			for (let r = 0; r < data.length; r++) {
+				const row = data[r];
 				if (!row) throw new Error(`Invalid data row at index ${r}`);
-					const targetRow = draft[atIndex + r];
+				const targetRow = draft[atIndex + r];
 				if (!targetRow) throw new Error(`Invalid draft target at index ${atIndex + r}`);
-					for (let c = 0; c < row.length; c++) {
-						targetRow[c] = row[c] ?? null;
-					}
+				for (let c = 0; c < row.length; c++) {
+					targetRow[c] = row[c] ?? null;
 				}
-			}),
-		);
+			}
+		});
 		// Structural revision already bumped by _insertRows.
 	}
 
 	function _restoreAllCells(snapshot: CellValue[][]) {
-		setCells(
-			produce((draft) => {
-				draft.length = 0;
-				for (const row of snapshot) {
-					draft.push([...row]);
-				}
-			}),
-		);
+		setCells((draft) => {
+			draft.length = 0;
+			for (const row of snapshot) {
+				draft.push([...row]);
+			}
+		});
 		bumpStructuralRevision();
 	}
 
@@ -422,20 +446,21 @@ export function createSheetStore(
 				throw new Error(`Invalid row mapping for rowId: ${id}`);
 			}
 			const row = cells[toNumber(currentIndex)];
-			return row ? [...row] : new Array(dimensions().colCount).fill(null) as CellValue[];
+			return row ? [...row] : (new Array(dimensions().colCount).fill(null) as CellValue[]);
 		});
 
-		setCells(
-			produce((draft) => {
-				draft.length = 0;
-				draft.push(...nextCells);
-			}),
-		);
+		setCells((draft) => {
+			draft.length = 0;
+			draft.push(...nextCells);
+		});
 		setRowIds([...nextOrder]);
 		bumpStructuralRevision();
 	}
 
-	function mapsEqual<Key, Value>(left: ReadonlyMap<Key, Value>, right: ReadonlyMap<Key, Value>): boolean {
+	function mapsEqual<Key, Value>(
+		left: ReadonlyMap<Key, Value>,
+		right: ReadonlyMap<Key, Value>,
+	): boolean {
 		if (left.size !== right.size) return false;
 		for (const [key, value] of left) {
 			if (right.get(key) !== value) return false;
@@ -468,13 +493,11 @@ export function createSheetStore(
 
 	function pruneRowRevisions(nextRowIds: readonly RowId[]): void {
 		const nextRowIdSet = new Set(nextRowIds);
-		setRowRevisions(
-			produce((draft) => {
-				for (const id of Object.keys(draft)) {
-					if (!nextRowIdSet.has(id as RowId)) delete draft[id];
-				}
-			}),
-		);
+		setRowRevisions((draft) => {
+			for (const id of Object.keys(draft)) {
+				if (!nextRowIdSet.has(id as RowId)) delete draft[id];
+			}
+		});
 	}
 
 	function materializeHostCells(data: readonly CellValue[][], colCount: number): CellValue[][] {
@@ -517,28 +540,30 @@ export function createSheetStore(
 			incrementReconciliationCount("formula.authoritativeHostSkips");
 			const nextCells = materializeHostCells(options.data, options.columns.length);
 
-			measureReconciliation("solid.bulkStoreTransaction", () => batch(() => {
-				setDimensions({ rowCount: nextCells.length, colCount: options.columns.length });
-				incrementReconciliationCount("structure.bulkCellStoreWrites");
-				measureReconciliation("cell.bulkStoreWrite", () => setCells(
-					produce((draft) => {
-						draft.length = 0;
-						draft.push(...nextCells);
-					}),
-				));
-				measureReconciliation("identity.bulkRowIdAdoption", () => setRowIds([...options.rowIds]));
-				setColumnIds(options.columns.map((column) => column.id));
-				measureReconciliation("state.bulkCleanup", () => {
-					pruneRowRevisions(options.rowIds);
-					pruneRowHeights(options.rowIds);
-					reconcileColumnWidths(options.columns);
-					if (!options.preserveHistory) {
-						setHistory(createHistory());
-					}
-					setHasPendingRowOp(false);
-				});
-				bumpStructuralRevision();
-			}));
+			measureReconciliation("solid.bulkStoreTransaction", () =>
+				(() => {
+					setDimensions({ rowCount: nextCells.length, colCount: options.columns.length });
+					incrementReconciliationCount("structure.bulkCellStoreWrites");
+					measureReconciliation("cell.bulkStoreWrite", () =>
+						setCells((draft) => {
+							draft.length = 0;
+							draft.push(...nextCells);
+						}),
+					);
+					measureReconciliation("identity.bulkRowIdAdoption", () => setRowIds([...options.rowIds]));
+					setColumnIds(options.columns.map((column) => column.id));
+					measureReconciliation("state.bulkCleanup", () => {
+						pruneRowRevisions(options.rowIds);
+						pruneRowHeights(options.rowIds);
+						reconcileColumnWidths(options.columns);
+						if (!options.preserveHistory) {
+							setHistory(createHistory());
+						}
+						setHasPendingRowOp(false);
+					});
+					bumpStructuralRevision();
+				})(),
+			);
 		});
 	}
 
@@ -562,16 +587,14 @@ export function createSheetStore(
 
 			if (mutations.length === 0) return false;
 			incrementReconciliationCount("identity.stableCellMutations", mutations.length);
-			setCells(
-				produce((draft) => {
-					for (const mutation of mutations) {
-						const row = draft[toNumber(mutation.row)];
-						if (!row) throw new Error(`Invalid draft row at index ${mutation.row}`);
-						while (row.length <= mutation.col) row.push(null);
-						row[mutation.col] = mutation.value;
-					}
-				}),
-			);
+			setCells((draft) => {
+				for (const mutation of mutations) {
+					const row = draft[toNumber(mutation.row)];
+					if (!row) throw new Error(`Invalid draft row at index ${mutation.row}`);
+					while (row.length <= mutation.col) row.push(null);
+					row[mutation.col] = mutation.value;
+				}
+			});
 			bumpRowRevisionsForPhysicalRows(mutations.map((mutation) => toNumber(mutation.row)));
 			return true;
 		});
@@ -611,14 +634,12 @@ export function createSheetStore(
 
 	function restoreHistorySnapshot(snapshot: HistorySnapshot): void {
 		setDimensions({ ...snapshot.dimensions });
-		setCells(
-			produce((draft) => {
-				draft.length = 0;
-				for (const row of snapshot.cells) {
-					draft.push([...row]);
-				}
-			}),
-		);
+		setCells((draft) => {
+			draft.length = 0;
+			for (const row of snapshot.cells) {
+				draft.push([...row]);
+			}
+		});
 		setRowIds([...snapshot.rowIds]);
 		setSelection(snapshot.selection);
 		setColWidths(new Map(snapshot.colWidths));
@@ -667,16 +688,14 @@ export function createSheetStore(
 		}
 
 		if (planned.mutations.length > 0) {
-			setCells(
-				produce((draft) => {
-					for (const m of planned.mutations) {
-						const row = draft[m.address.row];
-						if (row) {
-							row[m.address.col] = m.newValue;
-						}
+			setCells((draft) => {
+				for (const m of planned.mutations) {
+					const row = draft[m.address.row];
+					if (row) {
+						row[m.address.col] = m.newValue;
 					}
-				}),
-			);
+				}
+			});
 			bumpRowRevisionsForPhysicalRows(planned.mutations.map((m) => toNumber(m.address.row)));
 		}
 
@@ -726,47 +745,43 @@ export function createSheetStore(
 		history: historyState,
 
 		setCell(row: PhysicalRowIndex, col: number, value: CellValue) {
-			setCells(
-				produce((draft) => {
-					// Ensure row exists
-					while (draft.length <= row) {
-						draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
-					}
-					// Guard: draft[row] should exist (guaranteed by while loop above)
-					const draftRow = draft[row];
-					if (!draftRow) {
-						throw new Error(`Invalid draft state at row ${row}`);
-					}
-					// Ensure column exists
-					while (draftRow.length <= col) {
-						draftRow.push(null);
-					}
-					draftRow[col] = value;
-				}),
-			);
+			setCells((draft) => {
+				// Ensure row exists
+				while (draft.length <= row) {
+					draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
+				}
+				// Guard: draft[row] should exist (guaranteed by while loop above)
+				const draftRow = draft[row];
+				if (!draftRow) {
+					throw new Error(`Invalid draft state at row ${row}`);
+				}
+				// Ensure column exists
+				while (draftRow.length <= col) {
+					draftRow.push(null);
+				}
+				draftRow[col] = value;
+			});
 			bumpRowRevisionsForPhysicalRows([toNumber(row)]);
 		},
 
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
 			if (mutations.length === 0) return;
-			setCells(
-				produce((draft) => {
-					for (const m of mutations) {
-						while (draft.length <= m.row) {
-							draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
-						}
-						const draftRow = draft[m.row];
-						// Guard: draft[m.row] should exist (guaranteed by while loop above)
-						if (!draftRow) {
-							throw new Error(`Invalid draft state at row ${m.row}`);
-						}
-						while (draftRow.length <= m.col) {
-							draftRow.push(null);
-						}
-						draftRow[m.col] = m.value;
+			setCells((draft) => {
+				for (const m of mutations) {
+					while (draft.length <= m.row) {
+						draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
 					}
-				}),
-			);
+					const draftRow = draft[m.row];
+					// Guard: draft[m.row] should exist (guaranteed by while loop above)
+					if (!draftRow) {
+						throw new Error(`Invalid draft state at row ${m.row}`);
+					}
+					while (draftRow.length <= m.col) {
+						draftRow.push(null);
+					}
+					draftRow[m.col] = m.value;
+				}
+			});
 			bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 		},
 
@@ -793,26 +808,24 @@ export function createSheetStore(
 
 		resizeGrid(newRowCount: number, newColCount: number) {
 			setDimensions({ rowCount: newRowCount, colCount: newColCount });
-			setCells(
-				produce((draft) => {
-					// Add rows if needed
-					while (draft.length < newRowCount) {
-						draft.push(new Array(newColCount).fill(null) as CellValue[]);
+			setCells((draft) => {
+				// Add rows if needed
+				while (draft.length < newRowCount) {
+					draft.push(new Array(newColCount).fill(null) as CellValue[]);
+				}
+				// Trim excess rows
+				if (draft.length > newRowCount) {
+					draft.length = newRowCount;
+				}
+				// Ensure each row has the right number of columns
+				for (let i = 0; i < draft.length; i++) {
+					const row = draft[i];
+					if (!row) throw new Error(`Invalid draft row at index ${i}`);
+					while (row.length < newColCount) {
+						row.push(null);
 					}
-					// Trim excess rows
-					if (draft.length > newRowCount) {
-						draft.length = newRowCount;
-					}
-					// Ensure each row has the right number of columns
-					for (let i = 0; i < draft.length; i++) {
-						const row = draft[i];
-						if (!row) throw new Error(`Invalid draft row at index ${i}`);
-						while (row.length < newColCount) {
-							row.push(null);
-						}
-					}
-				}),
-			);
+				}
+			});
 			setRowIds((prev) => {
 				if (prev.length === newRowCount) return prev;
 
@@ -831,14 +844,12 @@ export function createSheetStore(
 
 		restoreSnapshot(nextCells: CellValue[][], nextRowIds: RowId[]) {
 			setDimensions({ rowCount: nextCells.length, colCount: dimensions().colCount });
-			setCells(
-				produce((draft) => {
-					draft.length = 0;
-					for (const row of nextCells) {
-						draft.push([...row]);
-					}
-				}),
-			);
+			setCells((draft) => {
+				draft.length = 0;
+				for (const row of nextCells) {
+					draft.push([...row]);
+				}
+			});
 			setRowIds([...nextRowIds]);
 			setHasPendingRowOp(false);
 			bumpStructuralRevision();
@@ -889,8 +900,7 @@ export function createSheetStore(
 					} else if (newRowCount === storeRowCount && newColCount === storeColCount) {
 						const storeIds = rowIds();
 						const idsMatch =
-							hostRowIds !== undefined &&
-							hostRowIds.every((id, index) => id === storeIds[index]);
+							hostRowIds !== undefined && hostRowIds.every((id, index) => id === storeIds[index]);
 						setHasPendingRowOp(false);
 						if (idsMatch) {
 							lastHostRowCount = newRowCount;
@@ -945,23 +955,21 @@ export function createSheetStore(
 			// ── Index-based reconciliation (numeric row IDs) ───────────
 			if (newRowCount !== dimensions().rowCount || newColCount !== dimensions().colCount) {
 				setDimensions({ rowCount: newRowCount, colCount: newColCount });
-				setCells(
-					produce((draft) => {
-						while (draft.length < newRowCount) {
-							draft.push(new Array(newColCount).fill(null) as CellValue[]);
+				setCells((draft) => {
+					while (draft.length < newRowCount) {
+						draft.push(new Array(newColCount).fill(null) as CellValue[]);
+					}
+					if (draft.length > newRowCount) {
+						draft.length = newRowCount;
+					}
+					for (let i = 0; i < draft.length; i++) {
+						const row = draft[i];
+						if (!row) throw new Error(`Invalid draft row at index ${i}`);
+						while (row.length < newColCount) {
+							row.push(null);
 						}
-						if (draft.length > newRowCount) {
-							draft.length = newRowCount;
-						}
-						for (let i = 0; i < draft.length; i++) {
-							const row = draft[i];
-							if (!row) throw new Error(`Invalid draft row at index ${i}`);
-							while (row.length < newColCount) {
-								row.push(null);
-							}
-						}
-					}),
-				);
+					}
+				});
 				setRowIds((prev) => {
 					if (prev.length === newRowCount) return prev;
 					if (prev.length > newRowCount) {
@@ -1001,23 +1009,21 @@ export function createSheetStore(
 			}
 
 			if (mutations.length > 0) {
-				setCells(
-					produce((draft) => {
-						for (const m of mutations) {
-							while (draft.length <= m.row) {
-								draft.push(new Array(newColCount).fill(null) as CellValue[]);
-							}
-							const draftRow = draft[m.row];
-							if (!draftRow) {
-								throw new Error(`Invalid draft state at row ${m.row}`);
-							}
-							while (draftRow.length <= m.col) {
-								draftRow.push(null);
-							}
-							draftRow[m.col] = m.value;
+				setCells((draft) => {
+					for (const m of mutations) {
+						while (draft.length <= m.row) {
+							draft.push(new Array(newColCount).fill(null) as CellValue[]);
 						}
-					}),
-				);
+						const draftRow = draft[m.row];
+						if (!draftRow) {
+							throw new Error(`Invalid draft state at row ${m.row}`);
+						}
+						while (draftRow.length <= m.col) {
+							draftRow.push(null);
+						}
+						draftRow[m.col] = m.value;
+					}
+				});
 				bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 				didChange = true;
 			}
@@ -1043,7 +1049,11 @@ export function createSheetStore(
 		hasPendingRowOp: () => hasPendingRowOp(),
 		clearPendingRowOp: () => setHasPendingRowOp(false),
 
-		pushMutations(mutations: CellMutation[], selectionBefore: Selection, selectionAfter: Selection) {
+		pushMutations(
+			mutations: CellMutation[],
+			selectionBefore: Selection,
+			selectionAfter: Selection,
+		) {
 			setHistory((prev) => pushMutationHistory(prev, mutations, selectionBefore, selectionAfter));
 		},
 
@@ -1056,7 +1066,9 @@ export function createSheetStore(
 			selectionBefore: Selection,
 			selectionAfter: Selection,
 		) {
-			setHistory((prev) => pushRowReorderHistory(prev, rowReorder, selectionBefore, selectionAfter));
+			setHistory((prev) =>
+				pushRowReorderHistory(prev, rowReorder, selectionBefore, selectionAfter),
+			);
 		},
 
 		pushColumnResize(
@@ -1064,7 +1076,9 @@ export function createSheetStore(
 			selectionBefore: Selection,
 			selectionAfter: Selection,
 		) {
-			setHistory((prev) => pushColumnResizeHistory(prev, columnResize, selectionBefore, selectionAfter));
+			setHistory((prev) =>
+				pushColumnResizeHistory(prev, columnResize, selectionBefore, selectionAfter),
+			);
 		},
 
 		pushRowResize(
@@ -1127,21 +1141,19 @@ export function createReconciler(
 	getRowIds?: () => readonly RowId[] | undefined,
 	onExternalChange?: () => void,
 ): void {
-	let lastHostRowCount = getData().length;
+	let lastHostRowCount = untrack(getData).length;
 
 	createEffect(
-		on(
-			[getData, getColumns, getRowIds ?? (() => undefined)],
-			([data, columns, hostRowIds]) => {
-				const result = store.reconcileFromHost(data, columns, hostRowIds, {
-					lastHostRowCount,
-				});
-				lastHostRowCount = result.lastHostRowCount;
+		() => [getData(), getColumns(), (getRowIds ?? (() => undefined))()] as const,
+		([data, columns, hostRowIds]) => {
+			const result = store.reconcileFromHost(data, columns, hostRowIds, {
+				lastHostRowCount,
+			});
+			lastHostRowCount = result.lastHostRowCount;
 
-				if (result.didChange) {
-					onExternalChange?.();
-				}
-			},
-		),
+			if (result.didChange) {
+				onExternalChange?.();
+			}
+		},
 	);
 }

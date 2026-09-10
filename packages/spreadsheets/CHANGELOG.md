@@ -5,6 +5,40 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - Unreleased
+
+### Changed
+
+- **Breaking runtime compatibility:** requires exactly `solid-js@2.0.0-rc.7` and
+  `@solidjs/web@2.0.0-rc.7`. Solid 1 applications must remain on `0.12.4`.
+- Compile distributed JavaScript with `@solidjs/compiler@2.0.0-rc.7`; keep both
+  Solid packages external. Web JSX types now come from `@solidjs/web`.
+- Replace the Solid 1 virtualizer adapter with framework-neutral
+  `@tanstack/virtual-core@3.17.9`, owned and disposed by the grid.
+- Migrate effects to compute/apply phases, lifecycle to `onSettled`, context to
+  callable providers, positional lists to `For keyed={false}`, and DOM class,
+  boolean-attribute, and ARIA handling to Solid 2 conventions.
+- Keep command cell data synchronous with row-granular reactive notifications.
+  Read pending command/editor signal values through Solid 2 `latest` so chained
+  controller operations, undo/redo, and same-turn editor commits remain coherent.
+- Use pnpm as the sole installation lockfile; Bun remains the unit-test runner.
+
+### Fixed
+
+- Cancel search and caret work and remove paste/drag listeners on effect replacement
+  or unmount, including conditional rendering under a Solid 2 parent.
+- Preserve formula initialization and virtualizer reattachment under lazy routes.
+
+### Validation and migration
+
+- Add Solid 2 component tests and an isolated npm tarball consumer covering rendering,
+  controlled props, editing, navigation, selection, paste, history, virtualization,
+  remounting, and cleanup. Packed-manifest gates reject old runtime imports.
+- The `Sheet` import, controller API, and stylesheet import remain unchanged.
+  Remove the isolated Solid 1 rendering bridge and render `Sheet` directly.
+- See the README's Solid 2 migration section and `docs/solid-2-release.md` in the
+  repository for exact tool versions, verification commands, and limitations.
+
 ## [0.12.4] - 2026-08-10
 
 ### Fixed

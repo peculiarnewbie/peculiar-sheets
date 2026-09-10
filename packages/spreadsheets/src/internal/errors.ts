@@ -1,6 +1,12 @@
 import { TaggedError } from "./result";
 import type { ColumnIndex, FormulaSheetId, PhysicalRowIndex } from "../core/brands";
 
+export class ClipboardAccessError extends TaggedError("ClipboardAccessError")<{
+	operation: "read" | "write";
+	message: string;
+	cause: unknown;
+}>() {}
+
 export class FormulaSheetResolutionError extends TaggedError("FormulaSheetResolutionError")<{
 	operation: string;
 	formulaName: string;
@@ -63,7 +69,9 @@ export class FormulaRowOrderError extends TaggedError("FormulaRowOrderError")<{
 	cause?: unknown;
 }>() {}
 
-export class WorkbookSheetNotRegisteredError extends TaggedError("WorkbookSheetNotRegisteredError")<{
+export class WorkbookSheetNotRegisteredError extends TaggedError(
+	"WorkbookSheetNotRegisteredError",
+)<{
 	sheetKey: string;
 	message: string;
 }>() {}
@@ -75,7 +83,9 @@ export class WorkbookBindingMismatchError extends TaggedError("WorkbookBindingMi
 	message: string;
 }>() {}
 
-export class WorkbookDuplicateFormulaNameError extends TaggedError("WorkbookDuplicateFormulaNameError")<{
+export class WorkbookDuplicateFormulaNameError extends TaggedError(
+	"WorkbookDuplicateFormulaNameError",
+)<{
 	sheetKey: string;
 	formulaName: string;
 	existingSheetKey: string;
@@ -104,7 +114,9 @@ export class WorkbookReferenceInsertError extends TaggedError("WorkbookReference
 	cause?: unknown;
 }>() {}
 
-export class WorkbookStructuralOperationError extends TaggedError("WorkbookStructuralOperationError")<{
+export class WorkbookStructuralOperationError extends TaggedError(
+	"WorkbookStructuralOperationError",
+)<{
 	operation: string;
 	sheetKey?: string;
 	formulaName?: string;
@@ -116,7 +128,9 @@ export class WorkbookStructuralOperationError extends TaggedError("WorkbookStruc
 	cause?: unknown;
 }>() {}
 
-export class WorkbookStructuralRollbackError extends TaggedError("WorkbookStructuralRollbackError")<{
+export class WorkbookStructuralRollbackError extends TaggedError(
+	"WorkbookStructuralRollbackError",
+)<{
 	operation: string;
 	sheetKey?: string;
 	atIndex?: PhysicalRowIndex;

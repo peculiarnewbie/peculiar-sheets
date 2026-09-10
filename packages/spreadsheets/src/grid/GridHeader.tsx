@@ -138,11 +138,13 @@ export default function GridHeader(props: GridHeaderProps) {
 							const isPinned = () => (props.pinnedLeftOffsets?.[index()] ?? -1) >= 0;
 							return (
 								<div
-									class="se-header-ref-cell"
-									classList={{
-										"se-header-ref-cell--pinned": isPinned(),
-										"se-header-ref-cell--pinned-last": index() === props.lastPinnedIndex,
-									}}
+									class={[
+										"se-header-ref-cell",
+										{
+											"se-header-ref-cell--pinned": isPinned(),
+											"se-header-ref-cell--pinned-last": index() === props.lastPinnedIndex,
+										},
+									]}
 									role="columnheader"
 									aria-colindex={index() + 1}
 									style={{
@@ -152,7 +154,7 @@ export default function GridHeader(props: GridHeaderProps) {
 										left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
 									}}
 									data-col-index={index()}
-								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(columnIdx(index()), e)}
+									onMouseDown={(e) => props.onColumnHeaderMouseDown?.(columnIdx(index()), e)}
 								>
 									{columnIndexToLetters(index())}
 								</div>
@@ -180,8 +182,7 @@ export default function GridHeader(props: GridHeaderProps) {
 					<For each={groupHeaderItems()}>
 						{(item) => (
 							<div
-								class="se-header-group"
-								classList={{ "se-header-group--empty": item.type === "empty" }}
+								class={["se-header-group", { "se-header-group--empty": item.type === "empty" }]}
 								style={{
 									width: `${item.width}px`,
 									"min-width": `${item.width}px`,
@@ -220,18 +221,22 @@ export default function GridHeader(props: GridHeaderProps) {
 						const isResizing = () => props.activeResizeColumnId === col.id;
 						return (
 							<div
-								class="se-header-cell"
-								classList={{
-									"se-header-cell--sortable": isSortable,
-									"se-header-cell--pinned": isPinned(),
-									"se-header-cell--pinned-last": index() === props.lastPinnedIndex,
-									"se-header-cell--resizing": isResizing(),
-								}}
+								class={[
+									"se-header-cell",
+									{
+										"se-header-cell--sortable": isSortable,
+										"se-header-cell--pinned": isPinned(),
+										"se-header-cell--pinned-last": index() === props.lastPinnedIndex,
+										"se-header-cell--resizing": isResizing(),
+									},
+								]}
 								role="columnheader"
 								aria-colindex={index() + 1}
 								aria-sort={
 									props.sortState?.columnId === col.id
-										? props.sortState.direction === "asc" ? "ascending" : "descending"
+										? props.sortState.direction === "asc"
+											? "ascending"
+											: "descending"
 										: undefined
 								}
 								style={{
@@ -245,12 +250,12 @@ export default function GridHeader(props: GridHeaderProps) {
 								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(columnIdx(index()), e)}
 							>
 								<span class="se-header-cell__label">
-									{col.header}{getSortIndicator(col)}
+									{col.header}
+									{getSortIndicator(col)}
 								</span>
 								<Show when={col.resizable !== false}>
 									<div
-										class="se-resize-handle"
-										classList={{ "se-resize-handle--active": isResizing() }}
+										class={["se-resize-handle", { "se-resize-handle--active": isResizing() }]}
 										onMouseDown={(e) => props.onColumnResizeStart(col.id, e)}
 									/>
 								</Show>

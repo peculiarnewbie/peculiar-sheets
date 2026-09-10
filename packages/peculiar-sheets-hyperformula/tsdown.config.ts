@@ -6,5 +6,6 @@ export default defineConfig({
 	outDir: "./dist",
 	dts: true,
 	hash: false,
-	external: ["hyperformula", "peculiar-sheets", "solid-js"],
+	deps: { neverBundle: ["hyperformula", "peculiar-sheets", "solid-js"] },
+	outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
 });

@@ -1,3 +1,4 @@
+import { flush } from "solid-js";
 import { describe, expect, it } from "bun:test";
 import type { ColumnDef } from "../types";
 import { physicalRow, rowId } from "./brands";
@@ -23,17 +24,26 @@ describe("row-granular cell revisions", () => {
 			[rowId("r0"), rowId("r1"), rowId("r2")],
 		);
 
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(0);
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(0);
+		flush();
 		expect(store.structuralRevision()).toBe(0);
+		flush();
 		expect(store.dataRevision()).toBe(0);
 
 		store.setCell(physicalRow(1), 0, "b2");
 
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(0);
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(1);
+		flush();
 		expect(store.rowRevision(rowId("r2"))).toBe(0);
+		flush();
 		expect(store.structuralRevision()).toBe(0);
+		flush();
 		expect(store.dataRevision()).toBe(1);
 
 		store.setCells([
@@ -41,51 +51,57 @@ describe("row-granular cell revisions", () => {
 			{ row: physicalRow(2), col: 1, value: 30 },
 		]);
 
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(1);
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(1);
+		flush();
 		expect(store.rowRevision(rowId("r2"))).toBe(1);
+		flush();
 		expect(store.structuralRevision()).toBe(0);
+		flush();
 		expect(store.dataRevision()).toBe(2);
 	});
 
 	it("bumps structural revision on insert/delete without touching unrelated row revisions", () => {
-		const store = createSheetStore(
-			[
-				["a"],
-				["b"],
-			],
-			makeColumns(1),
-			[rowId("r0"), rowId("r1")],
-		);
+		const store = createSheetStore([["a"], ["b"]], makeColumns(1), [rowId("r0"), rowId("r1")]);
 
 		store.setCell(physicalRow(0), 0, "a2");
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(1);
+		flush();
 		expect(store.structuralRevision()).toBe(0);
 
 		store.insertRows(physicalRow(1), 1);
+		flush();
 		expect(store.structuralRevision()).toBe(1);
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(1);
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(0);
+		flush();
 		expect(store.dataRevision()).toBe(2);
 
 		store.deleteRows(physicalRow(1), 1);
+		flush();
 		expect(store.structuralRevision()).toBe(2);
+		flush();
 		expect(store.rowRevision(rowId("r0"))).toBe(1);
+		flush();
 		expect(store.dataRevision()).toBe(3);
 	});
 
 	it("forgets row revision entries for deleted row ids", () => {
-		const store = createSheetStore(
-			[["a"], ["b"]],
-			makeColumns(1),
-			[rowId("r0"), rowId("r1")],
-		);
+		const store = createSheetStore([["a"], ["b"]], makeColumns(1), [rowId("r0"), rowId("r1")]);
 
 		store.setCell(physicalRow(1), 0, "b2");
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(1);
 
 		store.deleteRows(physicalRow(1), 1);
+		flush();
 		expect(store.rowRevision(rowId("r1"))).toBe(0);
+		flush();
 		expect(store.rowIds()).toEqual([rowId("r0")]);
 	});
 });

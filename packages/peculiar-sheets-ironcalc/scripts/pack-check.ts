@@ -16,7 +16,7 @@ function fail(message: string): never {
 }
 
 try {
-	const pack = spawnSync("npm", ["pack", "--ignore-scripts", "--pack-destination", packDir], {
+	const pack = spawnSync("pnpm", ["pack", "--pack-destination", packDir], {
 		cwd: packageDir,
 		encoding: "utf8",
 		shell: true,
@@ -46,11 +46,16 @@ try {
 		fail("Packed adapter contains a workspace: protocol that registry consumers cannot resolve.");
 	}
 	if (manifest.version !== sourceManifest.version) {
-		fail(`Expected adapter version ${sourceManifest.version}, received ${manifest.version ?? "none"}.`);
+		fail(
+			`Expected adapter version ${sourceManifest.version}, received ${manifest.version ?? "none"}.`,
+		);
 	}
-	if (manifest.peerDependencies?.["peculiar-sheets"] !== "0.11.x") {
-		fail("Packed adapter must declare peculiar-sheets 0.11.x as a peer dependency.");
+	if (manifest.peerDependencies?.["peculiar-sheets"] !== "^0.11.0 || ^0.12.0 || ^0.13.0") {
+		fail("Packed adapter must explicitly admit the Solid 2 core release.");
 	}
+	const javascript = readFileSync(join(packDir, "package", "dist", "index.js"), "utf8");
+	if (/['"]solid-js(?:\/|['"])/.test(javascript))
+		fail("Formula adapter must stay runtime-neutral.");
 	if ("peculiar-sheets" in (manifest.dependencies ?? {})) {
 		fail("Packed adapter must not bundle peculiar-sheets as a production dependency.");
 	}

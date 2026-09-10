@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 /**
  * GhostCursor — an absolutely-positioned overlay dot + halo that tweens to
  * `{x, y}` viewport coordinates over time. The `ScenarioPlayer` hands a
@@ -10,7 +11,7 @@
  * updates don't fight each other.
  */
 
-import { createSignal, onCleanup, Show, type JSX } from "solid-js";
+import { createSignal, onCleanup, Show } from "solid-js";
 
 export interface GhostCursorHandle {
 	/** Show the cursor and tween it to viewport coordinates `(x, y)`. */

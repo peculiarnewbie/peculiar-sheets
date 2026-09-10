@@ -1,4 +1,4 @@
-import { onMount } from "solid-js";
+import { onSettled } from "solid-js";
 
 interface SearchBarProps {
 	query: string;
@@ -13,8 +13,8 @@ interface SearchBarProps {
 export default function SearchBar(props: SearchBarProps) {
 	let inputRef: HTMLInputElement | undefined;
 
-	onMount(() => {
-		queueMicrotask(() => inputRef?.focus());
+	onSettled(() => {
+		inputRef?.focus();
 	});
 
 	function handleKeyDown(event: KeyboardEvent) {

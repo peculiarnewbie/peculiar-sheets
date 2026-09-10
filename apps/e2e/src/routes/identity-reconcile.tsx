@@ -1,10 +1,14 @@
-import { batch, createEffect, createSignal, onMount } from "solid-js";
-import { Sheet, type CellValue, type ColumnDef, type SheetController, rowId } from "peculiar-sheets";
+import { createEffect, createSignal, onSettled } from "solid-js";
+import {
+	Sheet,
+	type CellValue,
+	type ColumnDef,
+	type SheetController,
+	rowId,
+} from "peculiar-sheets";
 import "peculiar-sheets/styles";
 
-const columns: ColumnDef[] = [
-	{ id: "value", header: "Value", width: 120, editable: true },
-];
+const columns: ColumnDef[] = [{ id: "value", header: "Value", width: 120, editable: true }];
 
 const initialData: CellValue[][] = [["first"], ["second"], ["third"]];
 const initialRowIds = [rowId("first"), rowId("second"), rowId("third")];
@@ -15,16 +19,16 @@ export default function IdentityReconcilePage() {
 	const [rowIds, setRowIds] = createSignal(initialRowIds);
 	let controller: SheetController | null = null;
 
-	createEffect(() => {
-		window.__SHEET_DATA__ = data();
+	createEffect(data, (value) => {
+		window.__SHEET_DATA__ = value;
 	});
 
-	onMount(() => {
+	onSettled(() => {
 		window.__IDENTITY_REPLACE_WITH_DISJOINT_DATA__ = () => {
-			batch(() => {
+			(() => {
 				setData([["replacement"]]);
 				setRowIds([rowId("replacement")]);
-			});
+			})();
 		};
 	});
 

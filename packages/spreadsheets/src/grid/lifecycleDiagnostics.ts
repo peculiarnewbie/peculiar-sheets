@@ -1,4 +1,4 @@
-import { onCleanup, onMount } from "solid-js";
+import { onCleanup, onSettled } from "solid-js";
 
 export interface GridLifecycleCounts {
 	rowMounts: number;
@@ -23,7 +23,7 @@ export function trackGridLifecycle(kind: "row" | "cell"): void {
 	const counts = (globalThis as LifecycleDiagnosticsGlobal).__PECULIAR_SHEETS_LIFECYCLE__;
 	if (!counts) return;
 
-	onMount(() => {
+	onSettled(() => {
 		if (kind === "row") {
 			counts.rowMounts += 1;
 			counts.rowLive += 1;
