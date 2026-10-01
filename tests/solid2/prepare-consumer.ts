@@ -34,8 +34,8 @@ for (const name of ["solid-js", "@solidjs/web", "@solidjs/signals"]) {
 	const instances = Object.entries(lock.packages).filter(([path]) =>
 		path.endsWith(`node_modules/${name}`),
 	);
-	if (instances.length !== 1 || instances[0]?.[1].version !== "2.0.0-rc.7")
-		throw new Error(`Expected exactly one ${name}@2.0.0-rc.7`);
+	if (instances.length !== 1 || instances[0]?.[1].version !== "2.0.0-rc.9")
+		throw new Error(`Expected exactly one ${name}@2.0.0-rc.9`);
 }
 run("npm", ["run", "build"], consumer);
 console.log(`Verified isolated install and build. Consumer: ${consumer}`);

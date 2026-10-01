@@ -3,7 +3,6 @@ import {
 	createMemo,
 	createSignal,
 	createUniqueId,
-	latest,
 	onCleanup,
 	onSettled,
 	Show,
@@ -59,6 +58,7 @@ import { computeFillPreview, getAutoFillSourceRange, resolveAutoFillMode } from 
 import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
 import { parseTSV } from "../core/clipboard";
 import { ClipboardAccessError } from "../internal/errors";
+import { createCommandSignal } from "../internal/commandSignal";
 import { errorTraceContext, withTraceContext } from "../internal/trace";
 import { applyMutations } from "../core/commands";
 import type { FormulaBridge } from "../formula/bridge";
@@ -270,15 +270,12 @@ export default function Grid(props: GridProps) {
 	const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
 	const [clipboardRange, setClipboardRange] = createSignal<CellRange | null>(null);
 	// Imperative editor commands can compose before Solid's next microtask flush.
-	const [committedEditorText, setEditorText] = createSignal("");
-	const editorText = () => latest(committedEditorText);
-	const [committedEditorSource, setEditorSource] = createSignal<"cell" | "formula-bar">("cell");
-	const editorSource = () => latest(committedEditorSource);
-	const [committedEditorCaret, setEditorCaret] = createSignal<CaretRange>({ start: 0, end: 0 });
-	const editorCaret = () => latest(committedEditorCaret);
+	const [editorText, setEditorText] = createCommandSignal("");
+	const [editorSource, setEditorSource] = createCommandSignal<"cell" | "formula-bar">("cell");
+	const [editorCaret, setEditorCaret] = createCommandSignal<CaretRange>({ start: 0, end: 0 });
 	const [pendingCaret, setPendingCaret] = createSignal<CaretRange | null>(null);
 	const [referenceRange, setReferenceRange] = createSignal<CellRange | null>(null);
-	const [referenceInsertion, setReferenceInsertion] = createSignal<CaretRange | null>(null);
+	const [referenceInsertion, setReferenceInsertion] = createCommandSignal<CaretRange | null>(null);
 	const [isReferenceDragging, setIsReferenceDragging] = createSignal(false);
 	const [referenceDragAnchor, setReferenceDragAnchor] = createSignal<VisualCellAddress | null>(
 		null,
@@ -839,7 +836,7 @@ export default function Grid(props: GridProps) {
 		return rowMetrics().getRowTop(visualRow) + session.previewSize;
 	});
 
-	const selectedAddress = createMemo(() => props.store.selection().anchor);
+	const selectedAddress = () => props.store.selection().anchor;
 	const selectedPhysicalAddress = createMemo(() => {
 		const addr = selectedAddress();
 		return {
@@ -872,12 +869,10 @@ export default function Grid(props: GridProps) {
 		const addr = selectedAddress();
 		return customization?.getAddressLabel?.(addr.row, addr.col) ?? addressToA1(selectedAddress());
 	});
-	const isReferenceSelectionMode = createMemo(
-		() =>
-			hasFormulaEngine() &&
-			Boolean(props.store.editMode()) &&
-			canInsertReferenceAtCaret(editorText(), editorCaret()),
-	);
+	const isReferenceSelectionMode = () =>
+		hasFormulaEngine() &&
+		Boolean(props.store.editMode()) &&
+		canInsertReferenceAtCaret(editorText(), editorCaret());
 
 	const activeInput = () =>
 		editorSource() === "formula-bar" ? formulaBarInputRef : cellEditorInputRef;

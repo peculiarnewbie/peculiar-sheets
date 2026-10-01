@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets-hyperformula",
-	"version": "0.11.0",
+	"version": "0.15.0",
 	"private": true,
 	"description": "Optional GPL HyperFormula adapter for peculiar-sheets. Not part of the formula-free core distribution.",
 	"license": "GPL-3.0-only",
@@ -41,8 +41,8 @@
 		"peculiar-sheets"
 	],
 	"peerDependencies": {
-		"peculiar-sheets": "workspace:*",
-		"solid-js": "2.0.0-rc.7"
+		"peculiar-sheets": "workspace:^",
+		"solid-js": "2.0.0-rc.9"
 	},
 	"dependencies": {
 		"hyperformula": "^3.0.0"

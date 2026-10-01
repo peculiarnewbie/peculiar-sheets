@@ -1,5 +1,6 @@
-import { createEffect, createSignal, latest, untrack } from "solid-js";
+import { createEffect, untrack } from "solid-js";
 import { createStore } from "solid-js";
+import { createCommandSignal } from "../internal/commandSignal";
 import type {
 	CellMutation,
 	CellValue,
@@ -188,47 +189,33 @@ export function createSheetStore(
 	// This also avoids a deep proxy/snapshot allocation for every virtual cell read.
 	const cells = initialCells;
 	const setCells = (update: (draft: CellValue[][]) => void) => update(cells);
-	const [committedDimensions, setDimensions] = createSignal({ rowCount, colCount });
-	const dimensions = () => latest(committedDimensions);
+	const [dimensions, setDimensions] = createCommandSignal({ rowCount, colCount });
 
 	const initialRowIds: RowId[] = hostRowIds
 		? [...hostRowIds]
 		: Array.from({ length: rowCount }, (_, index) => autoRowId(index));
-	const [committedRowIds, setRowIds] = createSignal<RowId[]>(initialRowIds);
-	const rowIds = () => latest(committedRowIds);
+	const [rowIds, setRowIds] = createCommandSignal<RowId[]>(initialRowIds);
 
-	const [committedHostProvidesRowIds] = createSignal(hostRowIds !== undefined);
-	const hostProvidesRowIds = () => latest(committedHostProvidesRowIds);
-	const [committedNextAutoRowId, setNextAutoRowId] = createSignal(rowCount);
-	const nextAutoRowId = () => latest(committedNextAutoRowId);
-	const [committedNextProvisionalCounter, setNextProvisionalCounter] = createSignal(0);
-	const nextProvisionalCounter = () => latest(committedNextProvisionalCounter);
-	const [committedSelection, setSelection] = createSignal<Selection>(
+	const hostProvidesRowIds = () => hostRowIds !== undefined;
+	const [nextAutoRowId, setNextAutoRowId] = createCommandSignal(rowCount);
+	const [nextProvisionalCounter, setNextProvisionalCounter] = createCommandSignal(0);
+	const [selection, setSelection] = createCommandSignal<Selection>(
 		rowCount > 0 && colCount > 0
 			? selectCell({ row: visualRow(0), col: columnIdx(0) })
 			: emptySelection(),
 	);
-	const selection = () => latest(committedSelection);
-	const [committedEditMode, setEditMode] = createSignal<EditModeState | null>(null);
-	const editMode = () => latest(committedEditMode);
-	const [committedColWidths, setColWidths] = createSignal<Map<string, number>>(
+	const [editMode, setEditMode] = createCommandSignal<EditModeState | null>(null);
+	const [colWidths, setColWidths] = createCommandSignal<Map<string, number>>(
 		new Map(columns.map((c) => [c.id, c.width ?? 120])),
 	);
-	const colWidths = () => latest(committedColWidths);
-	const [committedColumnIds, setColumnIds] = createSignal<string[]>(
+	const [columnIds, setColumnIds] = createCommandSignal<string[]>(
 		columns.map((column) => column.id),
 	);
-	const columnIds = () => latest(committedColumnIds);
-	const [committedRowHeights, setRowHeights] = createSignal<Map<RowId, number>>(new Map());
-	const rowHeights = () => latest(committedRowHeights);
-	const [committedHistoryState, setHistory] = createSignal<HistoryStack>(createHistory());
-	const historyState = () => latest(committedHistoryState);
-	const [committedHasPendingRowOp, setHasPendingRowOp] = createSignal(false);
-	const hasPendingRowOp = () => latest(committedHasPendingRowOp);
-	const [committedDataRevision, setDataRevision] = createSignal(0);
-	const dataRevision = () => latest(committedDataRevision);
-	const [committedStructuralRevision, setStructuralRevision] = createSignal(0);
-	const structuralRevision = () => latest(committedStructuralRevision);
+	const [rowHeights, setRowHeights] = createCommandSignal<Map<RowId, number>>(new Map());
+	const [historyState, setHistory] = createCommandSignal<HistoryStack>(createHistory());
+	const [hasPendingRowOp, setHasPendingRowOp] = createCommandSignal(false);
+	const [dataRevision, setDataRevision] = createCommandSignal(0);
+	const [structuralRevision, setStructuralRevision] = createCommandSignal(0);
 	const [rowRevisions, setRowRevisions] = createStore<Record<string, number>>({});
 
 	function bumpDataRevision() {

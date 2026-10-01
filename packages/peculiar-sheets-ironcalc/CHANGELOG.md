@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.0 - 2026-10-01
+
+- Admit `peculiar-sheets@^0.15.0`, built for Solid `2.0.0-rc.9`, and update the
+  packed-manifest compatibility gate. Retain the existing core peer ranges;
+  the adapter remains runtime-neutral and does not import Solid.
+
+
 ## 0.14.0 - Unreleased
 
 - Explicitly admit `peculiar-sheets@^0.14.0`, retaining compatibility with core
