@@ -94,7 +94,7 @@ if ("hyperformula" in (manifest.peerDependencies ?? {})) {
 	);
 }
 
-for (const dependency of ["solid-js", "@solidjs/web"]) {
+for (const dependency of ["solid-js", "@solidjs/web", "@solidjs/signals"]) {
 	if (manifest.peerDependencies?.[dependency] !== "2.0.0-rc.9") {
 		fail(`Packed ${dependency} peer must explicitly support the 2.0.0-rc.9 release candidate.`);
 	}

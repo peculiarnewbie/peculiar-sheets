@@ -26,15 +26,15 @@ existing HyperFormula integrations remain supported through a compatibility adap
 Formula-free grid (no HyperFormula installed):
 
 ```bash
-npm install --save-exact peculiar-sheets@0.14.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+npm install --save-exact peculiar-sheets@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
 # or
-bun add --exact peculiar-sheets@0.14.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+bun add --exact peculiar-sheets@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
 ```
 
 Recommended formulas (MIT/Apache-2.0 IronCalc path):
 
 ```bash
-npm install --save-exact peculiar-sheets-ironcalc@0.14.0
+npm install --save-exact peculiar-sheets-ironcalc@0.15.0
 ```
 
 Legacy HyperFormula integrations can instead install `hyperformula@^3.0.0` directly. HyperFormula
@@ -42,10 +42,12 @@ is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 
 ## Migrating to Solid 2 (including UE Shed Workbench)
 
-`0.14.0` is a prepared regular release, not yet published. Until publication,
-install the locally packed tarball in place of `peculiar-sheets@0.14.0` above.
-Solid 1 consumers must stay on `0.12.4`. Only Solid `2.0.0-rc.9` is admitted by
-this release's peers; later RCs require verification before widening them.
+`0.15.0` is compiled for Solid `2.0.0-rc.9`, including its `_$$<event>` delegated
+handlers. Remove any consumer patch that renames rc.7's `$$<event>` assignments.
+Solid 1 consumers must stay on `0.12.4`. The `solid-js`, `@solidjs/web`, and
+`@solidjs/signals` peers require exactly `2.0.0-rc.9`. npm installs the signals
+peer automatically; keep it at rc.9 if your application also declares it directly.
+Later RCs require verification before widening these requirements.
 
 Remove the isolated Solid 1 renderer, runtime aliases, and compatibility component.
 Use `Sheet` directly inside your existing Solid 2 application; do not create an

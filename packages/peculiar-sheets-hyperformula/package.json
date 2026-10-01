@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets-hyperformula",
-	"version": "0.14.0",
+	"version": "0.15.0",
 	"private": true,
 	"description": "Optional GPL HyperFormula adapter for peculiar-sheets. Not part of the formula-free core distribution.",
 	"license": "GPL-3.0-only",

@@ -221,6 +221,9 @@ importers:
       '@solidjs/compiler':
         specifier: 2.0.0-rc.9
         version: 2.0.0-rc.9
+      '@solidjs/signals':
+        specifier: 2.0.0-rc.9
+        version: 2.0.0-rc.9
       '@solidjs/web':
         specifier: 2.0.0-rc.9
         version: 2.0.0-rc.9(solid-js@2.0.0-rc.9)

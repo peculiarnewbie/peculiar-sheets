@@ -1,7 +1,8 @@
-# Solid 2 release: 0.13.0
+# Solid 2 migration: 0.13.0
 
-Prepared on 2026-09-10. npm publication and release tagging remain separate,
-explicit release steps; preparing or pushing these changes does not publish them.
+Prepared and published on 2026-09-10. This document records the original Solid 2
+migration and its validation. For the current release preparation and publication
+commands, see [the 0.15.0 rc.9 release guide](./solid-rc9-release.md).
 Core and the optional IronCalc adapter both use `0.13.0`. Their default
 publication tag is `latest`. The pre-1.0 minor bump marks the Solid 1 compatibility break.
 This is a regular package release; its supported Solid runtime remains `2.0.0-rc.7`.

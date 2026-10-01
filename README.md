@@ -13,13 +13,13 @@ engines.
 Formula-free:
 
 ```bash
-npm install --save-exact peculiar-sheets@0.14.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+npm install --save-exact peculiar-sheets@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
 ```
 
 Recommended formula support:
 
 ```bash
-npm install --save-exact peculiar-sheets-ironcalc@0.14.0
+npm install --save-exact peculiar-sheets-ironcalc@0.15.0
 ```
 
 IronCalc initializes asynchronously. Create the engine with
@@ -47,8 +47,8 @@ pnpm pack:check
 pnpm test:consumer
 ```
 
-The `0.14.0` releases are prepared and unpublished. Install the packed tarballs until
-publication. See [Solid rc.9 release notes](./packages/spreadsheets/docs/solid-rc9-release.md)
+The `0.15.0` releases use Solid `2.0.0-rc.9`. See
+[Solid rc.9 release notes](./packages/spreadsheets/docs/solid-rc9-release.md)
 for the exact compiler setup and UE Shed migration. pnpm owns dependency installation;
 the obsolete Bun lockfile has been removed. Bun is used to execute unit tests and scripts.
 

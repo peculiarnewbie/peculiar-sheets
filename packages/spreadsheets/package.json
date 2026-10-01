@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets",
-	"version": "0.14.0",
+	"version": "0.15.0",
 	"description": "A high-performance SolidJS spreadsheet grid. Formula evaluation is optional and not bundled.",
 	"license": "MIT",
 	"author": "peculiarnewbie",
@@ -51,6 +51,7 @@
 		"cells"
 	],
 	"peerDependencies": {
+		"@solidjs/signals": "2.0.0-rc.9",
 		"@solidjs/web": "2.0.0-rc.9",
 		"solid-js": "2.0.0-rc.9"
 	},
@@ -60,6 +61,7 @@
 	},
 	"devDependencies": {
 		"@solidjs/compiler": "2.0.0-rc.9",
+		"@solidjs/signals": "2.0.0-rc.9",
 		"@solidjs/web": "2.0.0-rc.9",
 		"hyperformula": "^3.3.0",
 		"solid-js": "2.0.0-rc.9",

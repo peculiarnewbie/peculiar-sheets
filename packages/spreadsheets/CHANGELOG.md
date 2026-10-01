@@ -5,18 +5,19 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.14.0] - Unreleased
+## [0.15.0] - 2026-10-01
 
 ### Changed
 
-- **Breaking runtime compatibility:** require exactly `solid-js@2.0.0-rc.9` and
-  `@solidjs/web@2.0.0-rc.9`; compile the distribution for rc.9 with matching Solid
-  compiler/signals packages and `@solidjs/vite-plugin@3.0.0-next.44`.
+- **Breaking runtime compatibility:** require exactly `solid-js@2.0.0-rc.9`,
+  `@solidjs/web@2.0.0-rc.9`, and `@solidjs/signals@2.0.0-rc.9`; compile the
+  distribution for rc.9 with matching Solid compiler/signals packages and
+  `@solidjs/vite-plugin@3.0.0-next.44`.
 - Keep synchronous command state separately from Solid's flushed render state.
   rc.9 intentionally hides unflushed writes from `latest()`; controller editing,
   row operations, identity reconciliation, sizing, and undo/redo remain readable
   in the same turn while render notifications retain normal batching.
-- Prepare the companion IronCalc and private HyperFormula packages at `0.14.0`.
+- Prepare the companion IronCalc and private HyperFormula packages at `0.15.0`.
 
 ### Fixed
 
@@ -24,6 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mousedown, click, and contextmenu handling in rc.9 applications. Consumers can
   remove their patch of rc.7's `$$<event>` assignments after upgrading.
 - Validate rc.9 peers and delegated event keys in the packed distribution.
+
+
+## [0.14.0] - Unreleased
+
+### Changed
+
+- Prepare the core and optional IronCalc adapter as aligned `0.14.0` releases
+  on the `latest` npm tag and update installation documentation.
+- Retain the Solid `2.0.0-rc.7` runtime and public API from `0.13.0`.
+- See `docs/release-0.14.0.md` in the repository for validation and publication
+  commands.
+
+### Fixed
+
+- Declare `@solidjs/signals@2.0.0-rc.7` as an exact peer alongside `solid-js`
+  and `@solidjs/web`, keeping a clean npm installation on the tested reactive
+  engine instead of resolving a later RC through Solid's transitive range.
+- Extend the packed-manifest gate to validate the signals peer and keep it external.
 
 ## [0.13.0] - 2026-09-10
 
