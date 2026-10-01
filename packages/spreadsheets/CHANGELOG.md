@@ -5,7 +5,24 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.0] - Unreleased
+## [0.14.0] - Unreleased
+
+### Changed
+
+- Prepare the core and optional IronCalc adapter as aligned `0.14.0` releases
+  on the `latest` npm tag and update installation documentation.
+- Retain the Solid `2.0.0-rc.7` runtime and public API from `0.13.0`.
+- See `docs/release-0.14.0.md` in the repository for validation and publication
+  commands.
+
+### Fixed
+
+- Declare `@solidjs/signals@2.0.0-rc.7` as an exact peer alongside `solid-js`
+  and `@solidjs/web`, keeping a clean npm installation on the tested reactive
+  engine instead of resolving a later RC through Solid's transitive range.
+- Extend the packed-manifest gate to validate the signals peer and keep it external.
+
+## [0.13.0] - 2026-09-10
 
 ### Changed
 

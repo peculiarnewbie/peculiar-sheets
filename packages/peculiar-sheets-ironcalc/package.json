@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets-ironcalc",
-	"version": "0.13.0",
+	"version": "0.14.0",
 	"description": "Official IronCalc formula-engine adapter for Peculiar Sheets.",
 	"license": "MIT",
 	"author": "peculiarnewbie",
@@ -47,7 +47,7 @@
 		"peculiar-sheets"
 	],
 	"peerDependencies": {
-		"peculiar-sheets": "^0.11.0 || ^0.12.0 || ^0.13.0"
+		"peculiar-sheets": "^0.11.0 || ^0.12.0 || ^0.13.0 || ^0.14.0"
 	},
 	"dependencies": {
 		"@ironcalc/wasm": "^0.7.0"
