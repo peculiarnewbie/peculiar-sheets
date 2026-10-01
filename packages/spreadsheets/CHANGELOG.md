@@ -5,7 +5,27 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.13.0] - Unreleased
+## [0.14.0] - Unreleased
+
+### Changed
+
+- **Breaking runtime compatibility:** require exactly `solid-js@2.0.0-rc.9` and
+  `@solidjs/web@2.0.0-rc.9`; compile the distribution for rc.9 with matching Solid
+  compiler/signals packages and `@solidjs/vite-plugin@3.0.0-next.44`.
+- Keep synchronous command state separately from Solid's flushed render state.
+  rc.9 intentionally hides unflushed writes from `latest()`; controller editing,
+  row operations, identity reconciliation, sizing, and undo/redo remain readable
+  in the same turn while render notifications retain normal batching.
+- Prepare the companion IronCalc and private HyperFormula packages at `0.14.0`.
+
+### Fixed
+
+- Emit rc.9's `_$$<event>` delegated handler keys, restoring keydown, input,
+  mousedown, click, and contextmenu handling in rc.9 applications. Consumers can
+  remove their patch of rc.7's `$$<event>` assignments after upgrading.
+- Validate rc.9 peers and delegated event keys in the packed distribution.
+
+## [0.13.0] - 2026-09-10
 
 ### Changed
 

@@ -26,15 +26,15 @@ existing HyperFormula integrations remain supported through a compatibility adap
 Formula-free grid (no HyperFormula installed):
 
 ```bash
-npm install --save-exact peculiar-sheets@0.13.0 solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
+npm install --save-exact peculiar-sheets@0.14.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
 # or
-bun add --exact peculiar-sheets@0.13.0 solid-js@2.0.0-rc.7 @solidjs/web@2.0.0-rc.7
+bun add --exact peculiar-sheets@0.14.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
 ```
 
 Recommended formulas (MIT/Apache-2.0 IronCalc path):
 
 ```bash
-npm install --save-exact peculiar-sheets-ironcalc@0.13.0
+npm install --save-exact peculiar-sheets-ironcalc@0.14.0
 ```
 
 Legacy HyperFormula integrations can instead install `hyperformula@^3.0.0` directly. HyperFormula
@@ -42,9 +42,9 @@ is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 
 ## Migrating to Solid 2 (including UE Shed Workbench)
 
-`0.13.0` is a prepared regular release, not yet published. Until publication,
-install the locally packed tarball in place of `peculiar-sheets@0.13.0` above.
-Solid 1 consumers must stay on `0.12.4`. Only Solid `2.0.0-rc.7` is admitted by
+`0.14.0` is a prepared regular release, not yet published. Until publication,
+install the locally packed tarball in place of `peculiar-sheets@0.14.0` above.
+Solid 1 consumers must stay on `0.12.4`. Only Solid `2.0.0-rc.9` is admitted by
 this release's peers; later RCs require verification before widening them.
 
 Remove the isolated Solid 1 renderer, runtime aliases, and compatibility component.
@@ -80,11 +80,15 @@ Keep your existing row-operation handling if insertion/deletion is enabled.
 Host prop updates and DOM rendering settle on Solid 2's microtask flush; tests
 can call `flush()` from `solid-js` before asserting. Controller cell writes and
 chained editor commands remain immediately readable.
+After upgrading from `0.13.0`, remove any consumer patch that renames delegated
+event keys from `$$` to `_$$`; the rc.9 compiler now emits the matching keys.
+See [the rc.9 release notes](./docs/solid-rc9-release.md) for the runtime change
+and verification commands.
 
 For a Vite consumer, use exact compatible build packages:
 
 ```bash
-npm install -D --save-exact @solidjs/vite-plugin@3.0.0-next.40 @solidjs/compiler@2.0.0-rc.7 vite@8.2.2
+npm install -D --save-exact @solidjs/vite-plugin@3.0.0-next.44 @solidjs/compiler@2.0.0-rc.9 vite@8.2.2
 ```
 
 ```ts
