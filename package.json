@@ -23,7 +23,10 @@
 		"e2e:formula-production": "bun run tests/e2e/run.ts --production --test=tests/e2e/formula-clean-mount.test.ts",
 		"e2e:formula-lazy-production": "bun run tests/e2e/run.ts --production --test=tests/e2e/formula-lazy-mount.test.ts",
 		"e2e:dev": "pnpm --filter @peculiarnewbie/e2e dev",
-		"benchmark": "bun run benchmarks/run.ts"
+		"benchmark": "tsx benchmarks/run.ts",
+		"benchmark:report": "tsx benchmarks/report.ts",
+		"benchmark:test": "tsx --test benchmarks/*.test.ts",
+		"benchmark:typecheck": "tsc --noEmit -p benchmarks/tsconfig.json && pnpm --filter @peculiarnewbie/benchmarks typecheck"
 	},
 	"packageManager": "pnpm@10.33.0",
 	"pnpm": {
@@ -41,18 +44,21 @@
 		"apps/*"
 	],
 	"devDependencies": {
+		"@biomejs/biome": "2.6.4",
 		"@browserbasehq/stagehand": "^3.7.3",
-		"peculiar-sheets": "workspace:*",
-		"sheet-scenarios": "workspace:*",
-		"tslib": "^2.9.1",
-		"vitest": "5.0.5",
 		"@solidjs/testing-library": "1.0.0-rc.2",
 		"@solidjs/vite-plugin": "3.0.0-next.55",
 		"@solidjs/web": "2.0.0-rc.20",
-		"solid-js": "2.0.0-rc.20",
-		"vite": "8.3.5",
+		"@types/node": "^24.19.2",
+		"better-result": "3.0.1",
 		"happy-dom": "21.0.4",
-		"@biomejs/biome": "2.6.4",
-		"typescript": "7.0.2"
+		"peculiar-sheets": "workspace:*",
+		"sheet-scenarios": "workspace:*",
+		"solid-js": "2.0.0-rc.20",
+		"tslib": "^2.9.1",
+		"tsx": "4.21.0",
+		"typescript": "7.0.2",
+		"vite": "8.3.5",
+		"vitest": "5.0.5"
 	}
 }

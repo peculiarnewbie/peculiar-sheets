@@ -1,6 +1,14 @@
 import { createSignal } from "solid-js";
 import { render } from "@solidjs/web";
-import { Sheet, type CellValue, type ColumnDef, type SheetController } from "peculiar-sheets";
+import {
+	Sheet,
+	rowId,
+	visualRow,
+	columnIdx,
+	type CellValue,
+	type ColumnDef,
+	type SheetController,
+} from "peculiar-sheets";
 import "peculiar-sheets/styles";
 import type { BenchmarkAdapter, BenchmarkController } from "../types";
 
@@ -31,7 +39,7 @@ export const adapter: BenchmarkAdapter = {
 			editable: true,
 		}));
 		const [data, setData] = createSignal(dataset.values as CellValue[][]);
-		const [rowIds, setRowIds] = createSignal(dataset.rowIds);
+		const [rowIds, setRowIds] = createSignal(dataset.rowIds.map(rowId));
 		let sheet: SheetController | null = null;
 		const dispose = render(
 			() => (
@@ -50,6 +58,33 @@ export const adapter: BenchmarkAdapter = {
 
 		const controller: SheetController = sheet;
 		return {
+			ui: {
+				focusCell(row, column) {
+					controller.setSelection([
+						{
+							start: { row: visualRow(row), col: columnIdx(column) },
+							end: { row: visualRow(row), col: columnIdx(column) },
+						},
+					]);
+					controller.scrollToCell(row, column);
+				},
+				getCellElement: (row, column) =>
+					container.querySelector<HTMLElement>(
+						`[role="row"][aria-rowindex="${row + 1}"] [role="gridcell"][aria-colindex="${column + 1}"]`,
+					),
+				getActiveCell() {
+					const focus = controller.getSelection().focus;
+					return { row: focus.row, column: focus.col };
+				},
+				selectRange(rows, columns) {
+					controller.setSelection([
+						{
+							start: { row: visualRow(0), col: columnIdx(0) },
+							end: { row: visualRow(rows - 1), col: columnIdx(columns - 1) },
+						},
+					]);
+				},
+			},
 			getScrollElement() {
 				const viewport = container.querySelector<HTMLElement>(".se-viewport");
 				if (!viewport) throw new Error("peculiar-sheets viewport was not rendered");
@@ -71,7 +106,7 @@ export const adapter: BenchmarkAdapter = {
 				const start = diagnostics ? performance.now() : 0;
 				(() => {
 					setData(nextDataset.values as CellValue[][]);
-					setRowIds(nextDataset.rowIds);
+					setRowIds(nextDataset.rowIds.map(rowId));
 				})();
 				if (diagnostics) {
 					diagnostics.durations["solid.hostSignalUpdate"] =
