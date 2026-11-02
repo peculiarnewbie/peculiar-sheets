@@ -47,7 +47,7 @@ pnpm pack:check
 pnpm test:consumer
 ```
 
-The upcoming `0.16.0` releases use Solid `2.0.0-rc.20`. See
+The prepared `0.16.0` releases use Solid `2.0.0-rc.20`. See
 [Solid rc.20 upgrade notes](./packages/spreadsheets/docs/solid-rc20-upgrade.md)
 for the exact compiler setup and UE Shed migration. pnpm owns dependency installation;
 the obsolete Bun lockfile has been removed. Bun is used to execute unit tests and scripts.

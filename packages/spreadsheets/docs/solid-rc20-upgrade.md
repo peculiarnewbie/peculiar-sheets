@@ -1,9 +1,10 @@
-# Solid rc.20 upgrade (upcoming 0.16.0)
+# Solid rc.20 upgrade (0.16.0)
 
 The development branch targets exactly `solid-js@2.0.0-rc.20`,
 `@solidjs/web@2.0.0-rc.20`, and `@solidjs/signals@2.0.0-rc.20`. Upgrade these
 packages together. The core, IronCalc adapter, and private HyperFormula adapter
 are prepared as `0.16.0`; publication is a separate step.
+See [the release preparation record](./release-0.16.0.md) for artifacts and npm staging.
 
 The [Solid releases](https://github.com/solidjs/solid/releases) and published npm
 manifests were checked on 2026-11-02. Matching compiler and Babel overrides stay
