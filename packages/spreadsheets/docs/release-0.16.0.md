@@ -69,3 +69,23 @@ Review each returned stage with `npm stage view <stage-id>` and download it with
 The maintainer can then approve the core first and the adapter second with
 `npm stage approve <stage-id>` or through npm's Staged Packages UI. Approval
 requires the maintainer's 2FA; it is separate from this preparation and staging.
+
+## Staging receipts
+
+Both versions were accepted by npm on 2026-11-02 with public access and the
+intended `latest` tag:
+
+| Package | Stage ID |
+| --- | --- |
+| `peculiar-sheets@0.16.0` | `e930e6f4-996c-44be-84b8-dfff86442c64` |
+| `peculiar-sheets-ironcalc@0.16.0` | `31720d48-2fa5-41ff-a974-5b9fddf61d87` |
+
+Downloaded staged tarballs match the local release artifacts byte for byte:
+
+- Core SHA-256: `531aa5c87bf93a363c450bd84abcf327cc9e20f8e7533124179d5a7552301b2c`
+- Adapter SHA-256: `a228d3e956d4e122252160dc83c64a461169dba199ff621d881051d43f7fb307`
+
+The public registry still reports `0.15.0` as `latest` for both packages.
+Check each stage's current validation status before approval. The token must
+grant access to these two unscoped package names explicitly; access to only the
+`@peculiarnewbie` or `@ue-shed` scopes does not cover them.
