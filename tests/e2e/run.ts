@@ -13,18 +13,18 @@ const HOST = "127.0.0.1";
 const BASE_URL = `http://${HOST}:${PORT}`;
 const POLL_INTERVAL = 200;
 const STARTUP_TIMEOUT = 30_000;
-const PNPM_EXECUTABLE = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const PNPM_EXECUTABLE = "pnpm";
 const cliArgs = process.argv.slice(2);
 const productionBundle = cliArgs.includes("--production");
 const testPathArg = cliArgs.find((arg) => arg.startsWith("--test="));
-const E2E_TEST_PATH = testPathArg?.slice("--test=".length)
-	?? process.env.E2E_TEST_PATH
-	?? "tests/e2e/";
+const E2E_TEST_PATH =
+	testPathArg?.slice("--test=".length) ?? process.env.E2E_TEST_PATH ?? "tests/e2e/";
 
 function runCommand(command: string, args: string[]): Promise<void> {
 	const proc = spawn(command, args, {
 		stdio: "inherit",
 		cwd: process.cwd(),
+		shell: process.platform === "win32",
 	});
 
 	return new Promise<void>((resolve, reject) => {
@@ -60,6 +60,7 @@ function startServer(): ChildProcess {
 	const proc = spawn(PNPM_EXECUTABLE, command, {
 		stdio: "inherit",
 		cwd: process.cwd(),
+		shell: process.platform === "win32",
 	});
 
 	return proc;

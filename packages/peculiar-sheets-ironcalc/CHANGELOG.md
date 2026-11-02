@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0 - Unreleased
+
+- Admit core `0.16.x`, compiled for Solid `2.0.0-rc.20`, alongside existing
+  supported core versions.
+- Upgrade IronCalc WASM to `0.9.1` and use its `moveRows` API for row reordering.
+- Update build tooling and the packed dependency compatibility gate.
+
 ## 0.15.0 - 2026-10-01
 
 - Admit `peculiar-sheets@^0.15.0`, built for Solid `2.0.0-rc.9`, and update the

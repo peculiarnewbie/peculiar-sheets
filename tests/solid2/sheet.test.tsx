@@ -15,7 +15,7 @@ afterEach(cleanup);
 
 describe("Solid 2 Sheet", () => {
 	it("composes row commands immediately and batches their render notifications", () => {
-		const frames: Array<{ rowCount: number; ids: string[] }> = [];
+		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];
 		const { result: store } = renderHook(() => {
 			const store = createSheetStore([["first"]], [{ id: "value", header: "Value" }]);
 			createEffect(

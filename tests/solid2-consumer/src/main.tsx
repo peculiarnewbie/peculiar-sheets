@@ -41,6 +41,7 @@ let rootDisposed = false;
 let updateData: (value: CellValue[][]) => void = () => {};
 let updateReadOnly: (value: boolean) => void = () => {};
 let updateColumns: (value: ColumnDef[]) => void = () => {};
+let updateRowSizing: (value: Record<number, number>) => void = () => {};
 let updateVisible: (value: boolean) => void = () => {};
 const columns: ColumnDef[] = [
 	{ id: "name", header: "Name", width: 160, editable: true },
@@ -55,10 +56,12 @@ const dispose = render(() => {
 	]);
 	const [readOnly, setReadOnly] = createSignal(false);
 	const [cols, setColumns] = createSignal(columns);
+	const [rowSizing, setRowSizing] = createSignal<Record<number, number>>({});
 	const [visible, setVisible] = createSignal(true);
 	updateData = setData;
 	updateReadOnly = setReadOnly;
 	updateColumns = setColumns;
+	updateRowSizing = setRowSizing;
 	updateVisible = setVisible;
 	onCleanup(() => {
 		rootDisposed = true;
@@ -81,6 +84,7 @@ const dispose = render(() => {
 				<Sheet
 					data={data()}
 					columns={cols()}
+					rowSizing={rowSizing()}
 					readOnly={readOnly()}
 					ariaLabel="Consumer sheet"
 					onOperation={onOperation}
@@ -117,6 +121,16 @@ async function runChecks() {
 	await settle();
 	check(document.querySelectorAll(".se-cell").length === 6, "initial virtual cells render");
 	check(controller?.getCellValue(0, 0) === "first", "controller shares mounted data");
+	const initialRow = document.querySelector<HTMLElement>(".se-row");
+	updateRowSizing({ 0: 40 });
+	await settle();
+	check(
+		initialRow !== null && document.querySelector(".se-row") === initialRow,
+		"measurement updates preserve virtual row DOM",
+	);
+	check(initialRow?.style.height === "40px", "reused virtual row receives updated measurements");
+	updateRowSizing({});
+	await settle();
 	updateData([
 		["controlled", 10],
 		["second", 20],

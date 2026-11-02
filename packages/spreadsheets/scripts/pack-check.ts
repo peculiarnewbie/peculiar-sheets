@@ -95,8 +95,8 @@ if ("hyperformula" in (manifest.peerDependencies ?? {})) {
 }
 
 for (const dependency of ["solid-js", "@solidjs/web", "@solidjs/signals"]) {
-	if (manifest.peerDependencies?.[dependency] !== "2.0.0-rc.9") {
-		fail(`Packed ${dependency} peer must explicitly support the 2.0.0-rc.9 release candidate.`);
+	if (manifest.peerDependencies?.[dependency] !== "2.0.0-rc.20") {
+		fail(`Packed ${dependency} peer must explicitly support the 2.0.0-rc.20 release candidate.`);
 	}
 	if (dependency in productionDeps)
 		fail(`${dependency} must remain a peer, not an installed private runtime.`);
@@ -104,10 +104,11 @@ for (const dependency of ["solid-js", "@solidjs/web", "@solidjs/signals"]) {
 if ("@tanstack/solid-virtual" in productionDeps) fail("Solid 1 virtualizer adapter is forbidden.");
 const javascript = readFileSync(join(packDir, "package", "dist", "index.js"), "utf8");
 const declarations = readFileSync(join(packDir, "package", "dist", "index.d.ts"), "utf8");
+readFileSync(join(packDir, "package", "dist", "sheet.css.d.ts"), "utf8");
 if (/\.\$\$[a-z]+\s*=/.test(javascript))
 	fail("Packed JavaScript contains delegated event keys from an older Solid compiler.");
 if (!javascript.includes("._$$keydown"))
-	fail("Packed JavaScript must use Solid rc.9's _$$ delegated event keys.");
+	fail("Packed JavaScript must use Solid rc.20's _$$ delegated event keys.");
 if (/['"]solid-js\//.test(javascript + declarations))
 	fail("Packed adapter contains an obsolete Solid subpath import.");
 if (!/from ["']@solidjs\/web["']/.test(javascript))

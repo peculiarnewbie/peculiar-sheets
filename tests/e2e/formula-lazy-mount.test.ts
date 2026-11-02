@@ -37,7 +37,8 @@ describe("formula-enabled lazy route production mount", () => {
 			cells: document.querySelectorAll(".se-cell").length,
 		}));
 
-		const expectedBuildMode = process.env.E2E_PRODUCTION_BUNDLE === "true" ? "production" : "development";
+		const expectedBuildMode =
+			process.env.E2E_PRODUCTION_BUNDLE === "true" ? "production" : "development";
 		expect(state.buildMode).toBe(expectedBuildMode);
 		expect(state.viewport?.width ?? 0).toBeGreaterThan(0);
 		expect(state.viewport?.height ?? 0).toBeGreaterThan(0);
@@ -57,7 +58,7 @@ describe("formula-enabled lazy route production mount", () => {
 		await navigateTo(sh, "/formula-lazy?document=2");
 		await getPage().waitForTimeout(100);
 
-		const detachedCellCount = await getPage().evaluate(() => {
+		const detachedCellCount = await getPage().evaluate(async () => {
 			for (const virtualizer of window.__VIRTUALIZERS__ ?? []) {
 				const viewport = virtualizer.scrollElement;
 				virtualizer._didMount()();
@@ -66,6 +67,8 @@ describe("formula-enabled lazy route production mount", () => {
 				virtualizer.range = null;
 				virtualizer.options.onChange(virtualizer, false);
 			}
+			// Let Solid commit the detached snapshots before inspecting the DOM.
+			await Promise.resolve();
 			return document.querySelectorAll(".se-cell").length;
 		});
 		expect(detachedCellCount).toBe(0);

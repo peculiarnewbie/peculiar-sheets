@@ -78,12 +78,12 @@ export default function GridBody(props: GridBodyProps) {
 				height: `${props.totalHeight}px`,
 			}}
 		>
-			<For each={props.virtualRows}>
+			<For keyed={(row) => row.index} each={props.virtualRows}>
 				{(virtualRow) => {
 					trackGridLifecycle("row");
-					const rowIdx = () => virtualRow.index;
-					const rowHeight = () => virtualRow.size;
-					const rowTop = () => virtualRow.start;
+					const rowIdx = () => virtualRow().index;
+					const rowHeight = () => virtualRow().size;
+					const rowTop = () => virtualRow().start;
 					const vRow = () => visualRow(rowIdx());
 					const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
 					const rowHeaderTooltip = () =>

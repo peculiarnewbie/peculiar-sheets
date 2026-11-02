@@ -1,6 +1,6 @@
 {
 	"name": "peculiar-sheets",
-	"version": "0.15.0",
+	"version": "0.16.0",
 	"description": "A high-performance SolidJS spreadsheet grid. Formula evaluation is optional and not bundled.",
 	"license": "MIT",
 	"author": "peculiarnewbie",
@@ -24,7 +24,10 @@
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
-		"./styles": "./dist/sheet.css"
+		"./styles": {
+			"types": "./dist/sheet.css.d.ts",
+			"default": "./dist/sheet.css"
+		}
 	},
 	"files": [
 		"dist",
@@ -51,21 +54,21 @@
 		"cells"
 	],
 	"peerDependencies": {
-		"@solidjs/signals": "2.0.0-rc.9",
-		"@solidjs/web": "2.0.0-rc.9",
-		"solid-js": "2.0.0-rc.9"
+		"@solidjs/signals": "2.0.0-rc.20",
+		"@solidjs/web": "2.0.0-rc.20",
+		"solid-js": "2.0.0-rc.20"
 	},
 	"dependencies": {
-		"@tanstack/virtual-core": "3.17.9",
+		"@tanstack/virtual-core": "3.19.10",
 		"better-result": "^3.0.1"
 	},
 	"devDependencies": {
-		"@solidjs/compiler": "2.0.0-rc.9",
-		"@solidjs/signals": "2.0.0-rc.9",
-		"@solidjs/web": "2.0.0-rc.9",
-		"hyperformula": "^3.3.0",
-		"solid-js": "2.0.0-rc.9",
-		"tsdown": "0.23.0",
-		"typescript": "^5.8.0"
+		"@solidjs/compiler": "2.0.0-rc.20",
+		"@solidjs/signals": "2.0.0-rc.20",
+		"@solidjs/web": "2.0.0-rc.20",
+		"hyperformula": "^3.5.0",
+		"solid-js": "2.0.0-rc.20",
+		"tsdown": "0.23.4",
+		"typescript": "^7.0.2"
 	}
 }

@@ -402,7 +402,7 @@ export default function Grid(props: GridProps) {
 		return {
 			count: props.store.rowCount(),
 			getScrollElement: () => viewportRef ?? null,
-			estimateSize: (index) => rowMetrics().getRowHeight(visualRow(index)),
+			estimateSize: (index) => untrack(rowMetrics).getRowHeight(visualRow(index)),
 			observeElementRect,
 			observeElementOffset,
 			scrollToFn: elementScroll,
@@ -417,7 +417,7 @@ export default function Grid(props: GridProps) {
 		return {
 			count: props.columns.length,
 			getScrollElement: () => viewportRef ?? null,
-			estimateSize: (index) => columnWidths()[index] ?? DEFAULT_COL_WIDTH,
+			estimateSize: (index) => untrack(columnWidths)[index] ?? DEFAULT_COL_WIDTH,
 			observeElementRect,
 			observeElementOffset,
 			scrollToFn: elementScroll,
@@ -716,7 +716,7 @@ export default function Grid(props: GridProps) {
 	createEffect(searchCurrentAddress, (physicalAddr) => {
 		if (!physicalAddr || !viewportRef) return;
 		const visualRow = getVisualRowForPhysicalRow(physicalAddr.row);
-		const top = rowMetrics().getRowTop(visualRow);
+		const top = untrack(rowMetrics).getRowTop(visualRow);
 		let left = 0;
 		for (let c = 0; c < physicalAddr.col; c++) {
 			left += untrack(columnWidths)[c] ?? DEFAULT_COL_WIDTH;
@@ -790,7 +790,7 @@ export default function Grid(props: GridProps) {
 	// Keep the focused cell in view when selection moves (arrows, tab, shift+arrow, etc.).
 	createEffect(
 		() => props.store.selection().focus,
-		(addr) => scrollCellIntoView(addr),
+		(addr) => untrack(() => scrollCellIntoView(addr)),
 		{ defer: true },
 	);
 
@@ -931,8 +931,8 @@ export default function Grid(props: GridProps) {
 
 	function remapAddressForRowOrder(
 		address: VisualCellAddress,
-		oldOrder: RowId[],
-		newOrder: RowId[],
+		oldOrder: readonly RowId[],
+		newOrder: readonly RowId[],
 	): VisualCellAddress | null {
 		const id = oldOrder[toNumber(address.row)];
 		if (id === undefined) return null;
@@ -943,8 +943,8 @@ export default function Grid(props: GridProps) {
 
 	function remapSelectionForRowOrder(
 		selection: Selection,
-		oldOrder: RowId[],
-		newOrder: RowId[],
+		oldOrder: readonly RowId[],
+		newOrder: readonly RowId[],
 	): Selection | null {
 		const nextRanges = selection.ranges
 			.map((range) => {
@@ -973,8 +973,8 @@ export default function Grid(props: GridProps) {
 
 	function remapEditModeForRowOrder(
 		mode: ReturnType<SheetStore["editMode"]>,
-		oldOrder: RowId[],
-		newOrder: RowId[],
+		oldOrder: readonly RowId[],
+		newOrder: readonly RowId[],
 	): ReturnType<SheetStore["editMode"]> {
 		if (!mode) return mode;
 		const nextAddress = remapAddressForRowOrder(mode.address, oldOrder, newOrder);
@@ -985,7 +985,7 @@ export default function Grid(props: GridProps) {
 		};
 	}
 
-	let previousRenderedRowOrder: RowId[] | null = null;
+	let previousRenderedRowOrder: readonly RowId[] | null = null;
 
 	createEffect(
 		() => [...(visualRowIds() ?? props.store.rowIds())],

@@ -34,6 +34,10 @@ export default defineConfig({
 				const outDir = resolve(import.meta.dirname, "dist");
 				await mkdir(outDir, { recursive: true });
 				await copyFile(resolve(import.meta.dirname, "src/sheet.css"), resolve(outDir, "sheet.css"));
+				await copyFile(
+					resolve(import.meta.dirname, "src/sheet.css.d.ts"),
+					resolve(outDir, "sheet.css.d.ts"),
+				);
 			},
 		},
 	],

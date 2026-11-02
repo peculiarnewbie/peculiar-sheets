@@ -1,4 +1,4 @@
-import { createEffect, onSettled } from "solid-js";
+import { createEffect, onSettled, untrack } from "solid-js";
 import {
 	Sheet,
 	type CellValue,
@@ -57,7 +57,7 @@ export default function Harness(props: HarnessProps) {
 	// ── Expose state on window ────────────────────────────────────────────
 
 	onSettled(() => {
-		syncWindowState();
+		untrack(syncWindowState);
 		// setup.ts's `clearMutations` helper calls this to flush the buffer.
 		// Without the explicit hook the buffer would keep the pre-clear log,
 		// and the next reactive tick would re-sync it back onto the window.
@@ -70,7 +70,7 @@ export default function Harness(props: HarnessProps) {
 	createEffect(
 		() => [buffer.data(), buffer.mutations(), buffer.rowReorders(), sortState()],
 		() => {
-			syncWindowState();
+			untrack(syncWindowState);
 		},
 	);
 

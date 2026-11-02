@@ -26,15 +26,15 @@ existing HyperFormula integrations remain supported through a compatibility adap
 Formula-free grid (no HyperFormula installed):
 
 ```bash
-npm install --save-exact peculiar-sheets@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+npm install --save-exact peculiar-sheets@0.16.0 solid-js@2.0.0-rc.20 @solidjs/web@2.0.0-rc.20
 # or
-bun add --exact peculiar-sheets@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+bun add --exact peculiar-sheets@0.16.0 solid-js@2.0.0-rc.20 @solidjs/web@2.0.0-rc.20
 ```
 
 Recommended formulas (MIT/Apache-2.0 IronCalc path):
 
 ```bash
-npm install --save-exact peculiar-sheets-ironcalc@0.15.0
+npm install --save-exact peculiar-sheets-ironcalc@0.16.0
 ```
 
 Legacy HyperFormula integrations can instead install `hyperformula@^3.0.0` directly. HyperFormula
@@ -42,11 +42,11 @@ is GPLv3/commercial and is not relicensed by Peculiar Sheets.
 
 ## Migrating to Solid 2 (including UE Shed Workbench)
 
-`0.15.0` is compiled for Solid `2.0.0-rc.9`, including its `_$$<event>` delegated
+`0.16.0` is compiled for Solid `2.0.0-rc.20`, including its `_$$<event>` delegated
 handlers. Remove any consumer patch that renames rc.7's `$$<event>` assignments.
 Solid 1 consumers must stay on `0.12.4`. The `solid-js`, `@solidjs/web`, and
-`@solidjs/signals` peers require exactly `2.0.0-rc.9`. npm installs the signals
-peer automatically; keep it at rc.9 if your application also declares it directly.
+`@solidjs/signals` peers require exactly `2.0.0-rc.20`. npm installs the signals
+peer automatically; keep it at rc.20 if your application also declares it directly.
 Later RCs require verification before widening these requirements.
 
 Remove the isolated Solid 1 renderer, runtime aliases, and compatibility component.
@@ -83,14 +83,14 @@ Host prop updates and DOM rendering settle on Solid 2's microtask flush; tests
 can call `flush()` from `solid-js` before asserting. Controller cell writes and
 chained editor commands remain immediately readable.
 After upgrading from `0.13.0`, remove any consumer patch that renames delegated
-event keys from `$$` to `_$$`; the rc.9 compiler now emits the matching keys.
-See [the rc.9 release notes](./docs/solid-rc9-release.md) for the runtime change
+event keys from `$$` to `_$$`; the rc.20 compiler now emits the matching keys.
+See [the rc.20 release notes](./docs/solid-rc20-upgrade.md) for the runtime change
 and verification commands.
 
 For a Vite consumer, use exact compatible build packages:
 
 ```bash
-npm install -D --save-exact @solidjs/vite-plugin@3.0.0-next.44 @solidjs/compiler@2.0.0-rc.9 vite@8.2.2
+npm install -D --save-exact @solidjs/vite-plugin@3.0.0-next.55 @solidjs/compiler@2.0.0-rc.20 vite@8.3.5
 ```
 
 ```ts

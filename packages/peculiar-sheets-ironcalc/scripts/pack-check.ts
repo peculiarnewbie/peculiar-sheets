@@ -52,7 +52,7 @@ try {
 	}
 	if (
 		manifest.peerDependencies?.["peculiar-sheets"] !==
-		"^0.11.0 || ^0.12.0 || ^0.13.0 || ^0.14.0 || ^0.15.0"
+		"^0.11.0 || ^0.12.0 || ^0.13.0 || ^0.14.0 || ^0.15.0 || ^0.16.0"
 	) {
 		fail("Packed adapter must explicitly admit the Solid 2 core release.");
 	}
@@ -62,7 +62,7 @@ try {
 	if ("peculiar-sheets" in (manifest.dependencies ?? {})) {
 		fail("Packed adapter must not bundle peculiar-sheets as a production dependency.");
 	}
-	if (manifest.dependencies?.["@ironcalc/wasm"] !== "^0.7.0") {
+	if (manifest.dependencies?.["@ironcalc/wasm"] !== "^0.9.1") {
 		fail("Packed adapter must retain @ironcalc/wasm as its engine dependency.");
 	}
 

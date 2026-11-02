@@ -5,6 +5,23 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - Unreleased
+
+### Changed
+
+- Require Solid `2.0.0-rc.20` peers and compile with its matching compiler and
+  Babel plugin; upgrade the Vite plugin to `3.0.0-next.55` and the Solid router
+  and testing library to their latest compatible release candidates.
+- Update dependency versions across the workspace, including TypeScript 7,
+  Vite 8.3, Vitest 5.0.5, TanStack Virtual 3.19, and HyperFormula 3.5.
+- Accept readonly effect snapshots and explicitly read imperative measurement
+  snapshots without tracking. Preserve virtual row DOM using index keys while
+  updating row positions and sizes reactively.
+- Add a production browser-suite command and update the isolated consumer and
+  package gates for rc.20. See `docs/solid-rc20-upgrade.md`.
+- Provide a type declaration for the stylesheet export so TypeScript 7 consumers
+  can keep importing `peculiar-sheets/styles` with side-effect import checking.
+
 ## [0.15.0] - 2026-10-01
 
 ### Changed

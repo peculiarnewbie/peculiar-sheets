@@ -23,13 +23,13 @@
 	},
 	"peerDependencies": {
 		"peculiar-sheets": "workspace:*",
-		"solid-js": "2.0.0-rc.9"
+		"solid-js": "2.0.0-rc.20"
 	},
 	"dependencies": {
 		"better-result": "^3.0.1"
 	},
 	"devDependencies": {
-		"@browserbasehq/stagehand": "^3.2.0",
-		"typescript": "^5.8.0"
+		"@browserbasehq/stagehand": "^3.7.3",
+		"typescript": "^7.0.2"
 	}
 }

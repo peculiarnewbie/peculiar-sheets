@@ -1,7 +1,4 @@
-import initializeIronCalc, {
-	Model,
-	type InitInput,
-} from "@ironcalc/wasm";
+import initializeIronCalc, { Model, type InitInput } from "@ironcalc/wasm";
 import type {
 	CellValue,
 	FormulaEngine,
@@ -70,9 +67,7 @@ function addressToA1(address: FormulaEngineAddress): string {
 }
 
 function quoteSheetName(name: string): string {
-	return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name)
-		? name
-		: `'${name.replaceAll("'", "''")}'`;
+	return /^[A-Za-z_][A-Za-z0-9_.]*$/.test(name) ? name : `'${name.replaceAll("'", "''")}'`;
 }
 
 function normalizeDimensions(dimensions: IronCalcSheetDimensions): IronCalcSheetDimensions {
@@ -85,7 +80,9 @@ function normalizeDimensions(dimensions: IronCalcSheetDimensions): IronCalcSheet
 function isPermutation(indexOrder: readonly number[]): boolean {
 	const values = new Set(indexOrder);
 	if (values.size !== indexOrder.length) return false;
-	return indexOrder.every((value) => Number.isInteger(value) && value >= 0 && value < indexOrder.length);
+	return indexOrder.every(
+		(value) => Number.isInteger(value) && value >= 0 && value < indexOrder.length,
+	);
 }
 
 function parseDisplayValue(model: Model, address: FormulaEngineAddress): CellValue {
@@ -243,8 +240,13 @@ export function adaptIronCalcModel(
 			changed();
 		},
 		canInsertRows(sheetId, atIndex, count) {
-			return dimensions.has(sheetId) && Number.isInteger(atIndex) && atIndex >= 0 &&
-				Number.isInteger(count) && count > 0;
+			return (
+				dimensions.has(sheetId) &&
+				Number.isInteger(atIndex) &&
+				atIndex >= 0 &&
+				Number.isInteger(count) &&
+				count > 0
+			);
 		},
 		deleteRows(sheetId, atIndex, count) {
 			assertActive();
@@ -258,8 +260,14 @@ export function adaptIronCalcModel(
 		},
 		canDeleteRows(sheetId, atIndex, count) {
 			const size = dimensions.get(sheetId);
-			return size !== undefined && Number.isInteger(atIndex) && atIndex >= 0 &&
-				Number.isInteger(count) && count > 0 && atIndex + count <= size.rows;
+			return (
+				size !== undefined &&
+				Number.isInteger(atIndex) &&
+				atIndex >= 0 &&
+				Number.isInteger(count) &&
+				count > 0 &&
+				atIndex + count <= size.rows
+			);
 		},
 		reorderRows(sheetId, indexOrder) {
 			assertActive();
@@ -271,7 +279,7 @@ export function adaptIronCalcModel(
 				const desired = indexOrder[target];
 				const source = current.indexOf(desired ?? -1);
 				if (source === target) continue;
-				model.moveRow(sheetId, source + 1, target - source);
+				model.moveRows(sheetId, source + 1, 1, target - source);
 				const [moved] = current.splice(source, 1);
 				if (moved !== undefined) current.splice(target, 0, moved);
 			}
@@ -304,7 +312,9 @@ export function adaptIronCalcModel(
 		subscribe(listener) {
 			assertActive();
 			listeners.add(listener);
-			return () => { listeners.delete(listener); };
+			return () => {
+				listeners.delete(listener);
+			};
 		},
 		dispose() {
 			if (disposed) return;

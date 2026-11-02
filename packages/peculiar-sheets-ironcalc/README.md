@@ -4,7 +4,7 @@ The recommended formula engine for Peculiar Sheets. It adapts IronCalc's Rust/WA
 engine-neutral `FormulaEngine` contract while keeping the `peculiar-sheets` core formula-free.
 
 ```bash
-npm install --save-exact peculiar-sheets@0.15.0 peculiar-sheets-ironcalc@0.15.0 solid-js@2.0.0-rc.9 @solidjs/web@2.0.0-rc.9
+npm install --save-exact peculiar-sheets@0.16.0 peculiar-sheets-ironcalc@0.16.0 solid-js@2.0.0-rc.20 @solidjs/web@2.0.0-rc.20
 ```
 
 ```tsx
@@ -26,7 +26,7 @@ WASM initialization is asynchronous, so render a loading or formula-free state u
 resolves. The adapter uses IronCalc's `en` locale and UTC timezone by default; both are configurable.
 
 This adapter does not import Solid. Its core peer admits `0.11.x`, `0.12.x`,
-`0.13.x`, `0.14.x`, and `0.15.x`; core `0.15.x` is compiled for Solid rc.9.
+`0.13.x`, `0.14.x`, `0.15.x`, and `0.16.x`; core `0.16.x` is compiled for Solid rc.20.
 
 Peculiar Sheets owns application undo/redo. Do not call the wrapped IronCalc model's undo methods.
 
