@@ -7,12 +7,12 @@ import { buildIndexOrder } from "./indexOrder";
 export type RowOperation =
 	| { type: "insertRows"; atIndex: number; count: number }
 	| {
-		type: "deleteRows";
-		atIndex: number;
-		count: number;
-		removedData: CellValue[][];
-		previousCells?: CellValue[][];
-	};
+			type: "deleteRows";
+			atIndex: number;
+			count: number;
+			removedData: CellValue[][];
+			previousCells?: CellValue[][];
+	  };
 
 interface StoredRowReorder {
 	columnId: string;
@@ -37,36 +37,36 @@ interface StoredRowResize {
 
 export type HistoryEntry =
 	| {
-		type: "cell-mutations";
-		forward: CellMutation[];
-		inverse: CellMutation[];
-		selectionBefore: Selection;
-		selectionAfter: Selection;
-	}
+			type: "cell-mutations";
+			forward: CellMutation[];
+			inverse: CellMutation[];
+			selectionBefore: Selection;
+			selectionAfter: Selection;
+	  }
 	| {
-		type: "row-operation";
-		rowOp: RowOperation;
-		selectionBefore: Selection;
-		selectionAfter: Selection;
-	}
+			type: "row-operation";
+			rowOp: RowOperation;
+			selectionBefore: Selection;
+			selectionAfter: Selection;
+	  }
 	| {
-		type: "row-reorder";
-		rowReorder: StoredRowReorder;
-		selectionBefore: Selection;
-		selectionAfter: Selection;
-	}
+			type: "row-reorder";
+			rowReorder: StoredRowReorder;
+			selectionBefore: Selection;
+			selectionAfter: Selection;
+	  }
 	| {
-		type: "column-resize";
-		columnResize: StoredColumnResize;
-		selectionBefore: Selection;
-		selectionAfter: Selection;
-	}
+			type: "column-resize";
+			columnResize: StoredColumnResize;
+			selectionBefore: Selection;
+			selectionAfter: Selection;
+	  }
 	| {
-		type: "row-resize";
-		rowResize: StoredRowResize;
-		selectionBefore: Selection;
-		selectionAfter: Selection;
-	};
+			type: "row-resize";
+			rowResize: StoredRowResize;
+			selectionBefore: Selection;
+			selectionAfter: Selection;
+	  };
 
 export interface HistoryStack {
 	undoStack: HistoryEntry[];
@@ -86,7 +86,10 @@ export function createHistory(): HistoryStack {
 // ── Push ─────────────────────────────────────────────────────────────────────
 
 function pushEntry(history: HistoryStack, entry: HistoryEntry): HistoryStack {
-	const undoStack = [...history.undoStack, entry].slice(-MAX_HISTORY);
+	const undoStack = history.undoStack.slice(
+		Math.max(0, history.undoStack.length - MAX_HISTORY + 1),
+	);
+	undoStack.push(entry);
 	return { undoStack, redoStack: [] };
 }
 

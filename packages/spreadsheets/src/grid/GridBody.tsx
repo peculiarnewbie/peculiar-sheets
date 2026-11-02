@@ -1,45 +1,18 @@
 import { createMemo, For, Show } from "solid-js";
-import type {
-	CellValue,
-	ColumnDef,
-	PhysicalCellAddress,
-	RowClassContext,
-	Selection,
-	VisualCellAddress,
-} from "../types";
-import {
-	type ColumnIndex,
-	type RowId,
-	type VisualRowIndex,
-	columnIdx,
-	toNumber,
-	visualRow,
-} from "../core/brands";
+import { type RowId, type VisualRowIndex, visualRow } from "../core/brands";
+import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
-import { defaultFormatCellValue } from "../core/formatting";
-import { normalizeRange, selectionContains } from "../core/selection";
-import GridCell from "./GridCell";
-import type { RowMetrics } from "./rowMetrics";
+import type { ColumnDef, RowClassContext } from "../types";
+import GridCell, { type GridCellContext } from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
+import type { RowMetrics } from "./rowMetrics";
 
-function addressMatchesCurrent(
-	addr: VisualCellAddress,
-	current: PhysicalCellAddress | null,
-): boolean {
-	if (!current) return false;
-	return (
-		toNumber(current.row) === toNumber(addr.row) && toNumber(current.col) === toNumber(addr.col)
-	);
-}
-
-interface GridBodyProps {
+interface GridBodyProps extends GridCellContext {
 	columns: ColumnDef[];
 	rowMetrics: RowMetrics;
-	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
 	getRowHeaderIndex: (visualRow: VisualRowIndex) => number;
 	getRowId: (visualRow: VisualRowIndex) => RowId;
-	getCellId: (address: VisualCellAddress) => string;
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
@@ -49,21 +22,7 @@ interface GridBodyProps {
 	virtualColumns: Array<{ index: number; start: number; size: number; column: ColumnDef }>;
 	/** Total rendered height for sizing. */
 	totalHeight: number;
-	getDisplayValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
-	/** Raw cell value (pre-formula-eval, pre-formatValue). Used for renderCell + title hooks. */
-	getRawValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
-	/** Visual address of the currently-editing cell (if any). Used to set `isEditing` on custom renderers. */
-	editingAddress: VisualCellAddress | null;
-	selection: Selection;
-	onCellMouseDown: (addr: VisualCellAddress, event: MouseEvent) => void;
-	onCellMouseEnter?: (addr: VisualCellAddress, event: MouseEvent) => void;
 	onRowHeaderMouseDown?: (row: VisualRowIndex, event: MouseEvent) => void;
-	onCellDblClick: (addr: VisualCellAddress) => void;
-	pinnedLeftOffsets: number[];
-	lastPinnedIndex: number;
-	readOnly?: boolean;
-	searchMatchSet: Set<string>;
-	searchCurrentAddress: PhysicalCellAddress | null;
 }
 
 export default function GridBody(props: GridBodyProps) {
@@ -164,66 +123,14 @@ export default function GridBody(props: GridBodyProps) {
 								</div>
 							</Show>
 							<For keyed={false} each={props.virtualColumns}>
-								{(virtualColumn) => {
-									const col = () => virtualColumn().column;
-									const cidx = () => columnIdx(virtualColumn().index);
-									const addr = (): VisualCellAddress => ({ row: vRow(), col: cidx() });
-									const rawValue = () => props.getRawValue(vRow(), cidx());
-									const displayValue = () => props.getDisplayValue(vRow(), cidx());
-									const formattedText = () => {
-										const formatValue = col().formatValue;
-										return formatValue
-											? formatValue(displayValue(), { row: rowIdx(), col: toNumber(cidx()) })
-											: defaultFormatCellValue(displayValue());
-									};
-									const titleOverride = () =>
-										col().getCellTitle?.(rawValue(), { row: rowIdx(), col: toNumber(cidx()) });
-									const isEditing = () =>
-										props.editingAddress?.row === vRow() && props.editingAddress?.col === cidx();
-									const isFocused = () =>
-										props.selection.focus.row === vRow() && props.selection.focus.col === cidx();
-									const isSelected = () => selectionContains(props.selection, addr());
-									const cellClass = () =>
-										customization?.getCellClass?.(rowIdx(), toNumber(cidx())) ?? "";
-									const combinedClass = () =>
-										[customRowClass(), cellClass()].filter(Boolean).join(" ");
-
-									return (
-										<GridCell
-											id={props.getCellId(addr())}
-											rawValue={rawValue()}
-											formattedText={formattedText()}
-											row={vRow()}
-											width={virtualColumn().size}
-											height={rowHeight()}
-											layoutLeft={props.rowGutterWidth + virtualColumn().start}
-											colIndex={cidx()}
-											readOnly={(props.readOnly ?? false) || col().editable === false}
-											pinnedLeft={props.pinnedLeftOffsets?.[virtualColumn().index] ?? -1}
-											isLastPinned={virtualColumn().index === props.lastPinnedIndex}
-											searchMatch={props.searchMatchSet.has(`${rowIdx()},${toNumber(cidx())}`)}
-											searchCurrent={addressMatchesCurrent(addr(), props.searchCurrentAddress)}
-											isEditing={isEditing()}
-											isFocused={isFocused()}
-											isSelected={isSelected()}
-											isActiveRow={containsFocus()}
-											{...(titleOverride() !== undefined
-												? { title: titleOverride() as string }
-												: {})}
-											{...(col().renderCell ? { renderCell: col().renderCell } : {})}
-											{...(combinedClass() ? { customClass: combinedClass() } : {})}
-											{...(customization?.getCellStyle
-												? (() => {
-														const style = customization.getCellStyle(rowIdx(), toNumber(cidx()));
-														return style ? { inlineStyle: style } : {};
-													})()
-												: {})}
-											onMouseDown={(e) => props.onCellMouseDown(addr(), e)}
-											onMouseEnter={(e) => props.onCellMouseEnter?.(addr(), e)}
-											onDblClick={() => props.onCellDblClick(addr())}
-										/>
-									);
-								}}
+								{(virtualColumn) => (
+									<GridCell
+										virtualRow={virtualRow()}
+										virtualColumn={virtualColumn()}
+										grid={props}
+										rowClass={customRowClass()}
+									/>
+								)}
 							</For>
 						</div>
 					);

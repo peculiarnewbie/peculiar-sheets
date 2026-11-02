@@ -1,50 +1,47 @@
-import { createMemo, Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { CellRenderContext, CellStyle, CellValue } from "../types";
-import { type ColumnIndex, type VisualRowIndex } from "../core/brands";
+import { createMemo } from "solid-js";
+import {
+	type ColumnIndex,
+	columnIdx,
+	toNumber,
+	type VisualRowIndex,
+	visualRow,
+} from "../core/brands";
+import { defaultFormatCellValue } from "../core/formatting";
+import { selectionContains } from "../core/selection";
+import { useSheetCustomization } from "../customization";
+import type {
+	CellRenderContext,
+	CellValue,
+	ColumnDef,
+	PhysicalCellAddress,
+	Selection,
+	VisualCellAddress,
+} from "../types";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
-interface GridCellProps {
-	id: string;
-	/** Raw cell value (pre-format). Passed to renderCell / title hooks. */
-	rawValue: CellValue;
-	/** Text to render in the default inner span (already passed through formatValue or the default). */
-	formattedText: string;
-	/** Visual row index. */
-	row: VisualRowIndex;
-	width: number;
-	height: number;
-	/** Absolute horizontal position for a virtualized, non-pinned cell. */
-	layoutLeft?: number;
-	colIndex: ColumnIndex;
+export interface GridCellContext {
+	rowGutterWidth: number;
+	getCellId: (address: VisualCellAddress) => string;
+	getDisplayValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
+	getRawValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
+	editingAddress: VisualCellAddress | null;
+	selection: Selection;
+	onCellMouseDown: (addr: VisualCellAddress, event: MouseEvent) => void;
+	onCellMouseEnter?: (addr: VisualCellAddress, event: MouseEvent) => void;
+	onCellDblClick: (addr: VisualCellAddress) => void;
+	pinnedLeftOffsets: number[];
+	lastPinnedIndex: number;
 	readOnly?: boolean;
-	pinnedLeft?: number;
-	isLastPinned?: boolean;
-	searchMatch?: boolean;
-	searchCurrent?: boolean;
-	customClass?: string;
-	/**
-	 * Optional inline style for the cell container. Merged with the grid's own
-	 * layout style — width/height/min-width/left always win to preserve layout.
-	 */
-	inlineStyle?: CellStyle;
-	/**
-	 * Optional title override.
-	 * - `undefined` → default to `formattedText || undefined`
-	 * - `""` → suppress title
-	 * - any other string → use verbatim
-	 */
-	title?: string;
-	/** Optional custom cell-content renderer. Replaces only the inner span. */
-	renderCell?: (ctx: CellRenderContext) => JSX.Element;
-	/** True while the CellEditor overlays this cell. */
-	isEditing?: boolean;
-	isFocused?: boolean;
-	isSelected?: boolean;
-	isActiveRow?: boolean;
-	onMouseDown: (event: MouseEvent) => void;
-	onMouseEnter?: (event: MouseEvent) => void;
-	onDblClick: () => void;
+	searchMatchSet: Set<string>;
+	searchCurrentAddress: PhysicalCellAddress | null;
+}
+
+interface GridCellProps {
+	virtualRow: { index: number; start: number; size: number };
+	virtualColumn: { index: number; start: number; size: number; column: ColumnDef };
+	/** Shared reactive props: cells subscribe where a value is used. */
+	grid: GridCellContext;
+	rowClass: string;
 }
 
 function resolveTitle(title: string | undefined, formattedText: string): string | undefined {
@@ -55,68 +52,82 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
 
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const isPinned = () => props.pinnedLeft != null && props.pinnedLeft >= 0;
-	const renderedContent = createMemo(() => {
-		const renderer = props.renderCell;
-		if (!renderer) return null;
-		return {
-			renderer,
-			context: {
-				value: props.rawValue,
-				formattedText: props.formattedText,
-				row: props.row,
-				col: props.colIndex,
-				readOnly: props.readOnly ?? false,
-				isEditing: props.isEditing ?? false,
-			} satisfies CellRenderContext,
-		};
-	});
+	const customization = useSheetCustomization();
+	const row = () => visualRow(props.virtualRow.index);
+	const col = () => columnIdx(props.virtualColumn.index);
+	const column = () => props.virtualColumn.column;
+	const address = (): VisualCellAddress => ({ row: row(), col: col() });
+	const rawValue = () => props.grid.getRawValue(row(), col());
+	const formattedText = () => {
+		const value = props.grid.getDisplayValue(row(), col());
+		const format = column().formatValue;
+		return format ? format(value, { row: row(), col: col() }) : defaultFormatCellValue(value);
+	};
+	const readOnly = () => (props.grid.readOnly ?? false) || column().editable === false;
+	const isEditing = () =>
+		props.grid.editingAddress?.row === row() && props.grid.editingAddress?.col === col();
+	const isSelected = () => selectionContains(props.grid.selection, address());
+	const isCurrentMatch = () => {
+		const current = props.grid.searchCurrentAddress;
+		return current !== null && toNumber(current.row) === toNumber(row()) && current.col === col();
+	};
+	const pinnedLeft = () => props.grid.pinnedLeftOffsets[props.virtualColumn.index] ?? -1;
+	const isPinned = () => pinnedLeft() >= 0;
+	const renderer = createMemo(() => column().renderCell);
+	function renderContent() {
+		const render = renderer();
+		if (!render) return <span class="se-cell__text">{formattedText()}</span>;
+		return render({
+			value: rawValue(),
+			formattedText: formattedText(),
+			row: row(),
+			col: col(),
+			readOnly: readOnly(),
+			isEditing: isEditing(),
+		} satisfies CellRenderContext);
+	}
 
 	return (
 		<div
-			id={props.id}
+			id={props.grid.getCellId(address())}
 			class={[
-				`se-cell${props.customClass ? ` ${props.customClass}` : ""}`,
+				"se-cell",
+				props.rowClass,
+				customization?.getCellClass?.(row(), col()),
 				{
 					"se-cell--pinned": isPinned(),
-					"se-cell--pinned-last": !!props.isLastPinned,
-					"se-cell--search-match": !!props.searchMatch,
-					"se-cell--search-current": !!props.searchCurrent,
-					"se-cell--active-row": !!props.isActiveRow,
-					"se-cell--range": !!props.isSelected,
-					"se-cell--focus": !!props.isFocused,
-					"se-cell--editing": !!props.isEditing,
+					"se-cell--pinned-last": props.virtualColumn.index === props.grid.lastPinnedIndex,
+					"se-cell--search-match": props.grid.searchMatchSet.has(`${row()},${col()}`),
+					"se-cell--search-current": isCurrentMatch(),
+					"se-cell--active-row": props.grid.selection.focus.row === row(),
+					"se-cell--range": isSelected(),
+					"se-cell--focus":
+						props.grid.selection.focus.row === row() && props.grid.selection.focus.col === col(),
+					"se-cell--editing": isEditing(),
 				},
 			]}
 			role="gridcell"
-			aria-colindex={props.colIndex + 1}
-			aria-selected={props.isSelected ? "true" : "false"}
-			aria-readonly={props.readOnly ? "true" : "false"}
-			title={resolveTitle(props.title, props.formattedText)}
+			aria-colindex={col() + 1}
+			aria-selected={isSelected() ? "true" : "false"}
+			aria-readonly={readOnly() ? "true" : "false"}
+			title={resolveTitle(
+				column().getCellTitle?.(rawValue(), { row: row(), col: col() }),
+				formattedText(),
+			)}
 			style={{
-				// Host-provided styles first so the grid's layout overrides win.
-				...(props.inlineStyle ?? {}),
-				width: `${props.width}px`,
-				height: `${props.height}px`,
-				"min-width": `${props.width}px`,
-				position: isPinned() ? undefined : props.layoutLeft === undefined ? undefined : "absolute",
-				left: isPinned()
-					? `${props.pinnedLeft}px`
-					: props.layoutLeft === undefined
-						? undefined
-						: `${props.layoutLeft}px`,
+				// Host styles cannot override virtualized layout.
+				...(customization?.getCellStyle?.(row(), col()) ?? {}),
+				width: `${props.virtualColumn.size}px`,
+				height: `${props.virtualRow.size}px`,
+				"min-width": `${props.virtualColumn.size}px`,
+				position: isPinned() ? undefined : "absolute",
+				left: `${isPinned() ? pinnedLeft() : props.grid.rowGutterWidth + props.virtualColumn.start}px`,
 			}}
-			onMouseDown={props.onMouseDown}
-			onMouseEnter={(event) => props.onMouseEnter?.(event)}
-			onDblClick={props.onDblClick}
+			onMouseDown={(event) => props.grid.onCellMouseDown(address(), event)}
+			onMouseEnter={(event) => props.grid.onCellMouseEnter?.(address(), event)}
+			onDblClick={() => props.grid.onCellDblClick(address())}
 		>
-			<Show
-				keyed
-				when={renderedContent()}
-				fallback={<span class="se-cell__text">{props.formattedText}</span>}
-			>
-				{(content) => content.renderer(content.context)}
-			</Show>
+			{renderContent()}
 		</div>
 	);
 }

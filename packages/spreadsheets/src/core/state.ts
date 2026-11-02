@@ -1,5 +1,4 @@
 import { createEffect, untrack } from "solid-js";
-import { createStore } from "solid-js";
 import { createCommandSignal } from "../internal/commandSignal";
 import type {
 	CellMutation,
@@ -26,6 +25,7 @@ import {
 	validateRowIds,
 } from "./row-identity";
 import { emptySelection, selectCell } from "./selection";
+import { createRowRevisions } from "./rowRevisions";
 import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
 import {
 	isFormulaValue,
@@ -216,7 +216,7 @@ export function createSheetStore(
 	const [hasPendingRowOp, setHasPendingRowOp] = createCommandSignal(false);
 	const [dataRevision, setDataRevision] = createCommandSignal(0);
 	const [structuralRevision, setStructuralRevision] = createCommandSignal(0);
-	const [rowRevisions, setRowRevisions] = createStore<Record<string, number>>({});
+	const rowRevisions = createRowRevisions();
 
 	function bumpDataRevision() {
 		setDataRevision((value) => value + 1);
@@ -230,26 +230,18 @@ export function createSheetStore(
 
 	function bumpRowRevisionsForPhysicalRows(rows: Iterable<number>) {
 		const ids = rowIds();
-		const unique = new Set<string>();
+		const unique = new Set<RowId>();
 		for (const row of rows) {
 			const id = ids[row];
 			if (id !== undefined) unique.add(id);
 		}
 		if (unique.size === 0) return;
-		for (const id of unique) {
-			setRowRevisions((draft) => {
-				draft[id] = (draft[id] ?? 0) + 1;
-			});
-		}
+		rowRevisions.bump(unique);
 		bumpDataRevision();
 	}
 
 	function forgetRowRevisions(ids: Iterable<RowId>) {
-		setRowRevisions((draft) => {
-			for (const id of ids) {
-				delete draft[id];
-			}
-		});
+		rowRevisions.forget(ids);
 	}
 
 	function allocateNewRowIds(count: number, explicitIds?: RowId[]): RowId[] {
@@ -479,12 +471,7 @@ export function createSheetStore(
 	}
 
 	function pruneRowRevisions(nextRowIds: readonly RowId[]): void {
-		const nextRowIdSet = new Set(nextRowIds);
-		setRowRevisions((draft) => {
-			for (const id of Object.keys(draft)) {
-				if (!nextRowIdSet.has(id as RowId)) delete draft[id];
-			}
-		});
+		rowRevisions.retain(nextRowIds);
 	}
 
 	function materializeHostCells(data: readonly CellValue[][], colCount: number): CellValue[][] {
@@ -721,7 +708,7 @@ export function createSheetStore(
 		rowIds,
 		dataRevision,
 		rowRevision(id: RowId) {
-			return rowRevisions[id] ?? 0;
+			return rowRevisions.read(id);
 		},
 		structuralRevision,
 

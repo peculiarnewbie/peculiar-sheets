@@ -3,6 +3,7 @@ import {
 	createMemo,
 	createSignal,
 	createUniqueId,
+	getObserver,
 	onCleanup,
 	onSettled,
 	Show,
@@ -232,12 +233,22 @@ type GridVirtualizer = Virtualizer<HTMLDivElement, HTMLElement>;
 
 function snapshotVirtualItems<TScrollElement extends Element, TItemElement extends Element>(
 	virtualizer: Virtualizer<TScrollElement, TItemElement>,
+	previous: VirtualItemSnapshot[],
 ): VirtualItemSnapshot[] {
-	return virtualizer.getVirtualItems().map((item) => ({
-		index: item.index,
-		start: item.start,
-		size: item.size,
-	}));
+	const items = virtualizer.getVirtualItems();
+	const firstIndex = previous[0]?.index ?? 0;
+	// Keep unchanged slots referentially stable so Solid's keyed list can skip them.
+	const next = items.map((item) => {
+		const existing = previous[item.index - firstIndex];
+		return existing?.index === item.index &&
+			existing.start === item.start &&
+			existing.size === item.size
+			? existing
+			: { index: item.index, start: item.start, size: item.size };
+	});
+	return next.length === previous.length && next.every((item, index) => item === previous[index])
+		? previous
+		: next;
 }
 
 function hasUsableRect(rect: { width: number; height: number } | null): boolean {
@@ -408,7 +419,7 @@ export default function Grid(props: GridProps) {
 			scrollToFn: elementScroll,
 			overscan: 3,
 			onChange: (instance) => {
-				setVirtualRows(snapshotVirtualItems(instance));
+				setVirtualRows((previous) => snapshotVirtualItems(instance, previous));
 			},
 		};
 	}
@@ -424,7 +435,7 @@ export default function Grid(props: GridProps) {
 			horizontal: true,
 			overscan: 2,
 			onChange: (instance) => {
-				setVirtualColumnItems(snapshotVirtualItems(instance));
+				setVirtualColumnItems((previous) => snapshotVirtualItems(instance, previous));
 			},
 		};
 	}
@@ -444,12 +455,12 @@ export default function Grid(props: GridProps) {
 	createEffect(rowVirtualizerOptions, (options) => {
 		rowVirtualizer.setOptions(options);
 		rowVirtualizer._willUpdate();
-		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
+		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
 	});
 	createEffect(columnVirtualizerOptions, (options) => {
 		columnVirtualizer.setOptions(options);
 		columnVirtualizer._willUpdate();
-		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	});
 
 	function attachVirtualizer(virtualizer: GridVirtualizer, viewport: HTMLDivElement): void {
@@ -476,8 +487,8 @@ export default function Grid(props: GridProps) {
 		attachVirtualizer(columnVirtualizer, viewportRef);
 		rowVirtualizer.measure();
 		columnVirtualizer.measure();
-		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
-		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
+		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	}
 
 	onSettled(() => {
@@ -788,11 +799,10 @@ export default function Grid(props: GridProps) {
 	}
 
 	// Keep the focused cell in view when selection moves (arrows, tab, shift+arrow, etc.).
-	createEffect(
-		() => props.store.selection().focus,
-		(addr) => untrack(() => scrollCellIntoView(addr)),
-		{ defer: true },
-	);
+	const focusedAddress = createMemo(() => props.store.selection().focus, {
+		equals: (previous, next) => previous.row === next.row && previous.col === next.col,
+	});
+	createEffect(focusedAddress, (addr) => untrack(() => scrollCellIntoView(addr)), { defer: true });
 
 	const editCellRect = createMemo(() => {
 		const editMode = props.store.editMode();
@@ -1032,15 +1042,12 @@ export default function Grid(props: GridProps) {
 		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
 		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
 		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
-		props.store.structuralRevision();
-		const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
-		if (id !== null) {
-			props.store.rowRevision(id);
+		if (getObserver()) {
+			props.store.structuralRevision();
+			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
+			if (id !== null) props.store.rowRevision(id);
 		}
-		return untrack(() => {
-			const rawCells = props.store.cells;
-			return rawCells[toNumber(row)]?.[toNumber(col)] ?? null;
-		});
+		return props.store.cells[toNumber(row)]?.[toNumber(col)] ?? null;
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
