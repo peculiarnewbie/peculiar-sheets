@@ -1,17 +1,18 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import type { Stagehand } from "@browserbasehq/stagehand";
 import {
 	closePage,
+	focusGrid,
+	getCellValue,
+	getPage,
+	getRowCount,
 	getStagehand,
 	logMemory,
 	navigateTo,
 	newPage,
-	getCellValue,
-	getRowCount,
 	press,
-	focusGrid,
 	withSheetCtrl,
 } from "./setup";
-import type { Stagehand } from "@browserbasehq/stagehand";
 
 /**
  * Row operations tests — using the imperative SheetController API.
@@ -40,6 +41,42 @@ describe("row operations", () => {
 	});
 
 	// ── Insert Rows ─────────────────────────────────────────────────
+
+	it("keeps the focused last row visible when insertion grows the scroll area", async () => {
+		await withSheetCtrl((controller) => {
+			controller.setSelection([{ start: { row: 2, col: 0 }, end: { row: 2, col: 0 } }]);
+		});
+		await withSheetCtrl((controller) => controller.insertRows(0, 100));
+		await getPage().evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				),
+		);
+		const visible = await getPage().evaluate(() => {
+			const viewport = document.querySelector<HTMLElement>(".se-viewport");
+			const cell = document.querySelector<HTMLElement>(".se-cell--focus");
+			if (!viewport || !cell) return { visible: false, hasViewport: !!viewport, hasCell: !!cell };
+			const bounds = viewport.getBoundingClientRect();
+			const rect = cell.getBoundingClientRect();
+			return {
+				visible:
+					rect.top >= bounds.top &&
+					rect.bottom <= bounds.bottom + 1 &&
+					cell.textContent === "gamma",
+				top: rect.top,
+				bottom: rect.bottom,
+				viewportTop: bounds.top,
+				viewportBottom: bounds.bottom,
+				scrollTop: viewport.scrollTop,
+				scrollHeight: viewport.scrollHeight,
+				clientHeight: viewport.clientHeight,
+				text: cell.textContent,
+			};
+		});
+		expect((await withSheetCtrl((controller) => controller.getSelection())).focus.row).toBe(102);
+		expect(visible).toMatchObject({ visible: true });
+	});
 
 	it("inserts a row above via controller", async () => {
 		expect(await getRowCount(sh)).toBe(3);

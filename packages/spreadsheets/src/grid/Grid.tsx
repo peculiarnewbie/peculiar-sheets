@@ -264,6 +264,7 @@ export default function Grid(props: GridProps) {
 
 	let gridRef: HTMLDivElement | undefined;
 	let viewportRef: HTMLDivElement | undefined;
+	let canvasRef: HTMLDivElement | undefined;
 	let cellEditorInputRef: HTMLInputElement | undefined;
 	let formulaBarInputRef: HTMLInputElement | undefined;
 	let dragViewportRect: DOMRect | null = null;
@@ -738,12 +739,12 @@ export default function Grid(props: GridProps) {
 		const widths = untrack(columnWidths);
 		const { row, col } = addr;
 
-		// Cell bounds within the scrollable canvas. Use rowMetrics so variable
-		// row heights (resized rows above `row`) are accounted for — otherwise
-		// the bottom edge is underestimated and the cell lands just off the
-		// viewport after arrow-down navigation.
+		// Convert variable-height row metrics into viewport scroll coordinates.
 		const metrics = rowMetrics();
-		const cellTop = metrics.getRowTop(row);
+		// The canvas follows the sticky header in normal flow. Include that
+		// origin (and its borders) when comparing rows with viewport offsets.
+		const stickyTop = canvasRef?.offsetTop ?? headerTotalHeight();
+		const cellTop = stickyTop + metrics.getRowTop(row);
 		const cellBottom = cellTop + metrics.getRowHeight(row);
 
 		let cellLeft = rowGutterWidth();
@@ -753,7 +754,6 @@ export default function Grid(props: GridProps) {
 		const cellRight = cellLeft + (widths[col] ?? DEFAULT_COL_WIDTH);
 
 		// Space covered by sticky overlays (header on top, gutter + pinned cols on left).
-		const stickyTop = headerTotalHeight();
 		let stickyLeft = rowGutterWidth();
 		for (let c = 0; c < props.columns.length; c++) {
 			if (props.columns[c]?.pinned === "left") {
@@ -2821,6 +2821,7 @@ export default function Grid(props: GridProps) {
 				/>
 
 				<div
+					ref={canvasRef}
 					class="se-canvas"
 					style={{
 						width: `${totalWidth()}px`,
