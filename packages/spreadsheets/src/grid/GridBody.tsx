@@ -13,6 +13,8 @@ interface GridBodyProps extends GridCellContext {
 	showReferenceHeaders: boolean;
 	getRowHeaderIndex: (visualRow: VisualRowIndex) => number;
 	getRowId: (visualRow: VisualRowIndex) => RowId;
+	/** Share row dependencies while preserving per-cell formula dependencies. */
+	getRowDisplayValues?: (row: VisualRowIndex, columns: readonly { index: number }[]) => CellValue[];
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
@@ -61,8 +63,10 @@ export default function GridBody(props: GridBodyProps) {
 		return layout(height);
 	};
 
+	// Contiguous virtual rows share a viewport-sized set of owners. Overlapping
+	// indices retain their owners; long jumps reuse the slots that left view.
 	const renderRows = (renderCustom: boolean) => (
-		<For keyed={(row) => row.index} each={props.virtualRows}>
+		<For keyed={(row) => row.index % props.virtualRows.length} each={props.virtualRows}>
 			{(virtualRow) => {
 				trackGridLifecycle("row");
 				const vRow = () => visualRow(virtualRow().index);
@@ -76,6 +80,12 @@ export default function GridBody(props: GridBodyProps) {
 						return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
 					});
 				const containsActiveEditor = () => props.editingAddress?.row === vRow();
+				const rowSelection = createMemo(() =>
+					containsFocus() || intersectsSelection() ? props.selection : null,
+				);
+				const rowEditingAddress = createMemo(() =>
+					containsActiveEditor() ? props.editingAddress : null,
+				);
 				const rowClassContext = (): RowClassContext => ({
 					rowId: props.getRowId(vRow()),
 					visualRowIndex: virtualRow().index,
@@ -89,10 +99,14 @@ export default function GridBody(props: GridBodyProps) {
 				);
 				// Share display dependencies across a row. The plain memo avoids
 				// per-cell store nodes; custom formatters also filter unchanged values.
-				const readDisplayValues = () =>
-					props.virtualColumns.map((column) =>
-						props.getDisplayValue(vRow(), columnIdx(column.index)),
-					);
+				const readDisplayValues = () => {
+					const row = vRow();
+					const columns = props.virtualColumns;
+					const readRow = props.getRowDisplayValues;
+					return readRow
+						? readRow(row, columns)
+						: columns.map((column) => props.getDisplayValue(row, columnIdx(column.index)));
+				};
 				const displayValues = createMemo(() => {
 					if (!hasFormatters()) return readDisplayValues();
 					return createProjection<CellValue[]>(readDisplayValues, [], {
@@ -102,6 +116,12 @@ export default function GridBody(props: GridBodyProps) {
 				});
 				const cellRow: GridCellRow = {
 					getLayoutStyle,
+					get selection() {
+						return rowSelection();
+					},
+					get editingAddress() {
+						return rowEditingAddress();
+					},
 					get displayValues() {
 						return displayValues();
 					},

@@ -100,10 +100,12 @@ describe("Solid 2 Sheet", () => {
 	});
 	it("keeps virtual rows and recycled column slots current as ranges move, shrink, and grow", () => {
 		const formats = new Map<number, number>();
+		const formattedRows = new Set<number>();
 		const formattedColumns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
 			id: `col${index}`,
 			header: `Column ${index}`,
-			formatValue: (value) => {
+			formatValue: (value, context) => {
+				formattedRows.add(context.row);
 				formats.set(index, (formats.get(index) ?? 0) + 1);
 				return String(value ?? "");
 			},
@@ -119,6 +121,10 @@ describe("Solid 2 Sheet", () => {
 		const [changed, setChanged] = createSignal(false);
 		const [height, setHeight] = createSignal(28);
 		const [rows, setRows] = createSignal([10, 11]);
+		const [selection, setSelection] = createSignal(
+			selectCell({ row: visualRow(10), col: columnIdx(0) }),
+		);
+		const [editing, setEditing] = createSignal<VisualCellAddress | null>(null);
 		let clicked: VisualCellAddress | null = null;
 		const view = render(() => (
 			<GridBody
@@ -137,8 +143,8 @@ describe("Solid 2 Sheet", () => {
 					const modified = changed();
 					return modified && row === 10 && col === 100 ? "changed" : `R${row}C${col}`;
 				}}
-				editingAddress={null}
-				selection={selectCell({ row: visualRow(10), col: columnIdx(0) })}
+				editingAddress={editing()}
+				selection={selection()}
 				onCellMouseDown={(address) => {
 					clicked = address;
 				}}
@@ -151,6 +157,22 @@ describe("Solid 2 Sheet", () => {
 		));
 		flush();
 		expect(view.getAllByRole("gridcell")).toHaveLength(6);
+		formattedRows.clear();
+		setSelection(selectCell({ row: visualRow(10), col: columnIdx(1) }));
+		flush();
+		expect([...formattedRows]).toEqual([10]);
+		expect(view.container.querySelector("#cell-10-1")?.getAttribute("aria-selected")).toBe("true");
+		expect(view.container.querySelector("#cell-11-1")?.getAttribute("aria-selected")).toBe("false");
+		formattedRows.clear();
+		setEditing({ row: visualRow(10), col: columnIdx(1) });
+		flush();
+		expect([...formattedRows]).toEqual([10]);
+		expect(view.container.querySelector("#cell-10-1")?.classList.contains("se-cell--editing")).toBe(
+			true,
+		);
+		setEditing(null);
+		setSelection(selectCell({ row: visualRow(10), col: columnIdx(0) }));
+		flush();
 		setVirtualColumns(range([100, 101]));
 		flush();
 		expect(view.getAllByRole("gridcell").map((cell) => cell.textContent)).toEqual([
@@ -432,6 +454,7 @@ describe("Solid 2 Sheet", () => {
 	});
 
 	it("updates and removes cell content, tooltip, class, and style overrides", () => {
+		const entered: VisualCellAddress[] = [];
 		const baseColumn: ColumnDef = { id: "value", header: "Value" };
 		const [column, setColumn] = createSignal(baseColumn);
 		const [customClass, setCustomClass] = createSignal("");
@@ -448,6 +471,7 @@ describe("Solid 2 Sheet", () => {
 			editingAddress: null,
 			selection: selectCell({ row: visualRow(0), col: columnIdx(0) }),
 			onCellMouseDown: () => {},
+			onCellMouseEnter: (address) => entered.push(address),
 			onCellDblClick: () => {},
 			pinnedLeftOffsets: [],
 			lastPinnedIndex: -1,
@@ -462,6 +486,12 @@ describe("Solid 2 Sheet", () => {
 					row={{
 						item: { index: 0, start: 0, size: 28 },
 						className: "",
+						get selection() {
+							return grid.selection;
+						},
+						get editingAddress() {
+							return grid.editingAddress;
+						},
 						getLayoutStyle: () => ({
 							width: "100px",
 							height: "28px",
@@ -480,6 +510,12 @@ describe("Solid 2 Sheet", () => {
 		flush();
 		const cell = view.getByRole("gridcell");
 		expect(cell.textContent).toBe("first");
+		const text = cell.querySelector(".se-cell__text");
+		if (!text) throw new Error("Cell text missing");
+		fireEvent.mouseOver(text, { relatedTarget: document.body });
+		expect(entered).toEqual([{ row: visualRow(0), col: columnIdx(0) }]);
+		fireEvent.mouseOver(cell, { relatedTarget: text });
+		expect(entered).toHaveLength(1);
 		expect(cell.getAttribute("title")).toBe("first");
 		setColumn({
 			...baseColumn,

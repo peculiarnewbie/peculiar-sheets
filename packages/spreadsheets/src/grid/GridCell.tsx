@@ -22,6 +22,8 @@ import { trackGridLifecycle } from "./lifecycleDiagnostics";
 export interface GridCellRow {
 	readonly item: { index: number; start: number; size: number };
 	readonly className: string;
+	readonly selection: Selection | null;
+	readonly editingAddress: VisualCellAddress | null;
 	readonly displayValues: readonly CellValue[] | undefined;
 	getLayoutStyle(columnIndex: number, height: number): CellStyle;
 }
@@ -102,39 +104,37 @@ class CellView {
 		return (this.grid.readOnly ?? false) || this.column.editable === false;
 	}
 	get isEditing() {
-		return this.grid.editingAddress?.row === this.row && this.grid.editingAddress?.col === this.col;
+		const editing = this.rowModel.editingAddress;
+		return editing?.row === this.row && editing.col === this.col;
 	}
 	get isSelected() {
-		return selectionContains(this.grid.selection, this.address);
-	}
-	get isCurrentMatch() {
-		const current = this.grid.searchCurrentAddress;
-		return (
-			current !== null && toNumber(current.row) === toNumber(this.row) && current.col === this.col
-		);
-	}
-	get pinnedLeft() {
-		return this.grid.pinnedLeftOffsets[this.virtualColumn.index] ?? -1;
-	}
-	get isPinned() {
-		return this.pinnedLeft >= 0;
+		const selection = this.rowModel.selection;
+		return selection !== null && selectionContains(selection, this.address);
 	}
 	get className() {
+		const row = this.row;
+		const column = this.virtualColumn;
+		const col = columnIdx(column.index);
+		const grid = this.grid;
+		const selection = this.rowModel.selection;
+		const focus = selection?.focus;
+		const editing = this.rowModel.editingAddress;
+		const current = grid.searchCurrentAddress;
 		let classes = "se-cell";
 		const rowClass = this.rowModel.className;
-		const cellClass = this.customization?.getCellClass?.(this.row, this.col);
+		const cellClass = this.customization?.getCellClass?.(row, col);
 		if (rowClass) classes += ` ${rowClass}`;
 		if (cellClass) classes += ` ${cellClass}`;
-		if (this.isPinned) classes += " se-cell--pinned";
-		if (this.virtualColumn.index === this.grid.lastPinnedIndex) classes += " se-cell--pinned-last";
-		if (this.grid.searchMatchSet.has(`${this.row},${this.col}`))
-			classes += " se-cell--search-match";
-		if (this.isCurrentMatch) classes += " se-cell--search-current";
-		const focus = this.grid.selection.focus;
-		if (focus.row === this.row) classes += " se-cell--active-row";
-		if (this.isSelected) classes += " se-cell--range";
-		if (focus.row === this.row && focus.col === this.col) classes += " se-cell--focus";
-		if (this.isEditing) classes += " se-cell--editing";
+		if ((grid.pinnedLeftOffsets[column.index] ?? -1) >= 0) classes += " se-cell--pinned";
+		if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
+		if (grid.searchMatchSet.has(`${row},${col}`)) classes += " se-cell--search-match";
+		if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
+			classes += " se-cell--search-current";
+		if (focus?.row === row) classes += " se-cell--active-row";
+		if (selection !== null && selectionContains(selection, { row, col }))
+			classes += " se-cell--range";
+		if (focus?.row === row && focus.col === col) classes += " se-cell--focus";
+		if (editing?.row === row && editing.col === col) classes += " se-cell--editing";
 		return classes;
 	}
 	get style() {
@@ -160,7 +160,15 @@ class CellView {
 function cellMouseDown(view: CellView, event: MouseEvent) {
 	view.grid.onCellMouseDown(view.address, event);
 }
-function cellMouseEnter(view: CellView, event: MouseEvent) {
+function cellMouseOver(view: CellView, event: MouseEvent) {
+	// Delegate the bubbling event while preserving mouseenter semantics.
+	if (
+		event.currentTarget instanceof Node &&
+		event.relatedTarget instanceof Node &&
+		event.currentTarget.contains(event.relatedTarget)
+	) {
+		return;
+	}
 	view.grid.onCellMouseEnter?.(view.address, event);
 }
 function cellDoubleClick(view: CellView) {
@@ -187,7 +195,7 @@ export default function GridCell(props: GridCellProps) {
 				)}
 				style={view.style}
 				onMouseDown={[cellMouseDown, view]}
-				onMouseEnter={[cellMouseEnter, view]}
+				onMouseOver={[cellMouseOver, view]}
 				onDblClick={[cellDoubleClick, view]}
 			>
 				<span class="se-cell__text" textContent={view.formattedText} />
@@ -208,7 +216,7 @@ export default function GridCell(props: GridCellProps) {
 			)}
 			style={view.style}
 			onMouseDown={[cellMouseDown, view]}
-			onMouseEnter={[cellMouseEnter, view]}
+			onMouseOver={[cellMouseOver, view]}
 			onDblClick={[cellDoubleClick, view]}
 		>
 			{view.renderContent()}

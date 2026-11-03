@@ -9,6 +9,7 @@ import {
 import {
 	createEffect,
 	createMemo,
+	createRenderEffect,
 	createSignal,
 	createUniqueId,
 	getObserver,
@@ -997,7 +998,8 @@ export default function Grid(props: GridProps) {
 
 	let previousRenderedRowOrder: readonly RowId[] | null = null;
 
-	createEffect(
+	// Reconcile view identity alongside rendering, before post-render callbacks.
+	createRenderEffect(
 		// Row-order signal values are replaced on structural changes. Retain the
 		// previous value instead of copying every row ID for this observer.
 		() => visualRowIds() ?? props.store.rowIds(),
@@ -1040,7 +1042,7 @@ export default function Grid(props: GridProps) {
 		},
 	);
 
-	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
+	function getRawRowForPhysicalRow(row: PhysicalRowIndex): readonly CellValue[] | undefined {
 		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
 		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
 		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
@@ -1049,7 +1051,11 @@ export default function Grid(props: GridProps) {
 			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
 			if (id !== null) props.store.rowRevision(id);
 		}
-		return props.store.cells[toNumber(row)]?.[toNumber(col)] ?? null;
+		return props.store.cells[toNumber(row)];
+	}
+
+	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
+		return getRawRowForPhysicalRow(row)?.[toNumber(col)] ?? null;
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -1066,6 +1072,22 @@ export default function Grid(props: GridProps) {
 
 	function getDisplayCellValue(row: VisualRowIndex, col: ColumnIndex): CellValue {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
+	}
+
+	function getRowDisplayValues(
+		row: VisualRowIndex,
+		columns: readonly { index: number }[],
+	): CellValue[] {
+		const physical = getPhysicalRowForVisualRow(row);
+		// One row subscription covers all raw cells. Formula reads still track
+		// their own dependencies, and the bridge revision covers engine updates.
+		const values = getRawRowForPhysicalRow(physical);
+		const bridge = props.formulaBridge;
+		if (bridge && typeof bridge.revision === "function") bridge.revision();
+		return columns.map((column) => {
+			const raw = values?.[column.index] ?? null;
+			return bridge?.getDisplayValue(physical, columnIdx(column.index), raw) ?? raw;
+		});
 	}
 
 	function markWorkbookEngineUnconfirmed() {
@@ -2830,6 +2852,7 @@ export default function Grid(props: GridProps) {
 							virtualColumns={virtualColumns()}
 							totalHeight={rowMetrics().getTotalHeight()}
 							getDisplayValue={getDisplayCellValue}
+							getRowDisplayValues={getRowDisplayValues}
 							getRawValue={getRawCellValue}
 							editingAddress={props.store.editMode()?.address ?? null}
 							selection={props.store.selection()}
