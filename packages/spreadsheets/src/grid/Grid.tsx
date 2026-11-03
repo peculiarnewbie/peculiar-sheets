@@ -1,11 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
-import {
-	elementScroll,
-	observeElementOffset,
-	observeElementRect,
-	Virtualizer,
-} from "@tanstack/virtual-core";
+import { elementScroll, observeElementRect, Virtualizer } from "@tanstack/virtual-core";
 import {
 	createEffect,
 	createMemo,
@@ -100,6 +95,7 @@ import { buildRowMetrics } from "./rowMetrics";
 import SearchBar from "./SearchBar";
 import SelectionOverlay from "./SelectionOverlay";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
+import { createViewportOffsetObserver } from "./viewportOffset";
 
 const ROW_GUTTER_WIDTH = 48;
 
@@ -409,6 +405,7 @@ export default function Grid(props: GridProps) {
 	// Bridge framework-neutral TanStack measurements into Solid 2 signals.
 	const [virtualRows, setVirtualRows] = createSignal<VirtualItemSnapshot[]>([]);
 	const [virtualColumnItems, setVirtualColumnItems] = createSignal<VirtualItemSnapshot[]>([]);
+	const observeViewportOffset = createViewportOffsetObserver();
 
 	function rowVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
 		return {
@@ -416,7 +413,7 @@ export default function Grid(props: GridProps) {
 			getScrollElement: () => viewportRef ?? null,
 			estimateSize: (index) => untrack(rowMetrics).getRowHeight(visualRow(index)),
 			observeElementRect,
-			observeElementOffset,
+			observeElementOffset: observeViewportOffset,
 			scrollToFn: elementScroll,
 			overscan: 3,
 			onChange: (instance) => {
@@ -431,7 +428,7 @@ export default function Grid(props: GridProps) {
 			getScrollElement: () => viewportRef ?? null,
 			estimateSize: (index) => untrack(columnWidths)[index] ?? DEFAULT_COL_WIDTH,
 			observeElementRect,
-			observeElementOffset,
+			observeElementOffset: observeViewportOffset,
 			scrollToFn: elementScroll,
 			horizontal: true,
 			overscan: 2,
