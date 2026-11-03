@@ -117,14 +117,15 @@ describe("Solid 2 Sheet", () => {
 			});
 		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2]));
 		const [changed, setChanged] = createSignal(false);
+		const [height, setHeight] = createSignal(28);
 		let clicked: VisualCellAddress | null = null;
 		const view = render(() => (
 			<GridBody
 				columns={columns()}
 				rowMetrics={buildRowMetrics(20, 28)}
 				virtualRows={[
-					{ index: 10, start: 280, size: 28 },
-					{ index: 11, start: 308, size: 28 },
+					{ index: 10, start: 280, size: height() },
+					{ index: 11, start: 308, size: height() },
 				]}
 				virtualColumns={virtualColumns()}
 				totalHeight={560}
@@ -162,6 +163,11 @@ describe("Solid 2 Sheet", () => {
 		]);
 		const cell = view.container.querySelector<HTMLElement>("#cell-10-100");
 		if (!cell) throw new Error("Recycled cell missing");
+		expect(cell.style.left).toBe("10000px");
+		expect(cell.style.height).toBe("28px");
+		setHeight(40);
+		flush();
+		expect(cell.style.height).toBe("40px");
 		fireEvent.mouseDown(cell);
 		expect(clicked).toEqual({ row: 10, col: 100 });
 		formats.clear();
@@ -418,6 +424,12 @@ describe("Solid 2 Sheet", () => {
 					row={{
 						item: { index: 0, start: 0, size: 28 },
 						className: "",
+						getLayoutStyle: () => ({
+							width: "100px",
+							height: "28px",
+							left: "0px",
+							position: "absolute",
+						}),
 						get displayValues() {
 							return [value()];
 						},
@@ -437,12 +449,16 @@ describe("Solid 2 Sheet", () => {
 			renderCell: (context) => <strong>{context.formattedText}</strong>,
 		});
 		setCustomClass("highlight");
-		setStyle({ color: "red" });
+		setStyle({ color: "red", width: "999px", height: "1px", left: "999px", position: "fixed" });
 		flush();
 		expect(cell.querySelector("strong")?.textContent).toBe("first");
 		expect(cell.hasAttribute("title")).toBe(false);
 		expect(cell.classList.contains("highlight")).toBe(true);
 		expect(cell.style.color).toBe("red");
+		expect(cell.style.width).toBe("100px");
+		expect(cell.style.height).toBe("28px");
+		expect(cell.style.left).toBe("0px");
+		expect(cell.style.position).toBe("absolute");
 		setValue("second");
 		flush();
 		expect(cell.querySelector("strong")?.textContent).toBe("second");

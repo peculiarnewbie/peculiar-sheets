@@ -10,6 +10,7 @@ import { selectionContains } from "../core/selection";
 import { useSheetCustomization } from "../customization";
 import type {
 	CellRenderContext,
+	CellStyle,
 	CellValue,
 	ColumnDef,
 	PhysicalCellAddress,
@@ -22,6 +23,7 @@ export interface GridCellRow {
 	readonly item: { index: number; start: number; size: number };
 	readonly className: string;
 	readonly displayValues: readonly CellValue[] | undefined;
+	getLayoutStyle(columnIndex: number, height: number): CellStyle;
 }
 
 export interface GridCellContext {
@@ -43,6 +45,7 @@ export interface GridCellContext {
 }
 
 interface GridCellProps {
+	/** Stable contexts and a fixed Repeat slot; updates flow through their getters. */
 	row: GridCellRow;
 	columnIndex: number;
 	/** Shared reactive props: cells subscribe where a value is used. */
@@ -59,17 +62,19 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
  * Reading them in JSX still subscribes Solid to the underlying reactive props. */
 class CellView {
 	constructor(
-		readonly props: GridCellProps,
+		readonly rowModel: GridCellRow,
+		readonly columnIndex: number,
+		readonly grid: GridCellContext,
 		readonly customization: ReturnType<typeof useSheetCustomization>,
 	) {}
 	get virtualColumn() {
-		const column = this.props.grid.virtualColumns[this.props.columnIndex];
+		const column = this.grid.virtualColumns[this.columnIndex];
 		if (!column)
-			throw new Error(`Virtual column ${this.props.columnIndex} is outside the rendered range`);
+			throw new Error(`Virtual column ${this.columnIndex} is outside the rendered range`);
 		return column;
 	}
 	get row() {
-		return visualRow(this.props.row.item.index);
+		return visualRow(this.rowModel.item.index);
 	}
 	get col() {
 		return columnIdx(this.virtualColumn.index);
@@ -81,58 +86,60 @@ class CellView {
 		return { row: this.row, col: this.col };
 	}
 	get rawValue() {
-		return this.props.grid.getRawValue(this.row, this.col);
+		return this.grid.getRawValue(this.row, this.col);
 	}
 	get formattedText() {
-		const projected = this.props.row.displayValues;
+		const projected = this.rowModel.displayValues;
 		const value = projected
-			? (projected[this.props.columnIndex] ?? null)
-			: this.props.grid.getDisplayValue(this.row, this.col);
+			? (projected[this.columnIndex] ?? null)
+			: this.grid.getDisplayValue(this.row, this.col);
 		const format = this.column.formatValue;
 		return format ? format(value, { row: this.row, col: this.col }) : defaultFormatCellValue(value);
 	}
 	get readOnly() {
-		return (this.props.grid.readOnly ?? false) || this.column.editable === false;
+		return (this.grid.readOnly ?? false) || this.column.editable === false;
 	}
 	get isEditing() {
-		return (
-			this.props.grid.editingAddress?.row === this.row &&
-			this.props.grid.editingAddress?.col === this.col
-		);
+		return this.grid.editingAddress?.row === this.row && this.grid.editingAddress?.col === this.col;
 	}
 	get isSelected() {
-		return selectionContains(this.props.grid.selection, this.address);
+		return selectionContains(this.grid.selection, this.address);
 	}
 	get isCurrentMatch() {
-		const current = this.props.grid.searchCurrentAddress;
+		const current = this.grid.searchCurrentAddress;
 		return (
 			current !== null && toNumber(current.row) === toNumber(this.row) && current.col === this.col
 		);
 	}
 	get pinnedLeft() {
-		return this.props.grid.pinnedLeftOffsets[this.virtualColumn.index] ?? -1;
+		return this.grid.pinnedLeftOffsets[this.virtualColumn.index] ?? -1;
 	}
 	get isPinned() {
 		return this.pinnedLeft >= 0;
 	}
 	get className() {
 		let classes = "se-cell";
-		const rowClass = this.props.row.className;
+		const rowClass = this.rowModel.className;
 		const cellClass = this.customization?.getCellClass?.(this.row, this.col);
 		if (rowClass) classes += ` ${rowClass}`;
 		if (cellClass) classes += ` ${cellClass}`;
 		if (this.isPinned) classes += " se-cell--pinned";
-		if (this.virtualColumn.index === this.props.grid.lastPinnedIndex)
-			classes += " se-cell--pinned-last";
-		if (this.props.grid.searchMatchSet.has(`${this.row},${this.col}`))
+		if (this.virtualColumn.index === this.grid.lastPinnedIndex) classes += " se-cell--pinned-last";
+		if (this.grid.searchMatchSet.has(`${this.row},${this.col}`))
 			classes += " se-cell--search-match";
 		if (this.isCurrentMatch) classes += " se-cell--search-current";
-		const focus = this.props.grid.selection.focus;
+		const focus = this.grid.selection.focus;
 		if (focus.row === this.row) classes += " se-cell--active-row";
 		if (this.isSelected) classes += " se-cell--range";
 		if (focus.row === this.row && focus.col === this.col) classes += " se-cell--focus";
 		if (this.isEditing) classes += " se-cell--editing";
 		return classes;
+	}
+	get style() {
+		const layout = this.rowModel.getLayoutStyle(this.columnIndex, this.rowModel.item.size);
+		const custom = this.customization?.getCellStyle?.(this.row, this.col);
+		// Host styles cannot override virtualized layout.
+		return custom ? { ...custom, ...layout } : layout;
 	}
 	renderContent() {
 		const render = this.column.renderCell;
@@ -149,21 +156,21 @@ class CellView {
 }
 
 function cellMouseDown(view: CellView, event: MouseEvent) {
-	view.props.grid.onCellMouseDown(view.address, event);
+	view.grid.onCellMouseDown(view.address, event);
 }
 function cellMouseEnter(view: CellView, event: MouseEvent) {
-	view.props.grid.onCellMouseEnter?.(view.address, event);
+	view.grid.onCellMouseEnter?.(view.address, event);
 }
 function cellDoubleClick(view: CellView) {
-	view.props.grid.onCellDblClick(view.address);
+	view.grid.onCellDblClick(view.address);
 }
 
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const view = new CellView(props, useSheetCustomization());
+	const view = new CellView(props.row, props.columnIndex, props.grid, useSheetCustomization());
 	return (
 		<div
-			id={props.grid.getCellId(view.address)}
+			id={view.grid.getCellId(view.address)}
 			class={view.className}
 			role="gridcell"
 			aria-colindex={view.col + 1}
@@ -173,15 +180,7 @@ export default function GridCell(props: GridCellProps) {
 				view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
 				view.formattedText,
 			)}
-			style={{
-				// Host styles cannot override virtualized layout.
-				...(view.customization?.getCellStyle?.(view.row, view.col) ?? {}),
-				width: `${view.virtualColumn.size}px`,
-				height: `${props.row.item.size}px`,
-				"min-width": `${view.virtualColumn.size}px`,
-				position: view.isPinned ? undefined : "absolute",
-				left: `${view.isPinned ? view.pinnedLeft : props.grid.rowGutterWidth + view.virtualColumn.start}px`,
-			}}
+			style={view.style}
 			onMouseDown={[cellMouseDown, view]}
 			onMouseEnter={[cellMouseEnter, view]}
 			onDblClick={[cellDoubleClick, view]}

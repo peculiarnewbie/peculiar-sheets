@@ -460,6 +460,7 @@ export function createSheetStore(
 
 	function pruneRowHeights(nextRowIds: readonly RowId[]): void {
 		const current = rowHeights();
+		if (current.size === 0) return;
 		const nextRowIdSet = new Set(nextRowIds);
 		const next = new Map<RowId, number>();
 		for (const [id, height] of current) {

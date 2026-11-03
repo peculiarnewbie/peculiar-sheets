@@ -38,6 +38,13 @@ export function createRowRevisions() {
 	}
 
 	function retain(ids: readonly RowId[]): void {
+		if (values.size <= 1) {
+			// Avoid indexing the whole sheet when only one written row needs checking.
+			for (const id of values.keys()) {
+				if (!ids.includes(id)) forget([id]);
+			}
+			return;
+		}
 		const retained = new Set(ids);
 		for (const id of values.keys()) {
 			if (!retained.has(id)) forget([id]);

@@ -2,7 +2,7 @@ import { createMemo, createProjection, For, Repeat, Show } from "solid-js";
 import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/brands";
 import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
-import type { CellValue, ColumnDef, RowClassContext } from "../types";
+import type { CellStyle, CellValue, ColumnDef, RowClassContext } from "../types";
 import GridCell, { type GridCellContext, type GridCellRow } from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 import type { RowMetrics } from "./rowMetrics";
@@ -28,6 +28,37 @@ interface GridBodyProps extends GridCellContext {
 export default function GridBody(props: GridBodyProps) {
 	const customization = useSheetCustomization();
 	const hasFormatters = createMemo(() => props.columns.some((column) => column.formatValue));
+	// One cached height per visible column keeps storage bounded as rows scroll.
+	// Custom-height rows simply replace that column's cached layout.
+	const layouts = createMemo(() => {
+		const gutter = props.rowGutterWidth;
+		const pinned = props.pinnedLeftOffsets;
+		return props.virtualColumns.map((column) => {
+			const pinnedLeft = pinned[column.index] ?? -1;
+			const width = `${column.size}px`;
+			const left = `${pinnedLeft >= 0 ? pinnedLeft : gutter + column.start}px`;
+			let cachedHeight = -1;
+			let cached: CellStyle | undefined;
+			return (height: number): CellStyle => {
+				if (!cached || cachedHeight !== height) {
+					cachedHeight = height;
+					cached = {
+						width,
+						"min-width": width,
+						height: `${height}px`,
+						position: pinnedLeft >= 0 ? "sticky" : "absolute",
+						left,
+					};
+				}
+				return cached;
+			};
+		});
+	});
+	const getLayoutStyle = (columnIndex: number, height: number): CellStyle => {
+		const layout = layouts()[columnIndex];
+		if (!layout) throw new Error(`Column layout ${columnIndex} is outside the rendered range`);
+		return layout(height);
+	};
 
 	return (
 		<div
@@ -77,6 +108,7 @@ export default function GridBody(props: GridBodyProps) {
 						);
 					});
 					const cellRow: GridCellRow = {
+						getLayoutStyle,
 						get displayValues() {
 							return displayValues();
 						},
