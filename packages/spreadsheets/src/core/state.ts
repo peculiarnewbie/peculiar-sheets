@@ -23,7 +23,6 @@ import {
 	toNumber,
 	visualRow,
 } from "./brands";
-import { createCellRows } from "./cellRows";
 import {
 	appendMutationHistory,
 	createHistory,
@@ -188,13 +187,38 @@ export function createSheetStore(
 		validateRowIds(hostRowIds, rowCount);
 	}
 
-	const ownedCells = createCellRows(initialData);
-	const { copyRow, logicalRowLength } = ownedCells;
+	// Keep ownership while omitting sufficiently long null tails. Metadata only
+	// exists for compact rows; full-matrix access restores the original shapes.
+	let logicalRowLengths = new WeakMap<CellValue[], number>();
+	let hasCompactRows = false;
+	function copyInitialRow(source: CellValue[]): CellValue[] {
+		let end = source.length;
+		while (end > 0 && source[end - 1] === null) end--;
+		// Leave room for the weak-map entry before trading array slots for metadata.
+		if (source.length - end < 16) return [...source];
+		const row = [...source.slice(0, end)];
+		logicalRowLengths.set(row, source.length);
+		hasCompactRows = true;
+		return row;
+	}
+	function logicalRowLength(row: CellValue[]): number {
+		if (!hasCompactRows) return row.length;
+		return Math.max(row.length, logicalRowLengths.get(row) ?? row.length);
+	}
+	function copyRow(row: CellValue[]): CellValue[] {
+		const length = logicalRowLength(row);
+		if (length === row.length) return [...row];
+		const copy = new Array<CellValue>(length).fill(null);
+		let column = 0;
+		for (const value of row) copy[column++] = value;
+		return copy;
+	}
+	const initialCells = initialData.map(copyInitialRow);
 
 	// Command data is synchronous; Solid revisions notify renderers at the next flush.
 	// This also avoids a deep proxy/snapshot allocation for every virtual cell read.
-	const cells = ownedCells.values;
-	const setCells = ownedCells.mutate;
+	const cells = initialCells;
+	const setCells = (update: (draft: CellValue[][]) => void) => update(cells);
 	const [dimensions, setDimensions] = createCommandSignal({ rowCount, colCount });
 
 	const initialRowIds: RowId[] = hostRowIds
@@ -351,7 +375,7 @@ export function createSheetStore(
 			// Capture the data being removed (deep copy)
 			const removedData: CellValue[][] = [];
 			for (let r = deleteAt; r < deleteAt + actualCount; r++) {
-				const row = ownedCells.getRow(r);
+				const row = cells[r];
 				removedData.push(row ? copyRow(row) : (new Array(cc).fill(null) as CellValue[]));
 			}
 
@@ -413,7 +437,12 @@ export function createSheetStore(
 	}
 
 	function _restoreAllCells(snapshot: CellValue[][]) {
-		ownedCells.replace(snapshot.map((row) => [...row]));
+		setCells((draft) => {
+			draft.length = 0;
+			for (const row of snapshot) {
+				draft.push([...row]);
+			}
+		});
 		bumpStructuralRevision();
 	}
 
@@ -448,11 +477,14 @@ export function createSheetStore(
 			if (currentIndex === undefined) {
 				throw new Error(`Invalid row mapping for rowId: ${id}`);
 			}
-			const row = ownedCells.getRow(toNumber(currentIndex));
+			const row = cells[toNumber(currentIndex)];
 			return row ? copyRow(row) : (new Array(dimensions().colCount).fill(null) as CellValue[]);
 		});
 
-		ownedCells.replace(nextCells);
+		setCells((draft) => {
+			draft.length = 0;
+			draft.push(...nextCells);
+		});
 		setRowIds([...nextOrder]);
 		bumpStructuralRevision();
 	}
@@ -508,7 +540,7 @@ export function createSheetStore(
 			if (data.length >= cells.length) {
 				const ids = rowIds();
 				for (let index = 0; index < cells.length; index++) {
-					const row = ownedCells.getRow(index);
+					const row = cells[index];
 					const id = ids[index];
 					if (row && id !== undefined) previousRows.set(id, row);
 				}
@@ -572,7 +604,12 @@ export function createSheetStore(
 				(() => {
 					setDimensions({ rowCount: nextCells.length, colCount: options.columns.length });
 					incrementReconciliationCount("structure.bulkCellStoreWrites");
-					measureReconciliation("cell.bulkStoreWrite", () => ownedCells.replace(nextCells));
+					measureReconciliation("cell.bulkStoreWrite", () =>
+						setCells((draft) => {
+							draft.length = 0;
+							draft.push(...nextCells);
+						}),
+					);
 					measureReconciliation("identity.bulkRowIdAdoption", () => setRowIds([...options.rowIds]));
 					setColumnIds(options.columns.map((column) => column.id));
 					measureReconciliation("state.bulkCleanup", () => {
@@ -600,7 +637,7 @@ export function createSheetStore(
 					const columnEnd = Math.max(sourceRow.length, colCount);
 					for (let column = 0; column < columnEnd; column++) {
 						const externalValue = sourceRow[column] ?? null;
-						const internalValue = ownedCells.readCell(row, column) ?? null;
+						const internalValue = cells[row]?.[column] ?? null;
 						if (externalValue !== internalValue) {
 							mutations.push({ row: physicalRow(row), col: column, value: externalValue });
 						}
@@ -610,9 +647,14 @@ export function createSheetStore(
 
 			if (mutations.length === 0) return false;
 			incrementReconciliationCount("identity.stableCellMutations", mutations.length);
-			for (const mutation of mutations) {
-				ownedCells.write(toNumber(mutation.row), mutation.col, mutation.value, colCount);
-			}
+			setCells((draft) => {
+				for (const mutation of mutations) {
+					const row = draft[toNumber(mutation.row)];
+					if (!row) throw new Error(`Invalid draft row at index ${mutation.row}`);
+					while (row.length <= mutation.col) row.push(null);
+					row[mutation.col] = mutation.value;
+				}
+			});
 			bumpRowRevisionsForPhysicalRows(mutations.map((mutation) => toNumber(mutation.row)));
 			return true;
 		});
@@ -634,7 +676,7 @@ export function createSheetStore(
 	function captureHistorySnapshot(): HistorySnapshot {
 		const history = historyState();
 		return {
-			cells: ownedCells.copy(),
+			cells: cells.map(copyRow),
 			rowIds: [...rowIds()],
 			dimensions: { ...dimensions() },
 			selection: selection(),
@@ -652,7 +694,12 @@ export function createSheetStore(
 
 	function restoreHistorySnapshot(snapshot: HistorySnapshot): void {
 		setDimensions({ ...snapshot.dimensions });
-		ownedCells.replace(snapshot.cells.map((row) => [...row]));
+		setCells((draft) => {
+			draft.length = 0;
+			for (const row of snapshot.cells) {
+				draft.push([...row]);
+			}
+		});
 		setRowIds([...snapshot.rowIds]);
 		setSelection(snapshot.selection);
 		setColWidths(new Map(snapshot.colWidths));
@@ -701,12 +748,14 @@ export function createSheetStore(
 		}
 
 		if (planned.mutations.length > 0) {
-			for (const m of planned.mutations) {
-				const row = ownedCells.getRow(toNumber(m.address.row));
-				if (row) {
-					row[m.address.col] = m.newValue;
+			setCells((draft) => {
+				for (const m of planned.mutations) {
+					const row = draft[m.address.row];
+					if (row) {
+						row[m.address.col] = m.newValue;
+					}
 				}
-			}
+			});
 			bumpRowRevisionsForPhysicalRows(planned.mutations.map((m) => toNumber(m.address.row)));
 		}
 
@@ -737,12 +786,25 @@ export function createSheetStore(
 
 	return {
 		get cells() {
-			return ownedCells.materialize();
+			if (hasCompactRows) {
+				for (const row of cells) {
+					const length = logicalRowLength(row);
+					const storedLength = row.length;
+					if (storedLength < length) {
+						row.length = length;
+						row.fill(null, storedLength);
+					}
+					logicalRowLengths.delete(row);
+				}
+				logicalRowLengths = new WeakMap();
+				hasCompactRows = false;
+			}
+			return cells;
 		},
 		getRowValues(row: PhysicalRowIndex) {
-			return ownedCells.getRow(toNumber(row));
+			return cells[toNumber(row)];
 		},
-		copyCells: ownedCells.copy,
+		copyCells: () => cells.map(copyRow),
 
 		rowCount: () => dimensions().rowCount,
 		colCount: () => dimensions().colCount,
@@ -760,7 +822,22 @@ export function createSheetStore(
 		history: readHistorySnapshot,
 
 		setCell(row: PhysicalRowIndex, col: number, value: CellValue) {
-			ownedCells.write(toNumber(row), col, value, dimensions().colCount);
+			setCells((draft) => {
+				// Ensure row exists
+				while (draft.length <= row) {
+					draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
+				}
+				// Guard: draft[row] should exist (guaranteed by while loop above)
+				const draftRow = draft[row];
+				if (!draftRow) {
+					throw new Error(`Invalid draft state at row ${row}`);
+				}
+				// Ensure column exists
+				while (draftRow.length <= col) {
+					draftRow.push(null);
+				}
+				draftRow[col] = value;
+			});
 			const id = rowIds()[row];
 			if (id !== undefined) {
 				rowRevisions.bumpOne(id);
@@ -770,8 +847,22 @@ export function createSheetStore(
 
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
 			if (mutations.length === 0) return;
-			const colCount = dimensions().colCount;
-			for (const m of mutations) ownedCells.write(toNumber(m.row), m.col, m.value, colCount);
+			setCells((draft) => {
+				for (const m of mutations) {
+					while (draft.length <= m.row) {
+						draft.push(new Array(dimensions().colCount).fill(null) as CellValue[]);
+					}
+					const draftRow = draft[m.row];
+					// Guard: draft[m.row] should exist (guaranteed by while loop above)
+					if (!draftRow) {
+						throw new Error(`Invalid draft state at row ${m.row}`);
+					}
+					while (draftRow.length <= m.col) {
+						draftRow.push(null);
+					}
+					draftRow[m.col] = m.value;
+				}
+			});
 			bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 		},
 
@@ -834,7 +925,12 @@ export function createSheetStore(
 
 		restoreSnapshot(nextCells: CellValue[][], nextRowIds: RowId[]) {
 			setDimensions({ rowCount: nextCells.length, colCount: dimensions().colCount });
-			ownedCells.replace(nextCells.map((row) => [...row]));
+			setCells((draft) => {
+				draft.length = 0;
+				for (const row of nextCells) {
+					draft.push([...row]);
+				}
+			});
 			setRowIds([...nextRowIds]);
 			setHasPendingRowOp(false);
 			bumpStructuralRevision();
@@ -986,7 +1082,7 @@ export function createSheetStore(
 				const colEnd = Math.max(dataRow.length, newColCount);
 				for (let c = 0; c < colEnd; c++) {
 					const externalValue = (c < dataRow.length ? dataRow[c] : null) ?? null;
-					const internalValue = ownedCells.readCell(r, c) ?? null;
+					const internalValue = cells[r]?.[c] ?? null;
 					if (externalValue !== internalValue) {
 						mutations.push({ row: physicalRow(r), col: c, value: externalValue });
 					}
@@ -994,9 +1090,21 @@ export function createSheetStore(
 			}
 
 			if (mutations.length > 0) {
-				for (const m of mutations) {
-					ownedCells.write(toNumber(m.row), m.col, m.value, newColCount);
-				}
+				setCells((draft) => {
+					for (const m of mutations) {
+						while (draft.length <= m.row) {
+							draft.push(new Array(newColCount).fill(null) as CellValue[]);
+						}
+						const draftRow = draft[m.row];
+						if (!draftRow) {
+							throw new Error(`Invalid draft state at row ${m.row}`);
+						}
+						while (draftRow.length <= m.col) {
+							draftRow.push(null);
+						}
+						draftRow[m.col] = m.value;
+					}
+				});
 				bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
 				didChange = true;
 			}
