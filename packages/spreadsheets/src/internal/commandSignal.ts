@@ -1,10 +1,4 @@
-import {
-	type Accessor,
-	createSignal,
-	getObserver,
-	type Signal,
-	type SignalOptions,
-} from "solid-js";
+import { type Accessor, createSignal, getObserver, type Signal } from "solid-js";
 
 type CommandSetter<T> = (value: Exclude<T, Function> | ((previous: T) => T)) => T;
 
@@ -17,10 +11,9 @@ type CommandSetter<T> = (value: Exclude<T, Function> | ((previous: T) => T)) => 
  */
 export function createCommandSignal<T>(
 	initialValue: Exclude<T, Function>,
-	options?: SignalOptions<T>,
 ): [Accessor<T>, CommandSetter<T>] {
 	let current: T = initialValue;
-	const [committed, setCommitted] = createSignal<T>(initialValue, options);
+	const [committed, setCommitted] = createSignal<T>(initialValue);
 	const read = () => (getObserver() ? committed() : current);
 	const write: CommandSetter<T> = (value) => {
 		current = setCommitted(value);

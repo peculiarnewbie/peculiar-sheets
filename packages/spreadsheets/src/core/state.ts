@@ -1,4 +1,4 @@
-import { createRenderEffect, untrack } from "solid-js";
+import { createEffect, untrack } from "solid-js";
 import {
 	isFormulaValue,
 	shiftFormulaReferencesForRowDelete,
@@ -190,13 +190,7 @@ export function createSheetStore(
 	// This also avoids a deep proxy/snapshot allocation for every virtual cell read.
 	const cells = initialCells;
 	const setCells = (update: (draft: CellValue[][]) => void) => update(cells);
-	const [dimensions, setDimensions] = createCommandSignal(
-		{ rowCount, colCount },
-		{
-			equals: (previous, next) =>
-				previous.rowCount === next.rowCount && previous.colCount === next.colCount,
-		},
-	);
+	const [dimensions, setDimensions] = createCommandSignal({ rowCount, colCount });
 
 	const initialRowIds: RowId[] = hostRowIds
 		? [...hostRowIds]
@@ -1185,7 +1179,7 @@ export function createReconciler(
 ): void {
 	let lastHostRowCount = untrack(getData).length;
 
-	createRenderEffect(
+	createEffect(
 		() => [getData(), getColumns(), (getRowIds ?? (() => undefined))()] as const,
 		([data, columns, hostRowIds]) => {
 			const result = store.reconcileFromHost(data, columns, hostRowIds, {
