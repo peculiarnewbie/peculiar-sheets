@@ -1,5 +1,13 @@
 import { cleanup, fireEvent, render, renderHook } from "@solidjs/testing-library";
-import { createEffect, createMemo, createRoot, createSignal, flush, Loading } from "solid-js";
+import {
+	createEffect,
+	createMemo,
+	createRoot,
+	createSignal,
+	createStore,
+	flush,
+	Loading,
+} from "solid-js";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	columnIdx,
@@ -20,6 +28,7 @@ import type {
 	CellValue,
 	ColumnDef,
 	SheetController,
+	SheetCustomization,
 	VisualCellAddress,
 } from "../../packages/spreadsheets/src/types";
 
@@ -183,11 +192,11 @@ describe("Solid 2 Sheet", () => {
 		]);
 		const cell = view.container.querySelector<HTMLElement>("#cell-10-100");
 		if (!cell) throw new Error("Recycled cell missing");
-		expect(cell.style.left).toBe("10000px");
-		expect(cell.style.height).toBe("28px");
+		expect(getComputedStyle(cell).left).toBe("10000px");
+		expect(getComputedStyle(cell).height).toBe("28px");
 		setHeight(40);
 		flush();
-		expect(cell.style.height).toBe("40px");
+		expect(getComputedStyle(cell).height).toBe("40px");
 		fireEvent.mouseDown(cell);
 		expect(clicked).toEqual({ row: 10, col: 100 });
 		formats.clear();
@@ -261,6 +270,76 @@ describe("Solid 2 Sheet", () => {
 		expect(view.container.querySelector("#cell-999-0 b")).toBeNull();
 		expect(view.container.querySelector("#cell-999-0 .se-cell__text")?.textContent).toBe("R999C0");
 	});
+	it("keeps cell geometry when custom style hooks are added and removed", () => {
+		const [columns, setColumns] = createSignal<ColumnDef[]>([{ id: "value", header: "Value" }]);
+		const column = () => {
+			const value = columns()[0];
+			if (!value) throw new Error("Column missing");
+			return value;
+		};
+		const [customization, setCustomization] = createStore<SheetCustomization>({});
+		const view = render(() => (
+			<SheetCustomizationContext value={customization}>
+				<GridBody
+					columns={columns()}
+					rowMetrics={buildRowMetrics(1, 28)}
+					virtualRows={[{ index: 0, start: 0, size: 28 }]}
+					virtualColumns={[{ index: 0, start: 0, size: 100, column: column() }]}
+					totalHeight={28}
+					rowGutterWidth={0}
+					showReferenceHeaders={false}
+					getRowHeaderIndex={(row) => row}
+					getRowId={() => rowId("row")}
+					getCellId={() => "styled-cell"}
+					getRawValue={() => "value"}
+					getDisplayValue={() => "value"}
+					editingAddress={null}
+					selection={selectCell({ row: visualRow(0), col: columnIdx(0) })}
+					onCellMouseDown={() => {}}
+					onCellDblClick={() => {}}
+					pinnedLeftOffsets={[]}
+					lastPinnedIndex={-1}
+					searchMatchSet={new Set()}
+					searchCurrentAddress={null}
+				/>
+			</SheetCustomizationContext>
+		));
+		flush();
+		expect(getComputedStyle(view.getByRole("gridcell")).width).toBe("100px");
+		setCustomization((draft) => {
+			draft.getCellStyle = () => ({ color: "red", width: "999px", height: "1px" });
+		});
+		flush();
+		const styled = getComputedStyle(view.getByRole("gridcell"));
+		expect(styled.color).toBe("red");
+		expect(styled.width).toBe("100px");
+		expect(styled.height).toBe("28px");
+		setCustomization((draft) => {
+			delete draft.getCellStyle;
+		});
+		flush();
+		const plain = getComputedStyle(view.getByRole("gridcell"));
+		expect(plain.color).not.toBe("red");
+		expect(plain.width).toBe("100px");
+		expect(plain.height).toBe("28px");
+		setColumns([{ id: "value", header: "Value", renderCell: () => <input value="value" /> }]);
+		flush();
+		const input = view.getByRole("textbox") as HTMLInputElement;
+		input.value = "draft";
+		setCustomization((draft) => {
+			draft.getCellStyle = () => ({ color: "blue" });
+		});
+		flush();
+		expect(view.getByRole("textbox")).toBe(input);
+		expect(input.value).toBe("draft");
+		setCustomization((draft) => {
+			delete draft.getCellStyle;
+		});
+		flush();
+		expect(view.getByRole("textbox")).toBe(input);
+		expect(input.value).toBe("draft");
+	});
+
 	it("composes row commands immediately and batches their render notifications", () => {
 		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];
 		const { result: store } = renderHook(() => {
@@ -458,8 +537,9 @@ describe("Solid 2 Sheet", () => {
 		const baseColumn: ColumnDef = { id: "value", header: "Value" };
 		const [column, setColumn] = createSignal(baseColumn);
 		const [customClass, setCustomClass] = createSignal("");
-		const [style, setStyle] = createSignal<CellStyle>({});
+		const [style, setStyle] = createSignal<CellStyle>();
 		const [value, setValue] = createSignal("first");
+		const customization = { getCellClass: () => customClass(), getCellStyle: () => style() };
 		const grid: GridCellContext = {
 			get virtualColumns() {
 				return [{ index: 0, start: 0, size: 100, column: column() }];
@@ -479,11 +559,11 @@ describe("Solid 2 Sheet", () => {
 			searchCurrentAddress: null,
 		};
 		const view = render(() => (
-			<SheetCustomizationContext
-				value={{ getCellClass: () => customClass(), getCellStyle: () => style() }}
-			>
+			<SheetCustomizationContext value={customization}>
 				<GridCell
 					row={{
+						grid,
+						customization,
 						item: { index: 0, start: 0, size: 28 },
 						className: "",
 						get selection() {
@@ -492,18 +572,15 @@ describe("Solid 2 Sheet", () => {
 						get editingAddress() {
 							return grid.editingAddress;
 						},
-						getLayoutStyle: () => ({
-							width: "100px",
-							height: "28px",
-							left: "0px",
-							position: "absolute",
+						getLayout: () => ({
+							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
+							cssText: "width:100px;height:28px;left:0px;position:absolute",
 						}),
 						get displayValues() {
 							return [value()];
 						},
 					}}
 					columnIndex={0}
-					grid={grid}
 				/>
 			</SheetCustomizationContext>
 		));
@@ -538,7 +615,7 @@ describe("Solid 2 Sheet", () => {
 		expect(cell.querySelector("strong")?.textContent).toBe("second");
 		setColumn(baseColumn);
 		setCustomClass("");
-		setStyle({});
+		setStyle(undefined);
 		flush();
 		expect(cell.querySelector("strong")).toBeNull();
 		expect(cell.querySelector(".se-cell__text")?.textContent).toBe("second");

@@ -3,7 +3,7 @@ import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/b
 import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
 import type { CellStyle, CellValue, ColumnDef, RowClassContext } from "../types";
-import GridCell, { type GridCellContext, type GridCellRow } from "./GridCell";
+import GridCell, { type GridCellContext, type GridCellLayout, type GridCellRow } from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 import type { RowMetrics } from "./rowMetrics";
 
@@ -27,45 +27,55 @@ interface GridBodyProps extends GridCellContext {
 	onRowHeaderMouseDown?: (row: VisualRowIndex, event: MouseEvent) => void;
 }
 
+interface ColumnLayout extends GridCellLayout {
+	prefix: string;
+}
+
 export default function GridBody(props: GridBodyProps) {
 	const customization = useSheetCustomization();
 	const hasFormatters = createMemo(() => props.columns.some((column) => column.formatValue));
 	const hasCustomRenderers = createMemo(() => props.columns.some((column) => column.renderCell));
-	// One cached height per visible column keeps storage bounded as rows scroll.
-	// Custom-height rows simply replace that column's cached layout.
+	const hasCustomStyles = createMemo(() => Boolean(customization?.getCellStyle));
+	const columnCount = createMemo(() => props.virtualColumns.length);
+	// Slots retain their CSS references while the body publishes new geometry.
+	// Plain cells bind these references once, including when rows are recycled.
 	const layouts = createMemo(() => {
-		const gutter = props.rowGutterWidth;
-		const pinned = props.pinnedLeftOffsets;
-		return props.virtualColumns.map((column) => {
-			const pinnedLeft = pinned[column.index] ?? -1;
-			const width = `${column.size}px`;
-			const left = `${pinnedLeft >= 0 ? pinnedLeft : gutter + column.start}px`;
-			let cachedHeight = -1;
-			let cached: CellStyle | undefined;
-			return (height: number): CellStyle => {
-				if (!cached || cachedHeight !== height) {
-					cachedHeight = height;
-					cached = {
-						width,
-						"min-width": width,
-						height: `${height}px`,
-						position: pinnedLeft >= 0 ? "sticky" : "absolute",
-						left,
-					};
-				}
-				return cached;
+		return Array.from({ length: columnCount() }, (_, slot): ColumnLayout => {
+			const prefix = `--se-column-${slot}`;
+			const width = `var(${prefix}-width)`;
+			const left = `var(${prefix}-left)`;
+			// CSS accepts variables here; csstype's Position union omits them.
+			const position = `var(${prefix}-position)` as NonNullable<CellStyle["position"]>;
+			const height = "var(--se-rendered-row-height)";
+			return {
+				prefix,
+				style: { width, "min-width": width, height, position, left },
+				cssText: `width:${width};min-width:${width};height:${height};position:${position};left:${left}`,
 			};
 		});
 	});
-	const getLayoutStyle = (columnIndex: number, height: number): CellStyle => {
+	const getLayout = (columnIndex: number): ColumnLayout => {
 		const layout = layouts()[columnIndex];
 		if (!layout) throw new Error(`Column layout ${columnIndex} is outside the rendered range`);
-		return layout(height);
+		return layout;
 	};
+	const layoutVariables = createMemo(() => {
+		const gutter = props.rowGutterWidth;
+		const pinned = props.pinnedLeftOffsets;
+		const variables: Record<string, string> = {};
+		props.virtualColumns.forEach((column, slot) => {
+			const { prefix } = getLayout(slot);
+			const pinnedLeft = pinned[column.index] ?? -1;
+			variables[`${prefix}-width`] = `${column.size}px`;
+			variables[`${prefix}-left`] = `${pinnedLeft >= 0 ? pinnedLeft : gutter + column.start}px`;
+			variables[`${prefix}-position`] = pinnedLeft >= 0 ? "sticky" : "absolute";
+		});
+		return variables;
+	});
 
 	// Contiguous virtual rows share a viewport-sized set of owners. Overlapping
 	// indices retain their owners; long jumps reuse the slots that left view.
-	const renderRows = (renderCustom: boolean) => (
+	const renderRows = (renderCustom: boolean, plainLayout: boolean) => (
 		<For keyed={(row) => row.index % props.virtualRows.length} each={props.virtualRows}>
 			{(virtualRow) => {
 				trackGridLifecycle("row");
@@ -115,7 +125,9 @@ export default function GridBody(props: GridBodyProps) {
 					});
 				});
 				const cellRow: GridCellRow = {
-					getLayoutStyle,
+					grid: props,
+					customization,
+					getLayout,
 					get selection() {
 						return rowSelection();
 					},
@@ -151,6 +163,7 @@ export default function GridBody(props: GridBodyProps) {
 							display: "flex",
 							width: "100%",
 							height: `${virtualRow().size}px`,
+							"--se-rendered-row-height": `${virtualRow().size}px`,
 						}}
 					>
 						<Show when={props.showReferenceHeaders}>
@@ -195,8 +208,8 @@ export default function GridBody(props: GridBodyProps) {
 								<GridCell
 									row={cellRow}
 									columnIndex={columnIndex}
-									grid={props}
 									renderCustom={renderCustom}
+									plainLayout={plainLayout}
 								/>
 							)}
 						</Repeat>
@@ -205,7 +218,10 @@ export default function GridBody(props: GridBodyProps) {
 			}}
 		</For>
 	);
-	const renderedRows = createMemo(() => renderRows(hasCustomRenderers()));
+	const renderedRows = createMemo(() => {
+		const renderCustom = hasCustomRenderers();
+		return renderRows(renderCustom, !renderCustom && !hasCustomStyles());
+	});
 
 	return (
 		<div
@@ -214,6 +230,7 @@ export default function GridBody(props: GridBodyProps) {
 			style={{
 				position: "relative",
 				height: `${props.totalHeight}px`,
+				...layoutVariables(),
 			}}
 		>
 			{renderedRows()}

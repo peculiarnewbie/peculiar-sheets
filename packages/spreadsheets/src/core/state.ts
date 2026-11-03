@@ -4,7 +4,7 @@ import {
 	shiftFormulaReferencesForRowDelete,
 	shiftFormulaReferencesForRowInsert,
 } from "../formula/references";
-import { createCommandSignal } from "../internal/commandSignal";
+import { createCommandSignal, createRevisionCounter } from "../internal/commandSignal";
 import type {
 	CellMutation,
 	CellValue,
@@ -24,6 +24,7 @@ import {
 	visualRow,
 } from "./brands";
 import {
+	appendMutationHistory,
 	createHistory,
 	type HistoryStack,
 	canRedo as histCanRedo,
@@ -31,7 +32,6 @@ import {
 	redo as histRedo,
 	undo as histUndo,
 	pushColumnResizeHistory,
-	pushMutationHistory,
 	pushRowOperationHistory,
 	pushRowReorderHistory,
 	pushRowResizeHistory,
@@ -100,6 +100,7 @@ export interface SheetStore {
 	editMode(): EditModeState | null;
 	columnWidths(): Map<string, number>;
 	rowHeights(): Map<RowId, number>;
+	/** Snapshot whose stacks remain unchanged by later commands. */
 	history(): HistoryStack;
 
 	// Mutations
@@ -212,19 +213,42 @@ export function createSheetStore(
 		columns.map((column) => column.id),
 	);
 	const [rowHeights, setRowHeights] = createCommandSignal<Map<RowId, number>>(new Map());
-	const [historyState, setHistory] = createCommandSignal<HistoryStack>(createHistory());
+	let ownedHistory = createHistory();
+	let historySnapshot: HistoryStack | undefined;
+	const [historyRevision, bumpHistoryRevision] = createRevisionCounter();
 	const [hasPendingRowOp, setHasPendingRowOp] = createCommandSignal(false);
-	const [dataRevision, setDataRevision] = createCommandSignal(0);
-	const [structuralRevision, setStructuralRevision] = createCommandSignal(0);
+	const [dataRevision, bumpDataRevision] = createRevisionCounter();
+	const [structuralRevision, advanceStructuralRevision] = createRevisionCounter();
 	const rowRevisions = createRowRevisions();
 
-	function bumpDataRevision() {
-		setDataRevision((value) => value + 1);
+	function historyChanged(): void {
+		historySnapshot = undefined;
+		bumpHistoryRevision();
+	}
+
+	function historyState(): HistoryStack {
+		historyRevision();
+		return ownedHistory;
+	}
+
+	function setHistory(update: HistoryStack | ((previous: HistoryStack) => HistoryStack)): void {
+		const next = typeof update === "function" ? update(ownedHistory) : update;
+		if (next === ownedHistory) return;
+		ownedHistory = next;
+		historyChanged();
+	}
+
+	function readHistorySnapshot(): HistoryStack {
+		historyRevision();
+		return (historySnapshot ??= {
+			undoStack: ownedHistory.undoStack.slice(),
+			redoStack: ownedHistory.redoStack.slice(),
+		});
 	}
 
 	function bumpStructuralRevision() {
 		incrementReconciliationCount("revision.structuralBumps");
-		setStructuralRevision((value) => value + 1);
+		advanceStructuralRevision();
 		bumpDataRevision();
 	}
 
@@ -748,7 +772,7 @@ export function createSheetStore(
 		editMode,
 		columnWidths: colWidths,
 		rowHeights,
-		history: historyState,
+		history: readHistorySnapshot,
 
 		setCell(row: PhysicalRowIndex, col: number, value: CellValue) {
 			setCells((draft) => {
@@ -1064,7 +1088,9 @@ export function createSheetStore(
 			selectionBefore: Selection,
 			selectionAfter: Selection,
 		) {
-			setHistory((prev) => pushMutationHistory(prev, mutations, selectionBefore, selectionAfter));
+			if (mutations.length === 0) return;
+			appendMutationHistory(ownedHistory, mutations, selectionBefore, selectionAfter);
+			historyChanged();
 		},
 
 		pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection) {

@@ -7,7 +7,6 @@ import {
 } from "../core/brands";
 import { defaultFormatCellValue } from "../core/formatting";
 import { selectionContains } from "../core/selection";
-import { useSheetCustomization } from "../customization";
 import type {
 	CellRenderContext,
 	CellStyle,
@@ -15,17 +14,25 @@ import type {
 	ColumnDef,
 	PhysicalCellAddress,
 	Selection,
+	SheetCustomization,
 	VisualCellAddress,
 } from "../types";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
+export interface GridCellLayout {
+	style: CellStyle;
+	cssText: string;
+}
+
 export interface GridCellRow {
+	readonly grid: GridCellContext;
+	readonly customization: SheetCustomization | undefined;
 	readonly item: { index: number; start: number; size: number };
 	readonly className: string;
 	readonly selection: Selection | null;
 	readonly editingAddress: VisualCellAddress | null;
 	readonly displayValues: readonly CellValue[] | undefined;
-	getLayoutStyle(columnIndex: number, height: number): CellStyle;
+	getLayout(columnIndex: number): GridCellLayout;
 }
 
 export interface GridCellContext {
@@ -50,10 +57,10 @@ interface GridCellProps {
 	/** Stable contexts and a fixed Repeat slot; updates flow through their getters. */
 	row: GridCellRow;
 	columnIndex: number;
-	/** Shared reactive props: cells subscribe where a value is used. */
-	grid: GridCellContext;
 	/** The parent recreates the row owner when custom rendering is enabled or disabled. */
 	renderCustom?: boolean;
+	/** The parent recreates rows when custom style hooks are added or removed. */
+	plainLayout?: boolean;
 }
 
 function resolveTitle(title: string | undefined, formattedText: string): string | undefined {
@@ -68,9 +75,13 @@ class CellView {
 	constructor(
 		readonly rowModel: GridCellRow,
 		readonly columnIndex: number,
-		readonly grid: GridCellContext,
-		readonly customization: ReturnType<typeof useSheetCustomization>,
 	) {}
+	get grid() {
+		return this.rowModel.grid;
+	}
+	get customization() {
+		return this.rowModel.customization;
+	}
 	get virtualColumn() {
 		const column = this.grid.virtualColumns[this.columnIndex];
 		if (!column)
@@ -138,10 +149,13 @@ class CellView {
 		return classes;
 	}
 	get style() {
-		const layout = this.rowModel.getLayoutStyle(this.columnIndex, this.rowModel.item.size);
+		const layout = this.rowModel.getLayout(this.columnIndex);
 		const custom = this.customization?.getCellStyle?.(this.row, this.col);
 		// Host styles cannot override virtualized layout.
-		return custom ? { ...custom, ...layout } : layout;
+		return custom ? { ...custom, ...layout.style } : layout.style;
+	}
+	get layoutCssText() {
+		return this.rowModel.getLayout(this.columnIndex).cssText;
 	}
 	renderContent() {
 		const render = this.column.renderCell;
@@ -177,7 +191,30 @@ function cellDoubleClick(view: CellView) {
 
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const view = new CellView(props.row, props.columnIndex, props.grid, useSheetCustomization());
+	const view = new CellView(props.row, props.columnIndex);
+	// Geometry changes flow through inherited CSS variables; this binding is static.
+	if (props.renderCustom === false && props.plainLayout === true) {
+		return (
+			<div
+				id={view.grid.getCellId(view.address)}
+				class={view.className}
+				role="gridcell"
+				aria-colindex={view.col + 1}
+				aria-selected={view.isSelected ? "true" : "false"}
+				aria-readonly={view.readOnly ? "true" : "false"}
+				title={resolveTitle(
+					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+					view.formattedText,
+				)}
+				style={/* @static */ view.layoutCssText}
+				onMouseDown={[cellMouseDown, view]}
+				onMouseOver={[cellMouseOver, view]}
+				onDblClick={[cellDoubleClick, view]}
+			>
+				<span class="se-cell__text" textContent={view.formattedText} />
+			</div>
+		);
+	}
 	// Keeping the default span in the root template lets Solid compile text and
 	// attributes into one computation, without a per-cell renderer branch.
 	if (props.renderCustom === false) {

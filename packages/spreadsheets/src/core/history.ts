@@ -93,14 +93,11 @@ function pushEntry(history: HistoryStack, entry: HistoryEntry): HistoryStack {
 	return { undoStack, redoStack: [] };
 }
 
-export function pushMutationHistory(
-	history: HistoryStack,
+function mutationHistoryEntry(
 	forward: CellMutation[],
 	selectionBefore: Selection,
 	selectionAfter: Selection,
-): HistoryStack {
-	if (forward.length === 0) return history;
-
+): HistoryEntry {
 	const inverse = forward.map<CellMutation>((m) => ({
 		address: m.address,
 		...(m.viewAddress ? { viewAddress: m.viewAddress } : {}),
@@ -111,13 +108,36 @@ export function pushMutationHistory(
 		source: m.source,
 	}));
 
-	return pushEntry(history, {
+	return {
 		type: "cell-mutations",
 		forward,
 		inverse,
 		selectionBefore,
 		selectionAfter,
-	});
+	};
+}
+
+export function pushMutationHistory(
+	history: HistoryStack,
+	forward: CellMutation[],
+	selectionBefore: Selection,
+	selectionAfter: Selection,
+): HistoryStack {
+	if (forward.length === 0) return history;
+	return pushEntry(history, mutationHistoryEntry(forward, selectionBefore, selectionAfter));
+}
+
+/** Append only to store-owned stacks; readers receive separate snapshots. */
+export function appendMutationHistory(
+	history: HistoryStack,
+	forward: CellMutation[],
+	selectionBefore: Selection,
+	selectionAfter: Selection,
+): void {
+	if (forward.length === 0) return;
+	history.undoStack.push(mutationHistoryEntry(forward, selectionBefore, selectionAfter));
+	while (history.undoStack.length > MAX_HISTORY) history.undoStack.shift();
+	history.redoStack.length = 0;
 }
 
 export function pushRowOperationHistory(
