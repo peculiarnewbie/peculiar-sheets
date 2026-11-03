@@ -272,8 +272,9 @@ describe("Solid 2 Sheet", () => {
 		expect(view.container.querySelector("#cell-999-0 b")).toBeNull();
 		expect(view.container.querySelector("#cell-999-0 .se-cell__text")?.textContent).toBe("R999C0");
 	});
-	it("keeps cell geometry when custom style hooks are added and removed", () => {
+	it("keeps cell geometry and default attributes across customization changes", () => {
 		const [columns, setColumns] = createSignal<ColumnDef[]>([{ id: "value", header: "Value" }]);
+		const [readOnly, setReadOnly] = createSignal(false);
 		const column = () => {
 			const value = columns()[0];
 			if (!value) throw new Error("Column missing");
@@ -296,6 +297,7 @@ describe("Solid 2 Sheet", () => {
 					getRawValue={() => "value"}
 					getDisplayValue={() => "value"}
 					editingAddress={null}
+					readOnly={readOnly()}
 					selection={selectCell({ row: visualRow(0), col: columnIdx(0) })}
 					onCellMouseDown={() => {}}
 					onCellDblClick={() => {}}
@@ -324,6 +326,18 @@ describe("Solid 2 Sheet", () => {
 		expect(plain.color).not.toBe("red");
 		expect(plain.width).toBe("100px");
 		expect(plain.height).toBe("28px");
+		setReadOnly(true);
+		flush();
+		expect(view.getByRole("gridcell").getAttribute("aria-readonly")).toBe("true");
+		setReadOnly(false);
+		flush();
+		expect(view.getByRole("gridcell").getAttribute("aria-readonly")).toBe("false");
+		setColumns([{ id: "value", header: "Value", getCellTitle: () => "" }]);
+		flush();
+		expect(view.getByRole("gridcell").hasAttribute("title")).toBe(false);
+		setColumns([{ id: "value", header: "Value", getCellTitle: () => "tooltip" }]);
+		flush();
+		expect(view.getByRole("gridcell").getAttribute("title")).toBe("tooltip");
 		setColumns([{ id: "value", header: "Value", renderCell: () => <input value="value" /> }]);
 		flush();
 		const input = view.getByRole("textbox") as HTMLInputElement;

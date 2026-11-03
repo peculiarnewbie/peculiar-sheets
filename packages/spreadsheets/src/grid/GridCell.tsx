@@ -1,4 +1,4 @@
-import { untrack } from "solid-js";
+import { createMemo, untrack } from "solid-js";
 import {
 	type ColumnIndex,
 	columnIdx,
@@ -70,6 +70,40 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
 	return title;
 }
 
+function cellClassName(
+	rowModel: GridCellRow,
+	row: VisualRowIndex,
+	col: ColumnIndex,
+	column: GridCellContext["virtualColumns"][number],
+	selection: Selection | null,
+	editing: VisualCellAddress | null,
+	selected: boolean,
+): string {
+	const grid = rowModel.grid;
+	const focus = selection?.focus;
+	let classes = "se-cell";
+	const rowClass = rowModel.className;
+	const cellClass = rowModel.customization?.getCellClass?.(row, col);
+	if (rowClass) classes += ` ${rowClass}`;
+	if (cellClass) classes += ` ${cellClass}`;
+	if (column.column.pinned === "left") {
+		classes += " se-cell--pinned";
+		if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
+	}
+	const matches = grid.searchMatchSet;
+	if (matches.size > 0 && matches.has(`${row},${col}`)) {
+		classes += " se-cell--search-match";
+		const current = grid.searchCurrentAddress;
+		if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
+			classes += " se-cell--search-current";
+	}
+	if (focus?.row === row) classes += " se-cell--active-row";
+	if (selected) classes += " se-cell--range";
+	if (focus?.row === row && focus.col === col) classes += " se-cell--focus";
+	if (editing?.row === row && editing.col === col) classes += " se-cell--editing";
+	return classes;
+}
+
 /** Shared getters avoid allocating a separate closure for each derived cell field.
  * Reading them in JSX still subscribes Solid to the underlying reactive props. */
 class CellView {
@@ -127,33 +161,49 @@ class CellView {
 		const row = this.row;
 		const column = this.virtualColumn;
 		const col = columnIdx(column.index);
-		const grid = this.grid;
 		const selection = this.rowModel.selection;
-		const focus = selection?.focus;
 		const editing = this.rowModel.editingAddress;
-		let classes = "se-cell";
-		const rowClass = this.rowModel.className;
-		const cellClass = this.customization?.getCellClass?.(row, col);
-		if (rowClass) classes += ` ${rowClass}`;
-		if (cellClass) classes += ` ${cellClass}`;
-		// Track shared feature state only for cells to which that feature applies.
-		if (column.column.pinned === "left") {
-			classes += " se-cell--pinned";
-			if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
-		}
-		const matches = grid.searchMatchSet;
-		if (matches.size > 0 && matches.has(`${row},${col}`)) {
-			classes += " se-cell--search-match";
-			const current = grid.searchCurrentAddress;
-			if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
-				classes += " se-cell--search-current";
-		}
-		if (focus?.row === row) classes += " se-cell--active-row";
-		if (selection !== null && selectionContains(selection, { row, col }))
-			classes += " se-cell--range";
-		if (focus?.row === row && focus.col === col) classes += " se-cell--focus";
-		if (editing?.row === row && editing.col === col) classes += " se-cell--editing";
-		return classes;
+		return cellClassName(
+			this.rowModel,
+			row,
+			col,
+			column,
+			selection,
+			editing,
+			selection !== null && selectionContains(selection, { row, col }),
+		);
+	}
+	get presentation() {
+		const rowModel = this.rowModel;
+		const grid = rowModel.grid;
+		const row = visualRow(rowModel.item.index);
+		const column = grid.virtualColumns[this.columnIndex];
+		if (!column)
+			throw new Error(`Virtual column ${this.columnIndex} is outside the rendered range`);
+		const col = columnIdx(column.index);
+		const address = { row, col };
+		const id = grid.getCellId(address);
+		const selection = rowModel.selection;
+		const editing = rowModel.editingAddress;
+		const selected = selection !== null && selectionContains(selection, address);
+		const className = cellClassName(rowModel, row, col, column, selection, editing, selected);
+		const readOnly = (grid.readOnly ?? false) || column.column.editable === false;
+		const titleOverride = column.column.getCellTitle?.(grid.getRawValue(row, col), { row, col });
+		const projected = rowModel.displayValues;
+		const value = projected
+			? (projected[this.columnIndex] ?? null)
+			: grid.getDisplayValue(row, col);
+		const format = column.column.formatValue;
+		const text = format ? format(value, { row, col }) : defaultFormatCellValue(value);
+		return {
+			id,
+			className,
+			columnIndex: col + 1,
+			selected,
+			readOnly,
+			title: resolveTitle(titleOverride, text) ?? "",
+			text,
+		};
 	}
 	get style() {
 		const layout = this.rowModel.getLayout(this.columnIndex);
@@ -176,6 +226,21 @@ class CellView {
 			isEditing: this.isEditing,
 		} satisfies CellRenderContext);
 	}
+}
+
+function sameCellPresentation(
+	previous: CellView["presentation"],
+	next: CellView["presentation"],
+): boolean {
+	return (
+		previous.id === next.id &&
+		previous.className === next.className &&
+		previous.columnIndex === next.columnIndex &&
+		previous.selected === next.selected &&
+		previous.readOnly === next.readOnly &&
+		previous.title === next.title &&
+		previous.text === next.text
+	);
 }
 
 function cellMouseDown(view: CellView, event: MouseEvent) {
@@ -201,24 +266,25 @@ export default function GridCell(props: GridCellProps) {
 	const view = new CellView(props.row, props.columnIndex);
 	// Geometry changes flow through inherited CSS variables; this binding is static.
 	if (props.renderCustom === false && props.plainLayout === true) {
+		const presentation = createMemo(() => view.presentation, {
+			equals: sameCellPresentation,
+			sync: true,
+		});
 		return (
 			<div
-				id={view.grid.getCellId(view.address)}
-				class={view.className}
+				id={presentation().id}
+				class={presentation().className}
 				role="gridcell"
-				aria-colindex={view.col + 1}
-				aria-selected={view.isSelected ? "true" : "false"}
-				aria-readonly={view.readOnly ? "true" : "false"}
-				title={resolveTitle(
-					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
-					view.formattedText,
-				)}
+				aria-colindex={presentation().columnIndex}
+				aria-selected={presentation().selected ? "true" : "false"}
+				aria-readonly={presentation().readOnly ? "true" : "false"}
+				title={presentation().title || undefined}
 				style={/* @static */ untrack(() => view.layoutCssText)}
 				onMouseDown={[cellMouseDown, view]}
 				onMouseOver={[cellMouseOver, view]}
 				onDblClick={[cellDoubleClick, view]}
 			>
-				<span class="se-cell__text" textContent={view.formattedText} />
+				<span class="se-cell__text" textContent={presentation().text} />
 			</div>
 		);
 	}
