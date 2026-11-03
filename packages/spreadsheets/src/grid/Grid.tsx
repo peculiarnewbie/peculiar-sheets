@@ -466,13 +466,11 @@ export default function Grid(props: GridProps) {
 
 	function attachVirtualizer(virtualizer: GridVirtualizer, viewport: HTMLDivElement): void {
 		const expectedWindow = viewport.ownerDocument.defaultView;
-		const viewportRect = viewport.getBoundingClientRect();
 		const staleAttachment =
 			virtualizer.scrollElement === viewport &&
 			(virtualizer.targetWindow !== expectedWindow ||
 				(!hasUsableRect(virtualizer.scrollRect) &&
-					viewportRect.width > 0 &&
-					viewportRect.height > 0));
+					hasUsableRect(viewport.getBoundingClientRect())));
 
 		if (staleAttachment) {
 			// _willUpdate only attaches when the element identity changes. Clear
@@ -486,8 +484,8 @@ export default function Grid(props: GridProps) {
 		if (!viewportRef) return;
 		attachVirtualizer(rowVirtualizer, viewportRef);
 		attachVirtualizer(columnVirtualizer, viewportRef);
-		rowVirtualizer.measure();
-		columnVirtualizer.measure();
+		// Viewport observers update the visible range without invalidating item sizes.
+		// Row metrics and column width effects below own size-cache invalidation.
 		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
 		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	}
