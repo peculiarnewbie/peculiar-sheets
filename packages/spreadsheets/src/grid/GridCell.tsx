@@ -84,6 +84,7 @@ class CellView {
 	constructor(
 		readonly rowModel: GridCellRow,
 		readonly readColumn: Accessor<GridCellColumn>,
+		readonly plainText: boolean,
 	) {}
 	get grid() {
 		return this.rowModel.grid;
@@ -134,7 +135,7 @@ class CellView {
 		const focus = selection?.focus;
 		const editing = this.rowModel.editingAddress;
 		const current = grid.searchCurrentAddress;
-		let classes = "se-cell";
+		let classes = this.plainText ? "se-cell se-cell--text" : "se-cell";
 		const rowClass = this.rowModel.className;
 		const cellClass = this.customization?.getCellClass?.(row, col);
 		if (rowClass) classes += ` ${rowClass}`;
@@ -194,7 +195,11 @@ function cellDoubleClick(view: CellView) {
 
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const view = new CellView(props.row, props.column);
+	const view = new CellView(
+		props.row,
+		props.column,
+		props.renderCustom === false && props.plainLayout === true,
+	);
 	// Geometry changes flow through inherited CSS variables; this binding is static.
 	if (props.renderCustom === false && props.plainLayout === true) {
 		return (
