@@ -93,20 +93,25 @@ function pushEntry(history: HistoryStack, entry: HistoryEntry): HistoryStack {
 	return { undoStack, redoStack: [] };
 }
 
+function invertMutation(m: CellMutation): CellMutation {
+	const inverse: CellMutation = {
+		address: m.address,
+		columnId: m.columnId,
+		oldValue: m.newValue,
+		newValue: m.oldValue,
+		source: m.source,
+	};
+	if (m.viewAddress) inverse.viewAddress = m.viewAddress;
+	if (m.rowId !== undefined) inverse.rowId = m.rowId;
+	return inverse;
+}
+
 function mutationHistoryEntry(
 	forward: CellMutation[],
 	selectionBefore: Selection,
 	selectionAfter: Selection,
 ): HistoryEntry {
-	const inverse = forward.map<CellMutation>((m) => ({
-		address: m.address,
-		...(m.viewAddress ? { viewAddress: m.viewAddress } : {}),
-		...(m.rowId !== undefined ? { rowId: m.rowId } : {}),
-		columnId: m.columnId,
-		oldValue: m.newValue,
-		newValue: m.oldValue,
-		source: m.source,
-	}));
+	const inverse = forward.map(invertMutation);
 
 	return {
 		type: "cell-mutations",

@@ -1204,20 +1204,21 @@ export default function Grid(props: GridProps) {
 		if (!column) return null;
 
 		const physical = getPhysicalRowForVisualRow(viewAddress.row);
-		const id = getRowIdAtVisualRow(viewAddress.row) ?? props.store.getRowIdAtPhysicalRow(physical);
+		const id = props.store.getRowIdAtPhysicalRow(physical);
 		const oldValue = getRawCellValueForPhysicalRow(physical, viewAddress.col);
 
 		if (oldValue === newValue) return null;
 
-		return {
+		const mutation: CellMutation = {
 			address: { row: physical, col: viewAddress.col },
 			viewAddress,
-			...(id != null ? { rowId: id } : {}),
 			columnId: column.id,
 			oldValue,
 			newValue,
 			source,
 		};
+		if (id !== null) mutation.rowId = id;
+		return mutation;
 	}
 
 	function applyBatchMutations(mutations: CellMutation[]) {

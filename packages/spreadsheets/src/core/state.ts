@@ -1,4 +1,4 @@
-import { createEffect, untrack } from "solid-js";
+import { createRenderEffect, untrack } from "solid-js";
 import {
 	isFormulaValue,
 	shiftFormulaReferencesForRowDelete,
@@ -1185,7 +1185,7 @@ export function createReconciler(
 ): void {
 	let lastHostRowCount = untrack(getData).length;
 
-	createEffect(
+	createRenderEffect(
 		() => [getData(), getColumns(), (getRowIds ?? (() => undefined))()] as const,
 		([data, columns, hostRowIds]) => {
 			const result = store.reconcileFromHost(data, columns, hostRowIds, {
