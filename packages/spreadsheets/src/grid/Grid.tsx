@@ -1046,7 +1046,7 @@ export default function Grid(props: GridProps) {
 			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
 			if (id !== null) props.store.rowRevision(id);
 		}
-		return props.store.cells[toNumber(row)];
+		return props.store.getRowValues(row);
 	}
 
 	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -1412,7 +1412,7 @@ export default function Grid(props: GridProps) {
 		if (!editMode) return;
 		const physicalRow = getPhysicalRowForVisualRow(editMode.address.row);
 		const colDef = props.columns[editMode.address.col];
-		const previousValue = props.store.cells[physicalRow]?.[editMode.address.col] ?? null;
+		const previousValue = props.store.getRowValues(physicalRow)?.[editMode.address.col] ?? null;
 		const nextValue = colDef?.parseValue
 			? colDef.parseValue(editorText(), {
 					previousValue,
@@ -1944,7 +1944,7 @@ export default function Grid(props: GridProps) {
 			return;
 		}
 		const selBefore = props.store.selection();
-		const cellsBefore = props.store.cells.map((row) => [...row]);
+		const cellsBefore = props.store.copyCells();
 		const rowIdsBefore = [...props.store.rowIds()];
 		props.store.insertRows(physicalRow(atIndex), count);
 		if (!syncAllToFormulaEngine()) {
@@ -1977,7 +1977,7 @@ export default function Grid(props: GridProps) {
 			return;
 		}
 		const selBefore = props.store.selection();
-		const previousCells = props.store.cells.map((row) => [...row]);
+		const previousCells = props.store.copyCells();
 		const rowIdsBefore = [...props.store.rowIds()];
 		const removedData = props.store.deleteRows(physicalAtIndex, count);
 		if (!syncAllToFormulaEngine()) {

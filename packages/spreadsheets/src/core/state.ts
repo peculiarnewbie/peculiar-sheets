@@ -78,6 +78,10 @@ export interface HistoryTransitionTransaction {
 export interface SheetStore {
 	// Reactive state accessors
 	cells: CellValue[][];
+	/** Internal render reads can leave implicit blank tails unmaterialized. */
+	getRowValues(row: PhysicalRowIndex): readonly CellValue[] | undefined;
+	/** Independent snapshot preserving each row's original logical length. */
+	copyCells(): CellValue[][];
 	rowCount(): number;
 	colCount(): number;
 	rowIds(): RowId[];
@@ -183,8 +187,33 @@ export function createSheetStore(
 		validateRowIds(hostRowIds, rowCount);
 	}
 
-	// Deep copy initial data to avoid shared references
-	const initialCells = initialData.map((row) => [...row]);
+	// Keep ownership while omitting sufficiently long null tails. Metadata only
+	// exists for compact rows; full-matrix access restores the original shapes.
+	let logicalRowLengths = new WeakMap<CellValue[], number>();
+	let hasCompactRows = false;
+	function copyInitialRow(source: CellValue[]): CellValue[] {
+		let end = source.length;
+		while (end > 0 && source[end - 1] === null) end--;
+		// Leave room for the weak-map entry before trading array slots for metadata.
+		if (source.length - end < 16) return [...source];
+		const row = [...source.slice(0, end)];
+		logicalRowLengths.set(row, source.length);
+		hasCompactRows = true;
+		return row;
+	}
+	function logicalRowLength(row: CellValue[]): number {
+		if (!hasCompactRows) return row.length;
+		return Math.max(row.length, logicalRowLengths.get(row) ?? row.length);
+	}
+	function copyRow(row: CellValue[]): CellValue[] {
+		const length = logicalRowLength(row);
+		if (length === row.length) return [...row];
+		const copy = new Array<CellValue>(length).fill(null);
+		let column = 0;
+		for (const value of row) copy[column++] = value;
+		return copy;
+	}
+	const initialCells = initialData.map(copyInitialRow);
 
 	// Command data is synchronous; Solid revisions notify renderers at the next flush.
 	// This also avoids a deep proxy/snapshot allocation for every virtual cell read.
@@ -347,7 +376,7 @@ export function createSheetStore(
 			const removedData: CellValue[][] = [];
 			for (let r = deleteAt; r < deleteAt + actualCount; r++) {
 				const row = cells[r];
-				removedData.push(row ? [...row] : (new Array(cc).fill(null) as CellValue[]));
+				removedData.push(row ? copyRow(row) : (new Array(cc).fill(null) as CellValue[]));
 			}
 
 			measureReconciliation("structure.deleteDimensions", () =>
@@ -449,7 +478,7 @@ export function createSheetStore(
 				throw new Error(`Invalid row mapping for rowId: ${id}`);
 			}
 			const row = cells[toNumber(currentIndex)];
-			return row ? [...row] : (new Array(dimensions().colCount).fill(null) as CellValue[]);
+			return row ? copyRow(row) : (new Array(dimensions().colCount).fill(null) as CellValue[]);
 		});
 
 		setCells((draft) => {
@@ -520,10 +549,11 @@ export function createSheetStore(
 				const rowLength = Math.max(sourceRow.length, colCount);
 				const id = nextRowIds[index];
 				const previous = id === undefined ? undefined : previousRows.get(id);
-				if (previous && previous.length === rowLength) {
+				if (previous && logicalRowLength(previous) === rowLength) {
 					let unchanged = true;
 					for (let column = 0; column < rowLength; column++) {
-						if (previous[column] !== (sourceRow[column] ?? null)) {
+						const previousValue = column < previous.length ? previous[column] : null;
+						if (previousValue !== (sourceRow[column] ?? null)) {
 							unchanged = false;
 							break;
 						}
@@ -646,7 +676,7 @@ export function createSheetStore(
 	function captureHistorySnapshot(): HistorySnapshot {
 		const history = historyState();
 		return {
-			cells: cells.map((row) => [...row]),
+			cells: cells.map(copyRow),
 			rowIds: [...rowIds()],
 			dimensions: { ...dimensions() },
 			selection: selection(),
@@ -756,8 +786,25 @@ export function createSheetStore(
 
 	return {
 		get cells() {
+			if (hasCompactRows) {
+				for (const row of cells) {
+					const length = logicalRowLength(row);
+					const storedLength = row.length;
+					if (storedLength < length) {
+						row.length = length;
+						row.fill(null, storedLength);
+					}
+					logicalRowLengths.delete(row);
+				}
+				logicalRowLengths = new WeakMap();
+				hasCompactRows = false;
+			}
 			return cells;
 		},
+		getRowValues(row: PhysicalRowIndex) {
+			return cells[toNumber(row)];
+		},
+		copyCells: () => cells.map(copyRow),
 
 		rowCount: () => dimensions().rowCount,
 		colCount: () => dimensions().colCount,

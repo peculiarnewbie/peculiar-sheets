@@ -1,11 +1,11 @@
 import { onCleanup, onSettled, untrack } from "solid-js";
+import { createReconciler, createSheetStore } from "./core/state";
+import { SheetCustomizationContext } from "./customization";
+import { createFormulaBridge } from "./formula/bridge";
+import Grid from "./grid/Grid";
+import { isApplied, Result } from "./internal/result";
 import type { SheetController, SheetProps } from "./types";
 import { DEFAULT_ROW_HEIGHT } from "./types";
-import { createReconciler, createSheetStore } from "./core/state";
-import { createFormulaBridge } from "./formula/bridge";
-import { Result, isApplied } from "./internal/result";
-import { SheetCustomizationContext } from "./customization";
-import Grid from "./grid/Grid";
 import { getWorkbookCoordinatorInternals } from "./workbook/coordinator";
 
 export function Sheet(props: SheetProps) {
@@ -61,7 +61,7 @@ export function Sheet(props: SheetProps) {
 	// ── Create Store ───────────────────────────────────────────────────────
 
 	const store = untrack(() => createSheetStore(props.data, props.columns, props.rowIds));
-	const workbookDataGetter = () => store.cells.map((row) => [...row]);
+	const workbookDataGetter = () => store.copyCells();
 
 	// ── Data Reconciliation ────────────────────────────────────────────────
 
