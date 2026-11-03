@@ -115,6 +115,25 @@ class CellView {
 	get isPinned() {
 		return this.pinnedLeft >= 0;
 	}
+	get className() {
+		let classes = "se-cell";
+		const rowClass = this.props.row.className;
+		const cellClass = this.customization?.getCellClass?.(this.row, this.col);
+		if (rowClass) classes += ` ${rowClass}`;
+		if (cellClass) classes += ` ${cellClass}`;
+		if (this.isPinned) classes += " se-cell--pinned";
+		if (this.virtualColumn.index === this.props.grid.lastPinnedIndex)
+			classes += " se-cell--pinned-last";
+		if (this.props.grid.searchMatchSet.has(`${this.row},${this.col}`))
+			classes += " se-cell--search-match";
+		if (this.isCurrentMatch) classes += " se-cell--search-current";
+		const focus = this.props.grid.selection.focus;
+		if (focus.row === this.row) classes += " se-cell--active-row";
+		if (this.isSelected) classes += " se-cell--range";
+		if (focus.row === this.row && focus.col === this.col) classes += " se-cell--focus";
+		if (this.isEditing) classes += " se-cell--editing";
+		return classes;
+	}
 	renderContent() {
 		const render = this.column.renderCell;
 		if (!render) return <span class="se-cell__text" textContent={this.formattedText} />;
@@ -145,23 +164,7 @@ export default function GridCell(props: GridCellProps) {
 	return (
 		<div
 			id={props.grid.getCellId(view.address)}
-			class={[
-				"se-cell",
-				props.row.className,
-				view.customization?.getCellClass?.(view.row, view.col),
-				{
-					"se-cell--pinned": view.isPinned,
-					"se-cell--pinned-last": view.virtualColumn.index === props.grid.lastPinnedIndex,
-					"se-cell--search-match": props.grid.searchMatchSet.has(`${view.row},${view.col}`),
-					"se-cell--search-current": view.isCurrentMatch,
-					"se-cell--active-row": props.grid.selection.focus.row === view.row,
-					"se-cell--range": view.isSelected,
-					"se-cell--focus":
-						props.grid.selection.focus.row === view.row &&
-						props.grid.selection.focus.col === view.col,
-					"se-cell--editing": view.isEditing,
-				},
-			]}
+			class={view.className}
 			role="gridcell"
 			aria-colindex={view.col + 1}
 			aria-selected={view.isSelected ? "true" : "false"}

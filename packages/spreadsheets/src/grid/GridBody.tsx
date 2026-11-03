@@ -41,10 +41,7 @@ export default function GridBody(props: GridBodyProps) {
 			<For keyed={(row) => row.index} each={props.virtualRows}>
 				{(virtualRow) => {
 					trackGridLifecycle("row");
-					const rowIdx = () => virtualRow().index;
-					const rowHeight = () => virtualRow().size;
-					const rowTop = () => virtualRow().start;
-					const vRow = () => visualRow(rowIdx());
+					const vRow = () => visualRow(virtualRow().index);
 					const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
 					const rowHeaderTooltip = () =>
 						props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
@@ -57,7 +54,7 @@ export default function GridBody(props: GridBodyProps) {
 					const containsActiveEditor = () => props.editingAddress?.row === vRow();
 					const rowClassContext = (): RowClassContext => ({
 						rowId: props.getRowId(vRow()),
-						visualRowIndex: rowIdx(),
+						visualRowIndex: virtualRow().index,
 						dataRowIndex: rowHeaderIndex(),
 						containsFocus: containsFocus(),
 						intersectsSelection: intersectsSelection(),
@@ -102,13 +99,13 @@ export default function GridBody(props: GridBodyProps) {
 								},
 							]}
 							role="row"
-							aria-rowindex={rowIdx() + 1}
+							aria-rowindex={virtualRow().index + 1}
 							style={{
 								position: "absolute",
-								top: `${rowTop()}px`,
+								top: `${virtualRow().start}px`,
 								display: "flex",
 								width: "100%",
-								height: `${rowHeight()}px`,
+								height: `${virtualRow().size}px`,
 							}}
 						>
 							<Show when={props.showReferenceHeaders}>
@@ -116,7 +113,7 @@ export default function GridBody(props: GridBodyProps) {
 									class={[
 										`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`,
 										{
-											"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
+											"se-row-header-cell--resizing": props.activeResizeRow === virtualRow().index,
 											"se-row-header-cell--active": containsFocus(),
 											"se-row-header-cell--selected": intersectsSelection(),
 											"se-row-header-cell--editing": containsActiveEditor(),
@@ -126,7 +123,7 @@ export default function GridBody(props: GridBodyProps) {
 									style={{
 										width: `${props.rowGutterWidth}px`,
 										"min-width": `${props.rowGutterWidth}px`,
-										height: `${rowHeight()}px`,
+										height: `${virtualRow().size}px`,
 									}}
 									title={rowHeaderTooltip() ?? undefined}
 									onMouseDown={(e) => props.onRowHeaderMouseDown?.(vRow(), e)}
