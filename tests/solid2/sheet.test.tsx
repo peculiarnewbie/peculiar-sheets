@@ -27,6 +27,7 @@ import type {
 	CellStyle,
 	CellValue,
 	ColumnDef,
+	PhysicalCellAddress,
 	SheetController,
 	SheetCustomization,
 	VisualCellAddress,
@@ -113,6 +114,7 @@ describe("Solid 2 Sheet", () => {
 		const formattedColumns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
 			id: `col${index}`,
 			header: `Column ${index}`,
+			...(index === 0 ? { pinned: "left" as const } : {}),
 			formatValue: (value, context) => {
 				formattedRows.add(context.row);
 				formats.set(index, (formats.get(index) ?? 0) + 1);
@@ -340,6 +342,46 @@ describe("Solid 2 Sheet", () => {
 		expect(input.value).toBe("draft");
 	});
 
+	it("keeps geometry observers stable when host identities change without resizing", () => {
+		const columns: ColumnDef[] = [{ id: "value", header: "Value" }];
+		const store = createSheetStore([[1], [2]], columns, [rowId("first"), rowId("second")]);
+		const frames: Array<{ rows: number; columns: number }> = [];
+		const dispose = createRoot((dispose) => {
+			createEffect(
+				() => ({ rows: store.rowCount(), columns: store.colCount() }),
+				(frame) => {
+					frames.push(frame);
+				},
+			);
+			return dispose;
+		});
+		try {
+			flush();
+			store.reconcileFromHost([[3], [4]], columns, [rowId("third"), rowId("fourth")]);
+			flush();
+			expect(store.cells).toEqual([[3], [4]]);
+			expect(store.rowIds()).toEqual([rowId("third"), rowId("fourth")]);
+			expect(frames).toEqual([{ rows: 2, columns: 1 }]);
+			store.reconcileFromHost([[5]], columns, [rowId("fifth")]);
+			expect(store.rowCount()).toBe(1);
+			flush();
+			store.reconcileFromHost(
+				[[6, 7]],
+				[...columns, { id: "other", header: "Other" }],
+				[rowId("fifth")],
+			);
+			expect(store.colCount()).toBe(2);
+			flush();
+			expect(frames).toEqual([
+				{ rows: 2, columns: 1 },
+				{ rows: 1, columns: 1 },
+				{ rows: 1, columns: 2 },
+			]);
+		} finally {
+			dispose();
+		}
+	});
+
 	it("composes row commands immediately and batches their render notifications", () => {
 		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];
 		const { result: store } = renderHook(() => {
@@ -539,6 +581,8 @@ describe("Solid 2 Sheet", () => {
 		const [customClass, setCustomClass] = createSignal("");
 		const [style, setStyle] = createSignal<CellStyle>();
 		const [value, setValue] = createSignal("first");
+		const [searchMatches, setSearchMatches] = createSignal(new Set<string>());
+		const [searchCurrent, setSearchCurrent] = createSignal<PhysicalCellAddress | null>(null);
 		const customization = { getCellClass: () => customClass(), getCellStyle: () => style() };
 		const grid: GridCellContext = {
 			get virtualColumns() {
@@ -553,10 +597,18 @@ describe("Solid 2 Sheet", () => {
 			onCellMouseDown: () => {},
 			onCellMouseEnter: (address) => entered.push(address),
 			onCellDblClick: () => {},
-			pinnedLeftOffsets: [],
-			lastPinnedIndex: -1,
-			searchMatchSet: new Set(),
-			searchCurrentAddress: null,
+			get pinnedLeftOffsets() {
+				return column().pinned === "left" ? [0] : [];
+			},
+			get lastPinnedIndex() {
+				return column().pinned === "left" ? 0 : -1;
+			},
+			get searchMatchSet() {
+				return searchMatches();
+			},
+			get searchCurrentAddress() {
+				return searchCurrent();
+			},
 		};
 		const view = render(() => (
 			<SheetCustomizationContext value={customization}>
@@ -594,6 +646,23 @@ describe("Solid 2 Sheet", () => {
 		fireEvent.mouseOver(cell, { relatedTarget: text });
 		expect(entered).toHaveLength(1);
 		expect(cell.getAttribute("title")).toBe("first");
+		setColumn({ ...baseColumn, pinned: "left" });
+		setSearchMatches(new Set(["0,0"]));
+		setSearchCurrent({ row: physicalRow(0), col: columnIdx(0) });
+		flush();
+		expect(cell.classList.contains("se-cell--pinned")).toBe(true);
+		expect(cell.classList.contains("se-cell--pinned-last")).toBe(true);
+		expect(cell.classList.contains("se-cell--search-match")).toBe(true);
+		expect(cell.classList.contains("se-cell--search-current")).toBe(true);
+		setSearchCurrent(null);
+		flush();
+		expect(cell.classList.contains("se-cell--search-match")).toBe(true);
+		expect(cell.classList.contains("se-cell--search-current")).toBe(false);
+		setSearchCurrent({ row: physicalRow(0), col: columnIdx(0) });
+		flush();
+		expect(cell.classList.contains("se-cell--search-current")).toBe(true);
+		setSearchCurrent(null);
+		setSearchMatches(new Set<string>());
 		setColumn({
 			...baseColumn,
 			getCellTitle: () => "",
@@ -605,6 +674,10 @@ describe("Solid 2 Sheet", () => {
 		expect(cell.querySelector("strong")?.textContent).toBe("first");
 		expect(cell.hasAttribute("title")).toBe(false);
 		expect(cell.classList.contains("highlight")).toBe(true);
+		expect(cell.classList.contains("se-cell--pinned")).toBe(false);
+		expect(cell.classList.contains("se-cell--pinned-last")).toBe(false);
+		expect(cell.classList.contains("se-cell--search-match")).toBe(false);
+		expect(cell.classList.contains("se-cell--search-current")).toBe(false);
 		expect(cell.style.color).toBe("red");
 		expect(cell.style.width).toBe("100px");
 		expect(cell.style.height).toBe("28px");

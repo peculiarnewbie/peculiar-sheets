@@ -1,3 +1,4 @@
+import { untrack } from "solid-js";
 import {
 	type ColumnIndex,
 	columnIdx,
@@ -130,17 +131,23 @@ class CellView {
 		const selection = this.rowModel.selection;
 		const focus = selection?.focus;
 		const editing = this.rowModel.editingAddress;
-		const current = grid.searchCurrentAddress;
 		let classes = "se-cell";
 		const rowClass = this.rowModel.className;
 		const cellClass = this.customization?.getCellClass?.(row, col);
 		if (rowClass) classes += ` ${rowClass}`;
 		if (cellClass) classes += ` ${cellClass}`;
-		if ((grid.pinnedLeftOffsets[column.index] ?? -1) >= 0) classes += " se-cell--pinned";
-		if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
-		if (grid.searchMatchSet.has(`${row},${col}`)) classes += " se-cell--search-match";
-		if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
-			classes += " se-cell--search-current";
+		// Track shared feature state only for cells to which that feature applies.
+		if (column.column.pinned === "left") {
+			classes += " se-cell--pinned";
+			if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
+		}
+		const matches = grid.searchMatchSet;
+		if (matches.size > 0 && matches.has(`${row},${col}`)) {
+			classes += " se-cell--search-match";
+			const current = grid.searchCurrentAddress;
+			if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
+				classes += " se-cell--search-current";
+		}
 		if (focus?.row === row) classes += " se-cell--active-row";
 		if (selection !== null && selectionContains(selection, { row, col }))
 			classes += " se-cell--range";
@@ -206,7 +213,7 @@ export default function GridCell(props: GridCellProps) {
 					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
 					view.formattedText,
 				)}
-				style={/* @static */ view.layoutCssText}
+				style={/* @static */ untrack(() => view.layoutCssText)}
 				onMouseDown={[cellMouseDown, view]}
 				onMouseOver={[cellMouseOver, view]}
 				onDblClick={[cellDoubleClick, view]}
