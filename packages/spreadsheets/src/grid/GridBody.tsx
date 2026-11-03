@@ -1,9 +1,14 @@
-import { createMemo, createProjection, For, Repeat, Show } from "solid-js";
+import { createMemo, createProjection, For, Show } from "solid-js";
 import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/brands";
 import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
 import type { CellStyle, CellValue, ColumnDef, RowClassContext } from "../types";
-import GridCell, { type GridCellContext, type GridCellLayout, type GridCellRow } from "./GridCell";
+import GridCell, {
+	type GridCellColumn,
+	type GridCellContext,
+	type GridCellLayout,
+	type GridCellRow,
+} from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 import type { RowMetrics } from "./rowMetrics";
 
@@ -15,6 +20,8 @@ interface GridBodyProps extends GridCellContext {
 	getRowId: (visualRow: VisualRowIndex) => RowId;
 	/** Share row dependencies while preserving per-cell formula dependencies. */
 	getRowDisplayValues?: (row: VisualRowIndex, columns: readonly { index: number }[]) => CellValue[];
+	/** Owned raw rows can be read independently of the horizontal window. */
+	getRawRowValues?: (row: VisualRowIndex) => readonly CellValue[] | undefined;
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
@@ -27,8 +34,16 @@ interface GridBodyProps extends GridCellContext {
 	onRowHeaderMouseDown?: (row: VisualRowIndex, event: MouseEvent) => void;
 }
 
-interface ColumnLayout extends GridCellLayout {
-	prefix: string;
+function createColumnLayout(slot: string): GridCellLayout {
+	const prefix = `--se-column-${slot}`;
+	const width = `var(${prefix}-width)`;
+	const left = `var(${prefix}-left)`;
+	const position = `var(${prefix}-position)` as NonNullable<CellStyle["position"]>;
+	const height = "var(--se-rendered-row-height)";
+	return {
+		style: { width, "min-width": width, height, position, left },
+		cssText: `width:${width};min-width:${width};height:${height};position:${position};left:${left}`,
+	};
 }
 
 export default function GridBody(props: GridBodyProps) {
@@ -36,35 +51,53 @@ export default function GridBody(props: GridBodyProps) {
 	const hasFormatters = createMemo(() => props.columns.some((column) => column.formatValue));
 	const hasCustomRenderers = createMemo(() => props.columns.some((column) => column.renderCell));
 	const hasCustomStyles = createMemo(() => Boolean(customization?.getCellStyle));
-	const columnCount = createMemo(() => props.virtualColumns.length);
-	// Slots retain their CSS references while the body publishes new geometry.
-	// Plain cells bind these references once, including when rows are recycled.
-	const layouts = createMemo(() => {
-		return Array.from({ length: columnCount() }, (_, slot): ColumnLayout => {
-			const prefix = `--se-column-${slot}`;
-			const width = `var(${prefix}-width)`;
-			const left = `var(${prefix}-left)`;
-			// CSS accepts variables here; csstype's Position union omits them.
-			const position = `var(${prefix}-position)` as NonNullable<CellStyle["position"]>;
-			const height = "var(--se-rendered-row-height)";
-			return {
-				prefix,
-				style: { width, "min-width": width, height, position, left },
-				cssText: `width:${width};min-width:${width};height:${height};position:${position};left:${left}`,
-			};
+	let previousColumns: GridCellColumn[] = [];
+	const renderColumns = createMemo(() => {
+		const columns = props.virtualColumns;
+		const previous = new Map(previousColumns.map((column) => [column.slot, column]));
+		const byIndex = new Map(previousColumns.map((column) => [column.index, column]));
+		const occupied = new Set<string>();
+		// Keep overlapping columns in their existing slots, including when the
+		// viewport grows or shrinks. Entering columns reuse the vacated slots.
+		for (const column of columns) {
+			const retained = byIndex.get(column.index);
+			if (column.column.pinned !== "left" && retained?.slot.startsWith("v")) {
+				occupied.add(retained.slot);
+			}
+		}
+		let freeSlot = 0;
+		const next = columns.map((column): GridCellColumn => {
+			let slot: string;
+			const retained = byIndex.get(column.index);
+			if (column.column.pinned === "left") slot = `p${column.index}`;
+			else if (retained?.slot.startsWith("v")) slot = retained.slot;
+			else {
+				while (occupied.has(`v${freeSlot}`)) freeSlot++;
+				slot = `v${freeSlot++}`;
+				occupied.add(slot);
+			}
+			const existing = previous.get(slot);
+			if (
+				existing?.index === column.index &&
+				existing.start === column.start &&
+				existing.size === column.size &&
+				existing.column === column.column
+			)
+				return existing;
+			return { ...column, slot, layout: existing?.layout ?? createColumnLayout(slot) };
 		});
+		previousColumns = next;
+		return next;
 	});
-	const getLayout = (columnIndex: number): ColumnLayout => {
-		const layout = layouts()[columnIndex];
-		if (!layout) throw new Error(`Column layout ${columnIndex} is outside the rendered range`);
-		return layout;
-	};
+	const displayIndexes = createMemo(
+		() => new Map(props.virtualColumns.map((column, index) => [column.index, index])),
+	);
 	const layoutVariables = createMemo(() => {
 		const gutter = props.rowGutterWidth;
 		const pinned = props.pinnedLeftOffsets;
 		const variables: Record<string, string> = {};
-		props.virtualColumns.forEach((column, slot) => {
-			const { prefix } = getLayout(slot);
+		renderColumns().forEach((column) => {
+			const prefix = `--se-column-${column.slot}`;
 			const pinnedLeft = pinned[column.index] ?? -1;
 			variables[`${prefix}-width`] = `${column.size}px`;
 			variables[`${prefix}-left`] = `${pinnedLeft >= 0 ? pinnedLeft : gutter + column.start}px`;
@@ -109,6 +142,10 @@ export default function GridBody(props: GridBodyProps) {
 				);
 				// Share display dependencies across a row. The plain memo avoids
 				// per-cell store nodes; custom formatters also filter unchanged values.
+				const rawValues = createMemo(
+					() => (hasFormatters() ? undefined : props.getRawRowValues?.(vRow())),
+					{ equals: false },
+				);
 				const readDisplayValues = () => {
 					const row = vRow();
 					const columns = props.virtualColumns;
@@ -118,6 +155,7 @@ export default function GridBody(props: GridBodyProps) {
 						: columns.map((column) => props.getDisplayValue(row, columnIdx(column.index)));
 				};
 				const displayValues = createMemo(() => {
+					if (rawValues() !== undefined) return undefined;
 					if (!hasFormatters()) return readDisplayValues();
 					return createProjection<CellValue[]>(readDisplayValues, [], {
 						key: null,
@@ -127,15 +165,19 @@ export default function GridBody(props: GridBodyProps) {
 				const cellRow: GridCellRow = {
 					grid: props,
 					customization,
-					getLayout,
+					getDisplayValue(column) {
+						const raw = rawValues();
+						if (raw !== undefined) return raw[column] ?? null;
+						const index = displayIndexes().get(column);
+						return index === undefined
+							? props.getDisplayValue(vRow(), column)
+							: (displayValues()?.[index] ?? null);
+					},
 					get selection() {
 						return rowSelection();
 					},
 					get editingAddress() {
 						return rowEditingAddress();
-					},
-					get displayValues() {
-						return displayValues();
 					},
 					get item() {
 						return virtualRow();
@@ -203,16 +245,16 @@ export default function GridBody(props: GridBodyProps) {
 								</Show>
 							</div>
 						</Show>
-						<Repeat count={props.virtualColumns.length}>
-							{(columnIndex) => (
+						<For keyed={(column) => column.slot} each={renderColumns()}>
+							{(column) => (
 								<GridCell
 									row={cellRow}
-									columnIndex={columnIndex}
+									column={column}
 									renderCustom={renderCustom}
 									plainLayout={plainLayout}
 								/>
 							)}
-						</Repeat>
+						</For>
 					</div>
 				);
 			}}

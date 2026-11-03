@@ -495,6 +495,103 @@ describe("Solid 2 Sheet", () => {
 		expect(view.container.querySelector(".se-grid")).not.toBeNull();
 	});
 
+	it("retains overlapping columns, pinned cells, and owned-row updates as the window moves", () => {
+		const columns: ColumnDef[] = Array.from({ length: 10 }, (_, index) => ({
+			id: `c${index}`,
+			header: String(index),
+			...(index === 1 ? { pinned: "left" as const } : {}),
+		}));
+		const { result: store } = renderHook(() =>
+			createSheetStore(
+				[
+					Array.from({ length: 10 }, (_, index) => index),
+					Array.from({ length: 10 }, (_, index) => index + 100),
+				],
+				columns,
+			),
+		);
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2, 3]));
+		let clicked: VisualCellAddress | null = null;
+		const view = render(() => (
+			<GridBody
+				columns={columns}
+				rowMetrics={buildRowMetrics(2, 28)}
+				virtualRows={[
+					{ index: 0, start: 0, size: 28 },
+					{ index: 1, start: 28, size: 28 },
+				]}
+				virtualColumns={virtualColumns()}
+				totalHeight={56}
+				rowGutterWidth={0}
+				showReferenceHeaders={false}
+				getRowHeaderIndex={(row) => row}
+				getRowId={(row) => rowId(`r${row}`)}
+				getCellId={({ row, col }) => `owned-${row}-${col}`}
+				getRawValue={(row, col) => store.cells[row]?.[col] ?? null}
+				getDisplayValue={(row, col) => store.cells[row]?.[col] ?? null}
+				getRawRowValues={(row) => {
+					store.structuralRevision();
+					const id = store.getRowIdAtPhysicalRow(physicalRow(row));
+					if (id !== null) store.rowRevision(id);
+					return store.cells[row];
+				}}
+				editingAddress={null}
+				selection={selectCell({ row: visualRow(0), col: columnIdx(2) })}
+				onCellMouseDown={(address) => {
+					clicked = address;
+				}}
+				onCellDblClick={() => {}}
+				pinnedLeftOffsets={[-1, 0]}
+				lastPinnedIndex={1}
+				searchMatchSet={new Set()}
+				searchCurrentAddress={null}
+			/>
+		));
+		flush();
+		const pinned = view.container.querySelector("#owned-0-1");
+		const overlapping = view.container.querySelector("#owned-0-2");
+		const departing = view.container.querySelector("#owned-0-0");
+		setVirtualColumns(range([1, 2, 3, 4]));
+		flush();
+		expect(view.container.querySelector("#owned-0-1")).toBe(pinned);
+		expect(view.container.querySelector("#owned-0-2")).toBe(overlapping);
+		expect(view.container.querySelector("#owned-0-4")).toBe(departing);
+		expect(view.getAllByRole("row")[0]?.querySelectorAll(".se-cell")).toHaveLength(4);
+		expect(
+			Array.from(view.getAllByRole("row")[0]?.querySelectorAll(".se-cell") ?? [], (cell) =>
+				cell.getAttribute("aria-colindex"),
+			),
+		).toEqual(["2", "3", "4", "5"]);
+		store.setCell(physicalRow(0), 2, 777);
+		flush();
+		expect(overlapping?.textContent).toBe("777");
+		expect(view.container.querySelector("#owned-1-2")?.textContent).toBe("102");
+		if (!departing) throw new Error("Recycled cell missing");
+		fireEvent.mouseDown(departing);
+		expect(clicked).toEqual({ row: 0, col: 4 });
+		setVirtualColumns(range([1, 6, 7, 8]));
+		flush();
+		const last = view.container.querySelector<HTMLElement>("#owned-0-7");
+		if (!last) throw new Error("Jumped column missing");
+		expect(last.textContent).toBe("7");
+		expect(getComputedStyle(last).left).toBe("700px");
+		setVirtualColumns(range([1, 7]));
+		flush();
+		expect(view.container.querySelector("#owned-0-7")).toBe(last);
+		setVirtualColumns(range([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+		flush();
+		expect(view.container.querySelector("#owned-0-1")).toBe(pinned);
+		expect(view.container.querySelector("#owned-0-7")).toBe(last);
+		expect(view.getAllByRole("gridcell")).toHaveLength(18);
+		expect(view.container.querySelector("#owned-0-2")?.textContent).toBe("777");
+	});
+
 	it("preserves row revisions when observers leave and return, and resets deleted identities", () => {
 		const id = rowId("row");
 		const columns = [{ id: "value", header: "Value" }];
@@ -572,15 +669,21 @@ describe("Solid 2 Sheet", () => {
 						get editingAddress() {
 							return grid.editingAddress;
 						},
-						getLayout: () => ({
-							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
-							cssText: "width:100px;height:28px;left:0px;position:absolute",
-						}),
-						get displayValues() {
-							return [value()];
+						getDisplayValue() {
+							return value();
 						},
 					}}
-					columnIndex={0}
+					column={() => ({
+						index: 0,
+						start: 0,
+						size: 100,
+						column: column(),
+						slot: "v0",
+						layout: {
+							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
+							cssText: "width:100px;height:28px;left:0px;position:absolute",
+						},
+					})}
 				/>
 			</SheetCustomizationContext>
 		));

@@ -1072,6 +1072,11 @@ export default function Grid(props: GridProps) {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
 	}
 
+	function getRawRowValues(row: VisualRowIndex): readonly CellValue[] | undefined {
+		if (props.formulaBridge) return undefined;
+		return getRawRowForPhysicalRow(getPhysicalRowForVisualRow(row));
+	}
+
 	function getRowDisplayValues(
 		row: VisualRowIndex,
 		columns: readonly { index: number }[],
@@ -2851,6 +2856,7 @@ export default function Grid(props: GridProps) {
 							totalHeight={rowMetrics().getTotalHeight()}
 							getDisplayValue={getDisplayCellValue}
 							getRowDisplayValues={getRowDisplayValues}
+							getRawRowValues={getRawRowValues}
 							getRawValue={getRawCellValue}
 							editingAddress={props.store.editMode()?.address ?? null}
 							selection={props.store.selection()}
