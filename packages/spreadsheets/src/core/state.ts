@@ -475,17 +475,48 @@ export function createSheetStore(
 		rowRevisions.retain(nextRowIds);
 	}
 
-	function materializeHostCells(data: readonly CellValue[][], colCount: number): CellValue[][] {
-		return measureReconciliation("identity.bulkMaterializeCells", () =>
-			data.map((sourceRow) => {
+	function materializeHostCells(
+		data: readonly CellValue[][],
+		colCount: number,
+		nextRowIds: readonly RowId[],
+	): CellValue[][] {
+		return measureReconciliation("identity.bulkMaterializeCells", () => {
+			const previousRows = new Map<RowId, CellValue[]>();
+			// Full reorders can reuse owned rows. A shrinking replacement copies
+			// only its retained data rather than indexing the larger old sheet.
+			if (data.length >= cells.length) {
+				const ids = rowIds();
+				for (let index = 0; index < cells.length; index++) {
+					const row = cells[index];
+					const id = ids[index];
+					if (row && id !== undefined) previousRows.set(id, row);
+				}
+			}
+			return data.map((sourceRow, index) => {
 				const rowLength = Math.max(sourceRow.length, colCount);
+				const id = nextRowIds[index];
+				const previous = id === undefined ? undefined : previousRows.get(id);
+				if (previous && previous.length === rowLength) {
+					let unchanged = true;
+					for (let column = 0; column < rowLength; column++) {
+						if (previous[column] !== (sourceRow[column] ?? null)) {
+							unchanged = false;
+							break;
+						}
+					}
+					if (unchanged) return previous;
+				}
+				const values: readonly (CellValue | undefined)[] = sourceRow;
+				if (sourceRow.length >= colCount && !values.includes(undefined)) {
+					return sourceRow.slice();
+				}
 				const row = new Array<CellValue>(rowLength);
 				for (let column = 0; column < rowLength; column++) {
 					row[column] = sourceRow[column] ?? null;
 				}
 				return row;
-			}),
-		);
+			});
+		});
 	}
 
 	function preservesPendingRowAcknowledgement(
@@ -513,7 +544,7 @@ export function createSheetStore(
 			incrementReconciliationCount("structure.deleteCalls", 0);
 			incrementReconciliationCount("structure.insertCalls", 0);
 			incrementReconciliationCount("formula.authoritativeHostSkips");
-			const nextCells = materializeHostCells(options.data, options.columns.length);
+			const nextCells = materializeHostCells(options.data, options.columns.length, options.rowIds);
 
 			measureReconciliation("solid.bulkStoreTransaction", () =>
 				(() => {

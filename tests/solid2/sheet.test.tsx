@@ -98,7 +98,7 @@ describe("Solid 2 Sheet", () => {
 		expect(header.style.width).toBe("130px");
 		expect(reference.style.width).toBe("130px");
 	});
-	it("keeps recycled column slots current when the virtual range moves, shrinks, and grows", () => {
+	it("keeps virtual rows and recycled column slots current as ranges move, shrink, and grow", () => {
 		const formats = new Map<number, number>();
 		const formattedColumns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
 			id: `col${index}`,
@@ -118,17 +118,15 @@ describe("Solid 2 Sheet", () => {
 		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2]));
 		const [changed, setChanged] = createSignal(false);
 		const [height, setHeight] = createSignal(28);
+		const [rows, setRows] = createSignal([10, 11]);
 		let clicked: VisualCellAddress | null = null;
 		const view = render(() => (
 			<GridBody
 				columns={columns()}
-				rowMetrics={buildRowMetrics(20, 28)}
-				virtualRows={[
-					{ index: 10, start: 280, size: height() },
-					{ index: 11, start: 308, size: height() },
-				]}
+				rowMetrics={buildRowMetrics(1000, 28)}
+				virtualRows={rows().map((index) => ({ index, start: index * height(), size: height() }))}
 				virtualColumns={virtualColumns()}
-				totalHeight={560}
+				totalHeight={1000 * height()}
 				rowGutterWidth={0}
 				showReferenceHeaders={false}
 				getRowHeaderIndex={(row) => row}
@@ -200,6 +198,46 @@ describe("Solid 2 Sheet", () => {
 			true,
 		);
 		expect(view.container.querySelector("#cell-11-197")?.textContent).toBe("R11C197");
+		setRows([500, 501]);
+		flush();
+		expect(view.container.querySelector("#cell-10-0")).toBeNull();
+		const moved = view.container.querySelector<HTMLElement>("#cell-500-197");
+		if (!moved) throw new Error("Recycled row missing");
+		expect(moved.textContent).toBe("R500C197");
+		fireEvent.mouseDown(moved);
+		expect(clicked).toEqual({ row: 500, col: 197 });
+		const overlapping = view.container.querySelector("#cell-501-197");
+		setRows([501, 502]);
+		flush();
+		expect(view.container.querySelector("#cell-501-197")).toBe(overlapping);
+		setRows([]);
+		flush();
+		expect(view.queryAllByRole("gridcell")).toHaveLength(0);
+		formats.clear();
+		setChanged(false);
+		flush();
+		expect(formats.size).toBe(0);
+		setRows([999]);
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(4);
+		expect(view.container.querySelector("#cell-999-197")?.textContent).toBe("R999C197");
+		setColumns(
+			formattedColumns.map((column, index) =>
+				index === 0
+					? { ...column, renderCell: (context) => <b>{context.formattedText}</b> }
+					: column,
+			),
+		);
+		flush();
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.container.querySelector("#cell-999-0 b")?.textContent).toBe("R999C0");
+		setColumns(formattedColumns);
+		flush();
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.container.querySelector("#cell-999-0 b")).toBeNull();
+		expect(view.container.querySelector("#cell-999-0 .se-cell__text")?.textContent).toBe("R999C0");
 	});
 	it("composes row commands immediately and batches their render notifications", () => {
 		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];

@@ -1,5 +1,5 @@
-import { flush } from "solid-js";
 import { describe, expect, it } from "bun:test";
+import { flush } from "solid-js";
 import type { CellValue, ColumnDef } from "../types";
 import { autoRowId, columnIdx, physicalRow, rowId, visualRow } from "./brands";
 import { isProvisionalRowId, validateRowIds } from "./row-identity";
@@ -236,6 +236,74 @@ describe("identity reconciliation via reconcileFromHost", () => {
 		expect(store.rowIds()).toEqual(nextIds);
 		flush();
 		expect(store.cells).toEqual(nextIds.map((_, index) => [`next-${index}`, null]));
+	});
+
+	it("copies dense replacements and fills holes and missing columns without mutating host rows", () => {
+		const dense: CellValue[] = ["value", true, null, 4];
+		const sparse = new Array<CellValue>(3);
+		sparse[1] = "middle";
+		const short: CellValue[] = [9];
+		const store = createSheetStore([[0, 0]], columns, [rowId("old")]);
+		store.reconcileFromHost([dense, sparse, short], columns, [
+			rowId("dense"),
+			rowId("sparse"),
+			rowId("short"),
+		]);
+		flush();
+		expect(store.cells).toEqual([
+			["value", true, null, 4],
+			[null, "middle", null],
+			[9, null],
+		]);
+		expect(store.cells[0]).not.toBe(dense);
+		expect(0 in sparse).toBe(false);
+		expect(short).toEqual([9]);
+		dense[0] = "host edit";
+		expect(store.cells[0]?.[0]).toBe("value");
+		store.setCell(physicalRow(0), 1, "sheet edit");
+		expect(dense[1]).toBe(true);
+	});
+	it("reuses equal owned rows by identity while adopting changed and sparse host values", () => {
+		const ids = [rowId("a"), rowId("b"), rowId("c"), rowId("d")];
+		const store = createSheetStore(
+			[
+				[1, 2, 3],
+				["same", false],
+				[7, null, null],
+				["old", "extra", 9],
+			],
+			columns,
+			ids,
+		);
+		const owned = [...store.cells];
+		const unchanged: CellValue[] = ["same", false];
+		const changed: CellValue[] = [1, 8, 3];
+		const sparse = new Array<CellValue>(3);
+		sparse[0] = 7;
+		store.reconcileFromHost([unchanged, changed, ["short"], sparse], columns, [
+			rowId("b"),
+			rowId("a"),
+			rowId("d"),
+			rowId("c"),
+		]);
+		flush();
+		expect(store.cells).toEqual([
+			["same", false],
+			[1, 8, 3],
+			["short", null],
+			[7, null, null],
+		]);
+		expect(store.cells[0]).toBe(owned[1]);
+		expect(store.cells[1]).not.toBe(owned[0]);
+		expect(store.cells[2]).not.toBe(owned[3]);
+		expect(store.cells[3]).toBe(owned[2]);
+		expect(1 in sparse).toBe(false);
+		unchanged[0] = "host edit";
+		changed[1] = "another host edit";
+		expect(store.cells[0]?.[0]).toBe("same");
+		expect(store.cells[1]?.[1]).toBe(8);
+		store.setCell(physicalRow(0), 1, "sheet edit");
+		expect(unchanged[1]).toBe(false);
 	});
 
 	it("keeps the sparse path for stable row identity and only bumps changed rows", () => {

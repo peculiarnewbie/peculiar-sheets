@@ -50,6 +50,8 @@ interface GridCellProps {
 	columnIndex: number;
 	/** Shared reactive props: cells subscribe where a value is used. */
 	grid: GridCellContext;
+	/** The parent recreates the row owner when custom rendering is enabled or disabled. */
+	renderCustom?: boolean;
 }
 
 function resolveTitle(title: string | undefined, formattedText: string): string | undefined {
@@ -168,6 +170,30 @@ function cellDoubleClick(view: CellView) {
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
 	const view = new CellView(props.row, props.columnIndex, props.grid, useSheetCustomization());
+	// Keeping the default span in the root template lets Solid compile text and
+	// attributes into one computation, without a per-cell renderer branch.
+	if (props.renderCustom === false) {
+		return (
+			<div
+				id={view.grid.getCellId(view.address)}
+				class={view.className}
+				role="gridcell"
+				aria-colindex={view.col + 1}
+				aria-selected={view.isSelected ? "true" : "false"}
+				aria-readonly={view.readOnly ? "true" : "false"}
+				title={resolveTitle(
+					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+					view.formattedText,
+				)}
+				style={view.style}
+				onMouseDown={[cellMouseDown, view]}
+				onMouseEnter={[cellMouseEnter, view]}
+				onDblClick={[cellDoubleClick, view]}
+			>
+				<span class="se-cell__text" textContent={view.formattedText} />
+			</div>
+		);
+	}
 	return (
 		<div
 			id={view.grid.getCellId(view.address)}
