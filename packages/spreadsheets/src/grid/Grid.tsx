@@ -92,6 +92,7 @@ import {
 	type FormulaSyncPort,
 } from "./mutationCoordination";
 import { buildRowMetrics } from "./rowMetrics";
+import { getRowWindow } from "./rowWindow";
 import SearchBar from "./SearchBar";
 import SelectionOverlay from "./SelectionOverlay";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
@@ -403,24 +404,18 @@ export default function Grid(props: GridProps) {
 		}
 		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
 	});
-	// Bridge framework-neutral TanStack measurements into Solid 2 signals.
+	// Rows use the shared sparse geometry; columns bridge TanStack into Solid.
 	const [virtualRows, setVirtualRows] = createSignal<VirtualItemSnapshot[]>([]);
 	const [virtualColumnItems, setVirtualColumnItems] = createSignal<VirtualItemSnapshot[]>([]);
 	const observeViewportOffset = createViewportOffsetObserver();
-
-	function rowVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
-		return {
-			count: props.store.rowCount(),
-			getScrollElement: () => viewportRef ?? null,
-			estimateSize: (index) => untrack(rowMetrics).getRowHeight(visualRow(index)),
-			observeElementRect,
-			observeElementOffset: observeViewportOffset,
-			scrollToFn: elementScroll,
-			overscan: 3,
-			onChange: (instance) => {
-				setVirtualRows((previous) => snapshotVirtualItems(instance, previous));
-			},
-		};
+	let rowViewportHeight = 0;
+	let stopRowOffsetObservation: (() => void) | undefined;
+	function updateRowWindow(scrollTop: number): void {
+		const metrics = untrack(rowMetrics);
+		const count = untrack(() => props.store.rowCount());
+		setVirtualRows((previous) =>
+			getRowWindow(metrics, count, scrollTop, rowViewportHeight, previous),
+		);
 	}
 
 	function columnVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
@@ -440,22 +435,13 @@ export default function Grid(props: GridProps) {
 	}
 
 	// Observation belongs to the Grid owner and ends only when it is disposed.
-	const rowVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(
-		untrack(rowVirtualizerOptions),
-	);
 	const columnVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(
 		untrack(columnVirtualizerOptions),
 	);
-	const disposeRowVirtualizer = rowVirtualizer._didMount();
 	const disposeColumnVirtualizer = columnVirtualizer._didMount();
 	let viewportObserver: ResizeObserver | null = null;
 	let virtualizerAttachTimer: ReturnType<typeof setTimeout> | undefined;
 
-	createEffect(rowVirtualizerOptions, (options) => {
-		rowVirtualizer.setOptions(options);
-		rowVirtualizer._willUpdate();
-		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
-	});
 	createEffect(columnVirtualizerOptions, (options) => {
 		columnVirtualizer.setOptions(options);
 		columnVirtualizer._willUpdate();
@@ -480,11 +466,21 @@ export default function Grid(props: GridProps) {
 
 	function attachAndSnapshotVirtualizers(): void {
 		if (!viewportRef) return;
-		attachVirtualizer(rowVirtualizer, viewportRef);
+		rowViewportHeight = Math.round(viewportRef.getBoundingClientRect().height);
+		if (!stopRowOffsetObservation) {
+			stopRowOffsetObservation = observeViewportOffset(
+				{
+					scrollElement: viewportRef,
+					targetWindow: viewportRef.ownerDocument.defaultView,
+					options: { horizontal: false },
+				},
+				(offset) => updateRowWindow(offset),
+			);
+		}
 		attachVirtualizer(columnVirtualizer, viewportRef);
 		// Viewport observers update the visible range without invalidating item sizes.
 		// Row metrics and column width effects below own size-cache invalidation.
-		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
+		updateRowWindow(viewportRef.scrollTop);
 		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	}
 
@@ -507,12 +503,12 @@ export default function Grid(props: GridProps) {
 			clearTimeout(virtualizerAttachTimer);
 		}
 		viewportObserver?.disconnect();
-		disposeRowVirtualizer();
+		stopRowOffsetObservation?.();
 		disposeColumnVirtualizer();
 	});
 
 	createEffect(rowMetrics, () => {
-		rowVirtualizer.measure();
+		if (viewportRef) updateRowWindow(viewportRef.scrollTop);
 	});
 	createEffect(columnWidths, () => {
 		columnVirtualizer.measure();
