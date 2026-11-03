@@ -360,6 +360,10 @@
 	text-overflow: ellipsis;
 }
 
+.se-cell--text > .se-cell__text {
+	display: contents;
+}
+
 .se-cell--active-row {
 	background: var(--ps-active-row-background);
 }
