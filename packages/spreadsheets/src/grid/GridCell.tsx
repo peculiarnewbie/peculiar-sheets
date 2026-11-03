@@ -1,4 +1,3 @@
-import { createMemo } from "solid-js";
 import {
 	type ColumnIndex,
 	columnIdx,
@@ -19,7 +18,14 @@ import type {
 } from "../types";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
+export interface GridCellRow {
+	readonly item: { index: number; start: number; size: number };
+	readonly className: string;
+	readonly displayValues: readonly CellValue[] | undefined;
+}
+
 export interface GridCellContext {
+	virtualColumns: Array<{ index: number; start: number; size: number; column: ColumnDef }>;
 	rowGutterWidth: number;
 	getCellId: (address: VisualCellAddress) => string;
 	getDisplayValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
@@ -37,11 +43,10 @@ export interface GridCellContext {
 }
 
 interface GridCellProps {
-	virtualRow: { index: number; start: number; size: number };
-	virtualColumn: { index: number; start: number; size: number; column: ColumnDef };
+	row: GridCellRow;
+	columnIndex: number;
 	/** Shared reactive props: cells subscribe where a value is used. */
 	grid: GridCellContext;
-	rowClass: string;
 }
 
 function resolveTitle(title: string | undefined, formattedText: string): string | undefined {
@@ -50,84 +55,135 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
 	return title;
 }
 
-export default function GridCell(props: GridCellProps) {
-	trackGridLifecycle("cell");
-	const customization = useSheetCustomization();
-	const row = () => visualRow(props.virtualRow.index);
-	const col = () => columnIdx(props.virtualColumn.index);
-	const column = () => props.virtualColumn.column;
-	const address = (): VisualCellAddress => ({ row: row(), col: col() });
-	const rawValue = () => props.grid.getRawValue(row(), col());
-	const formattedText = () => {
-		const value = props.grid.getDisplayValue(row(), col());
-		const format = column().formatValue;
-		return format ? format(value, { row: row(), col: col() }) : defaultFormatCellValue(value);
-	};
-	const readOnly = () => (props.grid.readOnly ?? false) || column().editable === false;
-	const isEditing = () =>
-		props.grid.editingAddress?.row === row() && props.grid.editingAddress?.col === col();
-	const isSelected = () => selectionContains(props.grid.selection, address());
-	const isCurrentMatch = () => {
-		const current = props.grid.searchCurrentAddress;
-		return current !== null && toNumber(current.row) === toNumber(row()) && current.col === col();
-	};
-	const pinnedLeft = () => props.grid.pinnedLeftOffsets[props.virtualColumn.index] ?? -1;
-	const isPinned = () => pinnedLeft() >= 0;
-	const renderer = createMemo(() => column().renderCell);
-	function renderContent() {
-		const render = renderer();
-		if (!render) return <span class="se-cell__text">{formattedText()}</span>;
+/** Shared getters avoid allocating a separate closure for each derived cell field.
+ * Reading them in JSX still subscribes Solid to the underlying reactive props. */
+class CellView {
+	constructor(
+		readonly props: GridCellProps,
+		readonly customization: ReturnType<typeof useSheetCustomization>,
+	) {}
+	get virtualColumn() {
+		const column = this.props.grid.virtualColumns[this.props.columnIndex];
+		if (!column)
+			throw new Error(`Virtual column ${this.props.columnIndex} is outside the rendered range`);
+		return column;
+	}
+	get row() {
+		return visualRow(this.props.row.item.index);
+	}
+	get col() {
+		return columnIdx(this.virtualColumn.index);
+	}
+	get column() {
+		return this.virtualColumn.column;
+	}
+	get address(): VisualCellAddress {
+		return { row: this.row, col: this.col };
+	}
+	get rawValue() {
+		return this.props.grid.getRawValue(this.row, this.col);
+	}
+	get formattedText() {
+		const projected = this.props.row.displayValues;
+		const value = projected
+			? (projected[this.props.columnIndex] ?? null)
+			: this.props.grid.getDisplayValue(this.row, this.col);
+		const format = this.column.formatValue;
+		return format ? format(value, { row: this.row, col: this.col }) : defaultFormatCellValue(value);
+	}
+	get readOnly() {
+		return (this.props.grid.readOnly ?? false) || this.column.editable === false;
+	}
+	get isEditing() {
+		return (
+			this.props.grid.editingAddress?.row === this.row &&
+			this.props.grid.editingAddress?.col === this.col
+		);
+	}
+	get isSelected() {
+		return selectionContains(this.props.grid.selection, this.address);
+	}
+	get isCurrentMatch() {
+		const current = this.props.grid.searchCurrentAddress;
+		return (
+			current !== null && toNumber(current.row) === toNumber(this.row) && current.col === this.col
+		);
+	}
+	get pinnedLeft() {
+		return this.props.grid.pinnedLeftOffsets[this.virtualColumn.index] ?? -1;
+	}
+	get isPinned() {
+		return this.pinnedLeft >= 0;
+	}
+	renderContent() {
+		const render = this.column.renderCell;
+		if (!render) return <span class="se-cell__text" textContent={this.formattedText} />;
 		return render({
-			value: rawValue(),
-			formattedText: formattedText(),
-			row: row(),
-			col: col(),
-			readOnly: readOnly(),
-			isEditing: isEditing(),
+			value: this.rawValue,
+			formattedText: this.formattedText,
+			row: this.row,
+			col: this.col,
+			readOnly: this.readOnly,
+			isEditing: this.isEditing,
 		} satisfies CellRenderContext);
 	}
+}
 
+function cellMouseDown(view: CellView, event: MouseEvent) {
+	view.props.grid.onCellMouseDown(view.address, event);
+}
+function cellMouseEnter(view: CellView, event: MouseEvent) {
+	view.props.grid.onCellMouseEnter?.(view.address, event);
+}
+function cellDoubleClick(view: CellView) {
+	view.props.grid.onCellDblClick(view.address);
+}
+
+export default function GridCell(props: GridCellProps) {
+	trackGridLifecycle("cell");
+	const view = new CellView(props, useSheetCustomization());
 	return (
 		<div
-			id={props.grid.getCellId(address())}
+			id={props.grid.getCellId(view.address)}
 			class={[
 				"se-cell",
-				props.rowClass,
-				customization?.getCellClass?.(row(), col()),
+				props.row.className,
+				view.customization?.getCellClass?.(view.row, view.col),
 				{
-					"se-cell--pinned": isPinned(),
-					"se-cell--pinned-last": props.virtualColumn.index === props.grid.lastPinnedIndex,
-					"se-cell--search-match": props.grid.searchMatchSet.has(`${row()},${col()}`),
-					"se-cell--search-current": isCurrentMatch(),
-					"se-cell--active-row": props.grid.selection.focus.row === row(),
-					"se-cell--range": isSelected(),
+					"se-cell--pinned": view.isPinned,
+					"se-cell--pinned-last": view.virtualColumn.index === props.grid.lastPinnedIndex,
+					"se-cell--search-match": props.grid.searchMatchSet.has(`${view.row},${view.col}`),
+					"se-cell--search-current": view.isCurrentMatch,
+					"se-cell--active-row": props.grid.selection.focus.row === view.row,
+					"se-cell--range": view.isSelected,
 					"se-cell--focus":
-						props.grid.selection.focus.row === row() && props.grid.selection.focus.col === col(),
-					"se-cell--editing": isEditing(),
+						props.grid.selection.focus.row === view.row &&
+						props.grid.selection.focus.col === view.col,
+					"se-cell--editing": view.isEditing,
 				},
 			]}
 			role="gridcell"
-			aria-colindex={col() + 1}
-			aria-selected={isSelected() ? "true" : "false"}
-			aria-readonly={readOnly() ? "true" : "false"}
+			aria-colindex={view.col + 1}
+			aria-selected={view.isSelected ? "true" : "false"}
+			aria-readonly={view.readOnly ? "true" : "false"}
 			title={resolveTitle(
-				column().getCellTitle?.(rawValue(), { row: row(), col: col() }),
-				formattedText(),
+				view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+				view.formattedText,
 			)}
 			style={{
 				// Host styles cannot override virtualized layout.
-				...(customization?.getCellStyle?.(row(), col()) ?? {}),
-				width: `${props.virtualColumn.size}px`,
-				height: `${props.virtualRow.size}px`,
-				"min-width": `${props.virtualColumn.size}px`,
-				position: isPinned() ? undefined : "absolute",
-				left: `${isPinned() ? pinnedLeft() : props.grid.rowGutterWidth + props.virtualColumn.start}px`,
+				...(view.customization?.getCellStyle?.(view.row, view.col) ?? {}),
+				width: `${view.virtualColumn.size}px`,
+				height: `${props.row.item.size}px`,
+				"min-width": `${view.virtualColumn.size}px`,
+				position: view.isPinned ? undefined : "absolute",
+				left: `${view.isPinned ? view.pinnedLeft : props.grid.rowGutterWidth + view.virtualColumn.start}px`,
 			}}
-			onMouseDown={(event) => props.grid.onCellMouseDown(address(), event)}
-			onMouseEnter={(event) => props.grid.onCellMouseEnter?.(address(), event)}
-			onDblClick={() => props.grid.onCellDblClick(address())}
+			onMouseDown={[cellMouseDown, view]}
+			onMouseEnter={[cellMouseEnter, view]}
+			onDblClick={[cellDoubleClick, view]}
 		>
-			{renderContent()}
+			{view.renderContent()}
 		</div>
 	);
 }

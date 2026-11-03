@@ -1,14 +1,18 @@
 import type { CellMutation, CellValue, ColumnDef } from "../types";
-import { type ColumnIndex, type PhysicalRowIndex, type RowId, type VisualRowIndex, physicalRow, toNumber } from "./brands";
+import {
+	type ColumnIndex,
+	type PhysicalRowIndex,
+	physicalRow,
+	type RowId,
+	toNumber,
+	type VisualRowIndex,
+} from "./brands";
 import { iterateRange, normalizeRange } from "./selection";
 import type { SheetStore } from "./state";
 
 // ── Delete Selected Cells ────────────────────────────────────────────────────
 
-export function deleteSelectedCells(
-	store: SheetStore,
-	columns: ColumnDef[],
-): CellMutation[] {
+export function deleteSelectedCells(store: SheetStore, columns: ColumnDef[]): CellMutation[] {
 	const sel = store.selection();
 	const mutations: CellMutation[] = [];
 
@@ -45,13 +49,18 @@ export function applyMutations(
 
 	const selectionBefore = store.selection();
 
-	store.setCells(
-		mutations.map((m) => ({
-			row: m.address.row,
-			col: m.address.col,
-			value: m.newValue,
-		})),
-	);
+	const first = mutations[0];
+	if (mutations.length === 1 && first) {
+		store.setCell(first.address.row, first.address.col, first.newValue);
+	} else {
+		store.setCells(
+			mutations.map((m) => ({
+				row: m.address.row,
+				col: m.address.col,
+				value: m.newValue,
+			})),
+		);
+	}
 
 	if (recordHistory) {
 		store.pushMutations(mutations, selectionBefore, store.selection());

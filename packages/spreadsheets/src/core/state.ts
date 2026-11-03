@@ -1,4 +1,9 @@
 import { createEffect, untrack } from "solid-js";
+import {
+	isFormulaValue,
+	shiftFormulaReferencesForRowDelete,
+	shiftFormulaReferencesForRowInsert,
+} from "../formula/references";
 import { createCommandSignal } from "../internal/commandSignal";
 import type {
 	CellMutation,
@@ -9,45 +14,40 @@ import type {
 	Selection,
 } from "../types";
 import {
-	type PhysicalRowIndex,
-	type RowId,
 	autoRowId,
 	columnIdx,
+	type PhysicalRowIndex,
 	physicalRow,
+	type RowId,
 	rowId,
 	toNumber,
 	visualRow,
 } from "./brands";
+import {
+	createHistory,
+	type HistoryStack,
+	canRedo as histCanRedo,
+	canUndo as histCanUndo,
+	redo as histRedo,
+	undo as histUndo,
+	pushColumnResizeHistory,
+	pushMutationHistory,
+	pushRowOperationHistory,
+	pushRowReorderHistory,
+	pushRowResizeHistory,
+	type RowOperation,
+	type UndoRedoRowChange,
+	type UndoResult,
+} from "./history";
+import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
 import {
 	allocateProvisionalRowIds,
 	isProvisionalRowId,
 	rowIdsEqual,
 	validateRowIds,
 } from "./row-identity";
-import { emptySelection, selectCell } from "./selection";
 import { createRowRevisions } from "./rowRevisions";
-import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
-import {
-	isFormulaValue,
-	shiftFormulaReferencesForRowInsert,
-	shiftFormulaReferencesForRowDelete,
-} from "../formula/references";
-import {
-	type HistoryStack,
-	type RowOperation,
-	type UndoRedoRowChange,
-	type UndoResult,
-	canRedo as histCanRedo,
-	canUndo as histCanUndo,
-	createHistory,
-	pushColumnResizeHistory,
-	pushMutationHistory,
-	pushRowOperationHistory,
-	pushRowReorderHistory,
-	pushRowResizeHistory,
-	redo as histRedo,
-	undo as histUndo,
-} from "./history";
+import { emptySelection, selectCell } from "./selection";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -735,7 +735,11 @@ export function createSheetStore(
 				}
 				draftRow[col] = value;
 			});
-			bumpRowRevisionsForPhysicalRows([toNumber(row)]);
+			const id = rowIds()[row];
+			if (id !== undefined) {
+				rowRevisions.bumpOne(id);
+				bumpDataRevision();
+			}
 		},
 
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {

@@ -1,3 +1,11 @@
+import type { JSX } from "@solidjs/web";
+import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
+import {
+	elementScroll,
+	observeElementOffset,
+	observeElementRect,
+	Virtualizer,
+} from "@tanstack/virtual-core";
 import {
 	createEffect,
 	createMemo,
@@ -9,14 +17,53 @@ import {
 	Show,
 	untrack,
 } from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { computeFillPreview, getAutoFillSourceRange, resolveAutoFillMode } from "../core/autofill";
 import {
-	Virtualizer,
-	elementScroll,
-	observeElementOffset,
-	observeElementRect,
-} from "@tanstack/virtual-core";
-import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
+	type ColumnIndex,
+	columnIdx,
+	type PhysicalRowIndex,
+	physicalRow,
+	type RowId,
+	rowId,
+	toNumber,
+	type VisualRowIndex,
+	visualRow,
+} from "../core/brands";
+import { parseTSV } from "../core/clipboard";
+import { applyMutations } from "../core/commands";
+import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
+import { createActiveSearchScanSource, createMatchSet, findMatchesChunked } from "../core/search";
+import {
+	emptySelection,
+	extendSelection,
+	moveSelection,
+	normalizeRange,
+	primaryRange,
+	selectAll,
+	selectCell,
+	selectionContains,
+} from "../core/selection";
+import {
+	clampColumnWidth,
+	getColumnWidth,
+	getEffectiveColumnWidth,
+	mapToRecord,
+	recordToMap,
+} from "../core/sizing";
+import type { SheetStore } from "../core/state";
+import { useSheetCustomization } from "../customization";
+import type { FormulaBridge } from "../formula/bridge";
+import {
+	addressToA1,
+	isFormulaText,
+	isFormulaValue,
+	rangeToA1,
+	shiftFormulaByDelta,
+} from "../formula/references";
+import { createCommandSignal } from "../internal/commandSignal";
+import { ClipboardAccessError } from "../internal/errors";
+import { isApplied, type OperationOutcome, Result, type ResultLike } from "../internal/result";
+import { errorTraceContext, withTraceContext } from "../internal/trace";
 import type {
 	CellMutation,
 	CellRange,
@@ -36,69 +83,22 @@ import type {
 	VisualCellAddress,
 } from "../types";
 import { DEFAULT_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
-import { useSheetCustomization } from "../customization";
-import type { SheetStore } from "../core/state";
-import {
-	clampColumnWidth,
-	getColumnWidth,
-	getEffectiveColumnWidth,
-	mapToRecord,
-	recordToMap,
-} from "../core/sizing";
-import {
-	emptySelection,
-	extendSelection,
-	moveSelection,
-	normalizeRange,
-	primaryRange,
-	selectAll,
-	selectCell,
-	selectionContains,
-} from "../core/selection";
-import { computeFillPreview, getAutoFillSourceRange, resolveAutoFillMode } from "../core/autofill";
-import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
-import { parseTSV } from "../core/clipboard";
-import { ClipboardAccessError } from "../internal/errors";
-import { createCommandSignal } from "../internal/commandSignal";
-import { errorTraceContext, withTraceContext } from "../internal/trace";
-import { applyMutations } from "../core/commands";
-import type { FormulaBridge } from "../formula/bridge";
-import {
-	addressToA1,
-	isFormulaText,
-	isFormulaValue,
-	rangeToA1,
-	shiftFormulaByDelta,
-} from "../formula/references";
-import { Result, isApplied, type OperationOutcome, type ResultLike } from "../internal/result";
+import { getWorkbookCoordinatorInternals } from "../workbook/coordinator";
+import type { WorkbookSheetBinding } from "../workbook/types";
+import CellEditor from "./CellEditor";
+import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
+import FormulaBar from "./FormulaBar";
+import GridBody from "./GridBody";
+import GridHeader from "./GridHeader";
 import {
 	coordinateBatchMutations,
 	coordinateHistoryCommand,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
-import { getWorkbookCoordinatorInternals } from "../workbook/coordinator";
-import GridHeader from "./GridHeader";
-import GridBody from "./GridBody";
-import CellEditor from "./CellEditor";
-import FormulaBar from "./FormulaBar";
-import SelectionOverlay from "./SelectionOverlay";
-import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
-import SearchBar from "./SearchBar";
-import { createActiveSearchScanSource, createMatchSet, findMatchesChunked } from "../core/search";
 import { buildRowMetrics } from "./rowMetrics";
+import SearchBar from "./SearchBar";
+import SelectionOverlay from "./SelectionOverlay";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
-import type { WorkbookSheetBinding } from "../workbook/types";
-import {
-	type ColumnIndex,
-	type PhysicalRowIndex,
-	type RowId,
-	type VisualRowIndex,
-	columnIdx,
-	physicalRow,
-	rowId,
-	toNumber,
-	visualRow,
-} from "../core/brands";
 
 const ROW_GUTTER_WIDTH = 48;
 
@@ -998,7 +998,9 @@ export default function Grid(props: GridProps) {
 	let previousRenderedRowOrder: readonly RowId[] | null = null;
 
 	createEffect(
-		() => [...(visualRowIds() ?? props.store.rowIds())],
+		// Row-order signal values are replaced on structural changes. Retain the
+		// previous value instead of copying every row ID for this observer.
+		() => visualRowIds() ?? props.store.rowIds(),
 		(nextRenderedOrder) => {
 			if (
 				previousRenderedRowOrder &&
@@ -2783,6 +2785,7 @@ export default function Grid(props: GridProps) {
 			>
 				<GridHeader
 					columns={props.columns}
+					virtualColumns={virtualColumns()}
 					columnWidths={committedColumnWidths()}
 					totalWidth={totalWidth()}
 					sortState={currentSortState()}

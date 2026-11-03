@@ -1,9 +1,9 @@
-import { createMemo, For, Show } from "solid-js";
-import { type RowId, type VisualRowIndex, visualRow } from "../core/brands";
+import { createMemo, createProjection, For, Repeat, Show } from "solid-js";
+import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/brands";
 import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
-import type { ColumnDef, RowClassContext } from "../types";
-import GridCell, { type GridCellContext } from "./GridCell";
+import type { CellValue, ColumnDef, RowClassContext } from "../types";
+import GridCell, { type GridCellContext, type GridCellRow } from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 import type { RowMetrics } from "./rowMetrics";
 
@@ -27,6 +27,7 @@ interface GridBodyProps extends GridCellContext {
 
 export default function GridBody(props: GridBodyProps) {
 	const customization = useSheetCustomization();
+	const hasFormatters = createMemo(() => props.columns.some((column) => column.formatValue));
 
 	return (
 		<div
@@ -54,17 +55,41 @@ export default function GridBody(props: GridBodyProps) {
 							return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
 						});
 					const containsActiveEditor = () => props.editingAddress?.row === vRow();
-					const rowClassContext = createMemo<RowClassContext>(() => ({
+					const rowClassContext = (): RowClassContext => ({
 						rowId: props.getRowId(vRow()),
 						visualRowIndex: rowIdx(),
 						dataRowIndex: rowHeaderIndex(),
 						containsFocus: containsFocus(),
 						intersectsSelection: intersectsSelection(),
 						containsActiveEditor: containsActiveEditor(),
-					}));
+					});
 					const customRowClass = createMemo(
 						() => customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
 					);
+					// Project custom formatter inputs so unchanged values do not repeat
+					// host work. The default text path avoids per-cell projection nodes.
+					const displayValues = createMemo(() => {
+						if (!hasFormatters()) return undefined;
+						return createProjection<CellValue[]>(
+							() =>
+								props.virtualColumns.map((column) =>
+									props.getDisplayValue(vRow(), columnIdx(column.index)),
+								),
+							[],
+							{ key: null, shallow: true },
+						);
+					});
+					const cellRow: GridCellRow = {
+						get displayValues() {
+							return displayValues();
+						},
+						get item() {
+							return virtualRow();
+						},
+						get className() {
+							return customRowClass();
+						},
+					};
 					const rowHeaderClass = () => customization?.getRowHeaderClass?.(rowHeaderIndex()) ?? "";
 					return (
 						<div
@@ -82,6 +107,7 @@ export default function GridBody(props: GridBodyProps) {
 								position: "absolute",
 								top: `${rowTop()}px`,
 								display: "flex",
+								width: "100%",
 								height: `${rowHeight()}px`,
 							}}
 						>
@@ -122,16 +148,9 @@ export default function GridBody(props: GridBodyProps) {
 									</Show>
 								</div>
 							</Show>
-							<For keyed={false} each={props.virtualColumns}>
-								{(virtualColumn) => (
-									<GridCell
-										virtualRow={virtualRow()}
-										virtualColumn={virtualColumn()}
-										grid={props}
-										rowClass={customRowClass()}
-									/>
-								)}
-							</For>
+							<Repeat count={props.virtualColumns.length}>
+								{(columnIndex) => <GridCell row={cellRow} columnIndex={columnIndex} grid={props} />}
+							</Repeat>
 						</div>
 					);
 				}}

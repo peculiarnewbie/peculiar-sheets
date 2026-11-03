@@ -1,27 +1,200 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, renderHook, fireEvent } from "@solidjs/testing-library";
+import { cleanup, fireEvent, render, renderHook } from "@solidjs/testing-library";
 import { createEffect, createMemo, createRoot, createSignal, flush, Loading } from "solid-js";
-import { Sheet } from "../../packages/spreadsheets/src/Sheet";
-import { createSheetStore } from "../../packages/spreadsheets/src/core/state";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-	rowId,
-	physicalRow,
-	visualRow,
 	columnIdx,
+	physicalRow,
+	rowId,
+	visualRow,
 } from "../../packages/spreadsheets/src/core/brands";
+import { selectCell } from "../../packages/spreadsheets/src/core/selection";
+import { createSheetStore } from "../../packages/spreadsheets/src/core/state";
+import { SheetCustomizationContext } from "../../packages/spreadsheets/src/customization";
+import GridBody from "../../packages/spreadsheets/src/grid/GridBody";
+import GridCell, { type GridCellContext } from "../../packages/spreadsheets/src/grid/GridCell";
+import GridHeader from "../../packages/spreadsheets/src/grid/GridHeader";
+import { buildRowMetrics } from "../../packages/spreadsheets/src/grid/rowMetrics";
+import { Sheet } from "../../packages/spreadsheets/src/Sheet";
 import type {
-	CellValue,
 	CellStyle,
+	CellValue,
 	ColumnDef,
 	SheetController,
+	VisualCellAddress,
 } from "../../packages/spreadsheets/src/types";
-import GridCell, { type GridCellContext } from "../../packages/spreadsheets/src/grid/GridCell";
-import { SheetCustomizationContext } from "../../packages/spreadsheets/src/customization";
-import { selectCell } from "../../packages/spreadsheets/src/core/selection";
 
 afterEach(cleanup);
 
 describe("Solid 2 Sheet", () => {
+	it("keeps virtual headers aligned with global indices, pinned columns, sorting, and resizing", () => {
+		const columns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
+			id: `col${index}`,
+			header: `Column ${index}`,
+			...(index === 100 || index === 101 ? { groupId: "far", group: "Far columns" } : {}),
+		}));
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1]));
+		let clicked = -1;
+		let resized = "";
+		const view = render(() => (
+			<GridHeader
+				columns={columns}
+				virtualColumns={virtualColumns()}
+				columnWidths={new Map(columns.map((column) => [column.id, 100]))}
+				totalWidth={20040}
+				sortState={{ columnId: "col100", direction: "desc" }}
+				showReferenceHeaders={true}
+				rowGutterWidth={40}
+				pinnedLeftOffsets={[40]}
+				lastPinnedIndex={0}
+				activeResizeColumnId="col100"
+				onColumnHeaderMouseDown={(index) => {
+					clicked = index;
+				}}
+				onColumnResizeStart={(id) => {
+					resized = id;
+				}}
+			/>
+		));
+		flush();
+		expect(view.container.querySelectorAll(".se-header-cell")).toHaveLength(2);
+		setVirtualColumns(range([0, 100, 101]));
+		flush();
+		expect(view.container.querySelectorAll(".se-header-cell")).toHaveLength(3);
+		expect(view.container.querySelectorAll(".se-header-ref-cell")).toHaveLength(3);
+		const header = view.container.querySelector<HTMLElement>(
+			'.se-header-cell[data-col-index="100"]',
+		);
+		const pinned = view.container.querySelector<HTMLElement>('.se-header-cell[data-col-index="0"]');
+		const reference = view.container.querySelector<HTMLElement>(
+			'.se-header-ref-cell[data-col-index="100"]',
+		);
+		if (!header || !pinned || !reference) throw new Error("Virtual header missing");
+		expect(header.textContent).toContain("Column 100");
+		expect(header.getAttribute("aria-colindex")).toBe("101");
+		expect(header.getAttribute("aria-sort")).toBe("descending");
+		expect(header.classList.contains("se-header-cell--resizing")).toBe(true);
+		expect(header.style.left).toBe("10040px");
+		expect(reference.textContent).toBe("CW");
+		expect(reference.style.left).toBe(header.style.left);
+		expect(pinned.classList.contains("se-header-cell--pinned")).toBe(true);
+		expect(pinned.style.left).toBe("40px");
+		expect(view.getByText("Far columns")).toBeTruthy();
+		fireEvent.mouseDown(header);
+		expect(clicked).toBe(100);
+		const handle = header.querySelector(".se-resize-handle");
+		if (!handle) throw new Error("Resize handle missing");
+		fireEvent.mouseDown(handle);
+		expect(resized).toBe("col100");
+		setVirtualColumns(
+			virtualColumns().map((item) => (item.index === 100 ? { ...item, size: 130 } : item)),
+		);
+		flush();
+		expect(header.style.width).toBe("130px");
+		expect(reference.style.width).toBe("130px");
+	});
+	it("keeps recycled column slots current when the virtual range moves, shrinks, and grows", () => {
+		const formats = new Map<number, number>();
+		const formattedColumns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
+			id: `col${index}`,
+			header: `Column ${index}`,
+			formatValue: (value) => {
+				formats.set(index, (formats.get(index) ?? 0) + 1);
+				return String(value ?? "");
+			},
+		}));
+		const [columns, setColumns] = createSignal(formattedColumns);
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns()[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2]));
+		const [changed, setChanged] = createSignal(false);
+		let clicked: VisualCellAddress | null = null;
+		const view = render(() => (
+			<GridBody
+				columns={columns()}
+				rowMetrics={buildRowMetrics(20, 28)}
+				virtualRows={[
+					{ index: 10, start: 280, size: 28 },
+					{ index: 11, start: 308, size: 28 },
+				]}
+				virtualColumns={virtualColumns()}
+				totalHeight={560}
+				rowGutterWidth={0}
+				showReferenceHeaders={false}
+				getRowHeaderIndex={(row) => row}
+				getRowId={(row) => rowId(`row-${row}`)}
+				getCellId={(address) => `cell-${address.row}-${address.col}`}
+				getRawValue={(row, col) => `R${row}C${col}`}
+				getDisplayValue={(row, col) => {
+					const modified = changed();
+					return modified && row === 10 && col === 100 ? "changed" : `R${row}C${col}`;
+				}}
+				editingAddress={null}
+				selection={selectCell({ row: visualRow(10), col: columnIdx(0) })}
+				onCellMouseDown={(address) => {
+					clicked = address;
+				}}
+				onCellDblClick={() => {}}
+				pinnedLeftOffsets={[0]}
+				lastPinnedIndex={0}
+				searchMatchSet={new Set()}
+				searchCurrentAddress={null}
+			/>
+		));
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(6);
+		setVirtualColumns(range([100, 101]));
+		flush();
+		expect(view.getAllByRole("gridcell").map((cell) => cell.textContent)).toEqual([
+			"R10C100",
+			"R10C101",
+			"R11C100",
+			"R11C101",
+		]);
+		const cell = view.container.querySelector<HTMLElement>("#cell-10-100");
+		if (!cell) throw new Error("Recycled cell missing");
+		fireEvent.mouseDown(cell);
+		expect(clicked).toEqual({ row: 10, col: 100 });
+		formats.clear();
+		setChanged(true);
+		flush();
+		expect(cell.textContent).toBe("changed");
+		expect(formats.get(100)).toBeGreaterThan(0);
+		expect(formats.get(101) ?? 0).toBe(0);
+		setColumns(formattedColumns.map(({ id, header }) => ({ id, header })));
+		flush();
+		setVirtualColumns(range([100, 101]));
+		setChanged(false);
+		flush();
+		expect(cell.textContent).toBe("R10C100");
+		formats.clear();
+		setColumns(formattedColumns);
+		flush();
+		setVirtualColumns(range([100, 101]));
+		setChanged(true);
+		flush();
+		expect(cell.textContent).toBe("changed");
+		expect(formats.get(100)).toBeGreaterThan(0);
+		setVirtualColumns(range([]));
+		flush();
+		expect(view.queryAllByRole("gridcell")).toHaveLength(0);
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(8);
+		expect(view.container.querySelector("#cell-10-0")?.classList.contains("se-cell--pinned")).toBe(
+			true,
+		);
+		expect(view.container.querySelector("#cell-11-197")?.textContent).toBe("R11C197");
+	});
 	it("composes row commands immediately and batches their render notifications", () => {
 		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];
 		const { result: store } = renderHook(() => {
@@ -221,6 +394,9 @@ describe("Solid 2 Sheet", () => {
 		const [style, setStyle] = createSignal<CellStyle>({});
 		const [value, setValue] = createSignal("first");
 		const grid: GridCellContext = {
+			get virtualColumns() {
+				return [{ index: 0, start: 0, size: 100, column: column() }];
+			},
 			rowGutterWidth: 0,
 			getCellId: () => "cell",
 			getRawValue: () => value(),
@@ -239,10 +415,15 @@ describe("Solid 2 Sheet", () => {
 				value={{ getCellClass: () => customClass(), getCellStyle: () => style() }}
 			>
 				<GridCell
-					virtualRow={{ index: 0, start: 0, size: 28 }}
-					virtualColumn={{ index: 0, start: 0, size: 100, column: column() }}
+					row={{
+						item: { index: 0, start: 0, size: 28 },
+						className: "",
+						get displayValues() {
+							return [value()];
+						},
+					}}
+					columnIndex={0}
 					grid={grid}
-					rowClass=""
 				/>
 			</SheetCustomizationContext>
 		));

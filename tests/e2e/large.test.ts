@@ -1,17 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import type { Stagehand } from "@browserbasehq/stagehand";
 import {
 	closePage,
+	doubleClickCell,
+	getCellValue,
+	getPage,
 	getStagehand,
 	logMemory,
 	navigateTo,
 	newPage,
-	getCellValue,
-	doubleClickCell,
 	typeIntoCell,
-	getPage,
 	withSheetCtrlMaybe,
 } from "./setup";
-import type { Stagehand } from "@browserbasehq/stagehand";
 
 function getPerfBudget(envName: string, fallbackMs: number): number {
 	const raw = process.env[envName];
@@ -35,17 +35,17 @@ async function waitForRowInDom(row: number, timeoutMs = 2_000): Promise<void> {
 	const selector = `[role="row"][aria-rowindex="${row + 1}"]`;
 	const start = performance.now();
 	while (performance.now() - start < timeoutMs) {
-		const inDom = await page.evaluate(
-			(sel: string) => !!document.querySelector(sel),
-			selector,
-		);
+		const inDom = await page.evaluate((sel: string) => !!document.querySelector(sel), selector);
 		if (inDom) return;
 		await page.waitForTimeout(25);
 	}
 	throw new Error(`Row ${row + 1} did not appear within ${timeoutMs}ms`);
 }
 
-async function measure<T>(label: string, fn: () => Promise<T>): Promise<{ result: T; elapsedMs: number }> {
+async function measure<T>(
+	label: string,
+	fn: () => Promise<T>,
+): Promise<{ result: T; elapsedMs: number }> {
 	const start = performance.now();
 	const result = await fn();
 	const elapsedMs = performance.now() - start;
@@ -82,14 +82,10 @@ describe("large dataset", () => {
 		const rowVisible = await measure("row 501 in DOM", () => waitForRowInDom(500));
 		expect(rowVisible.elapsedMs).toBeLessThan(PERF_BUDGETS.scrollVisibleMs);
 
-		const enterEdit = await measure("doubleClickCell(500,0)", () =>
-			doubleClickCell(sh, 500, 0),
-		);
+		const enterEdit = await measure("doubleClickCell(500,0)", () => doubleClickCell(sh, 500, 0));
 		expect(enterEdit.elapsedMs).toBeLessThan(PERF_BUDGETS.enterEditMs);
 
-		const commitEdit = await measure("typeIntoCell", () =>
-			typeIntoCell(sh, "hello-500"),
-		);
+		const commitEdit = await measure("typeIntoCell", () => typeIntoCell(sh, "hello-500"));
 		expect(commitEdit.elapsedMs).toBeLessThan(PERF_BUDGETS.commitEditMs);
 
 		const valueRead = await measure("getCellValue", () => getCellValue(sh, 500, 0));
@@ -108,5 +104,29 @@ describe("large dataset", () => {
 		// Row 0, Col 0 should be 0 * 20 + 0 = 0
 		const value = await getCellValue(sh, 0, 0);
 		expect(value).toBe(0);
+	});
+
+	it("keeps virtual column headers aligned with cells after horizontal scrolling", async () => {
+		await withSheetCtrlMaybe((ctrl) => ctrl?.scrollToCell(0, 19));
+		await getPage().waitForTimeout(200);
+		const layout = await getPage().evaluate(() => {
+			const header = document.querySelector<HTMLElement>('.se-header-cell[data-col-index="19"]');
+			const cell = document.querySelector<HTMLElement>(
+				'.se-row[aria-rowindex="1"] .se-cell[aria-colindex="20"]',
+			);
+			if (!header || !cell) throw new Error("Last column did not render");
+			return {
+				headerCount: document.querySelectorAll(".se-header-cell").length,
+				headerLeft: header.getBoundingClientRect().left,
+				cellLeft: cell.getBoundingClientRect().left,
+				headerWidth: header.getBoundingClientRect().width,
+				cellWidth: cell.getBoundingClientRect().width,
+				text: header.textContent,
+			};
+		});
+		expect(layout.headerCount).toBeLessThan(20);
+		expect(Math.abs(layout.headerLeft - layout.cellLeft)).toBeLessThan(1);
+		expect(layout.headerWidth).toBe(layout.cellWidth);
+		expect(layout.text).toContain("Col 19");
 	});
 });

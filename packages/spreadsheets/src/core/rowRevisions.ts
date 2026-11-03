@@ -20,12 +20,14 @@ export function createRowRevisions() {
 		return signal[0]();
 	}
 
+	function bumpOne(id: RowId): void {
+		const next = (values.get(id) ?? 0) + 1;
+		values.set(id, next);
+		observed.get(id)?.[1](next);
+	}
+
 	function bump(ids: ReadonlySet<RowId>): void {
-		for (const id of ids) {
-			const next = (values.get(id) ?? 0) + 1;
-			values.set(id, next);
-			observed.get(id)?.[1](next);
-		}
+		for (const id of ids) bumpOne(id);
 	}
 
 	function forget(ids: Iterable<RowId>): void {
@@ -42,5 +44,5 @@ export function createRowRevisions() {
 		}
 	}
 
-	return { read, bump, forget, retain };
+	return { read, bumpOne, bump, forget, retain };
 }
