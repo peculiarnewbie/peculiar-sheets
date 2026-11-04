@@ -4,6 +4,7 @@ import type {
 	ScenarioName,
 } from "../apps/benchmarks/src/types";
 import type { ReportSnapshot } from "./report";
+import { describeSampling, validateSampling } from "./sampling";
 
 type Status = "best" | "near" | "behind";
 interface Category {
@@ -136,6 +137,7 @@ const CATEGORIES: readonly Category[] = [
 ];
 
 export function summarizeOverview(snapshot: ReportSnapshot) {
+	validateSampling(snapshot);
 	if (
 		snapshot.measurementProtocol === "api-completion-v2" &&
 		snapshot.results.some(
@@ -226,5 +228,10 @@ export function renderOverview(snapshot: ReportSnapshot): string {
 		.join("");
 	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spreadsheet benchmark overview</title><style>
 :root{font-family:var(--font-sans,system-ui,sans-serif);color:var(--foreground,CanvasText);color-scheme:light dark}*{box-sizing:border-box}body{margin:0}.takeaway{font-size:16px;line-height:1.5;margin:0 0 14px;font-weight:550}.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted-foreground,GrayText);margin:0 0 12px}.legend span{display:inline-flex;align-items:center;gap:6px}.legend i{width:10px;height:10px;display:inline-block;border-radius:2px}.best{background:var(--chart-1,Highlight)}.near{background:var(--chart-2,LinkText)}.behind{background:var(--chart-3,GrayText)}details{border-top:1px solid var(--border,GrayText)}summary{display:grid;grid-template-columns:minmax(0,1fr) 92px 140px 12px;align-items:center;gap:7px 12px;padding:14px 0;cursor:pointer;list-style:none}summary::-webkit-details-marker{display:none}.name{font-size:14px;font-weight:600}.count{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.count b{font-size:17px}.strip{display:flex;height:12px;gap:3px}.strip i{display:block;flex:1;min-width:0;border-radius:2px}.note{grid-column:1/4;font-size:12px;line-height:1.5;color:var(--muted-foreground,GrayText)}.toggle{grid-column:4;grid-row:1/3;font-size:18px;color:var(--muted-foreground,GrayText);text-align:right}details[open] .toggle{font-size:0}details[open] .toggle:after{content:"−";font-size:18px}.expanded{padding:0 0 14px}.expanded p{font-size:11px;line-height:1.5;color:var(--muted-foreground,GrayText);margin:0 0 8px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{padding:7px 8px 7px 0;text-align:left;vertical-align:top;font-size:11px;font-weight:400;border-top:1px solid var(--border,GrayText)}thead th{color:var(--muted-foreground,GrayText)}th:first-child{width:45%}td{font-variant-numeric:tabular-nums}small{display:block;font-size:10px;color:var(--muted-foreground,GrayText);line-height:1.5}footer{border-top:1px solid var(--border,GrayText);padding-top:10px;font-size:11px;line-height:1.55;color:var(--muted-foreground,GrayText)}footer p{margin:0 0 7px}summary:focus-visible{outline:2px solid var(--ring,Highlight);outline-offset:3px;border-radius:var(--radius,4px)}@media(max-width:520px){summary{grid-template-columns:minmax(0,1fr) 78px 84px 10px;gap:6px;padding:13px 0}.name{font-size:12px}.count{font-size:10px}.count b{font-size:15px}.strip{height:10px;gap:2px}.note{font-size:11px}.takeaway{font-size:14px}}
-</style></head><body><p class="takeaway">${takeaway}</p><div class="legend"><span><i class="best"></i>Best</span><span><i class="near"></i>Within 20% of best</span><span><i class="behind"></i>More than 20% behind</span></div>${groups}<footer><p>Each block is one case. Tap a category for the numbers. One main measure per scenario; no overall score. “Within 20%” is a visual guide, not a statistical tie.</p><p>${snapshot.results.length} samples · median of ${snapshot.iterations} runs on this machine. ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision.</p></footer></body></html>`;
+</style></head><body><p class="takeaway">${takeaway}</p><div class="legend"><span><i class="best"></i>Best</span><span><i class="near"></i>Within 20% of best</span><span><i class="behind"></i>More than 20% behind</span></div>${groups}<footer><p>Each block is one case. Tap a category for the numbers. One main measure per scenario; no overall score. “Within 20%” is a visual guide, not a statistical tie.</p><p>${snapshot.results.length} samples · ${escape(
+		describeSampling(
+			snapshot,
+			snapshot.results.map((sample) => sample.scenario),
+		),
+	)} on this machine. ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision.</p></footer></body></html>`;
 }

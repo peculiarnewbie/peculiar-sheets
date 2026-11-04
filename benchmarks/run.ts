@@ -21,7 +21,15 @@ import type { PageLike } from "./browser-types";
 import { runBrowserWorkload } from "./browser-workloads";
 import { appendSampleCheckpoint } from "./checkpoint";
 import { writeBenchmarkReport } from "./report";
-import { sampleOrder } from "./sampling";
+import {
+	defaultScenarioIterations,
+	describeSampling,
+	iterationsForScenario,
+	type SamplingMetadata,
+	sameSamplingCounts,
+	sampleOrder,
+	validateSampling,
+} from "./sampling";
 
 const PORT = 4178;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -50,14 +58,13 @@ const BROWSER_ARGS = [
 ];
 const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-latest.json");
 
-interface BenchmarkSnapshot {
+interface BenchmarkSnapshot extends SamplingMetadata {
 	measurementProtocol?: string;
 	cpuAffinity?: string;
 	startedAt?: string;
 	elapsedMs?: number;
 	skipped?: BenchmarkSkip[];
 	generatedAt: string;
-	iterations: number;
 	warmups: number;
 	results: BenchmarkResult[];
 }
@@ -163,6 +170,15 @@ const SCENARIOS = parseSelection<ScenarioName>({
 	environmentName: "BENCHMARK_SCENARIOS",
 	available: ALL_SCENARIOS,
 });
+const scenarioIterations = defaultScenarioIterations(
+	SCENARIOS,
+	process.env.BENCHMARK_ITERATIONS !== undefined,
+);
+const SAMPLING: SamplingMetadata = {
+	iterations: ITERATIONS,
+	...(Object.keys(scenarioIterations).length ? { scenarioIterations } : {}),
+};
+validateSampling(SAMPLING);
 
 const { values: options } = parseArgs({
 	options: {
@@ -225,6 +241,7 @@ if (options.list) {
 				implementationsForScenario(scenario).map((implementation) => ({
 					scenario,
 					implementation,
+					iterations: iterationsForScenario(SAMPLING, scenario),
 				})),
 			),
 			null,
@@ -491,10 +508,11 @@ function printBaselineComparison(
 ): void {
 	if (
 		baseline.measurementProtocol !== MEASUREMENT_PROTOCOL ||
-		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled")
+		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled") ||
+		!sameSamplingCounts(baseline, SAMPLING, SCENARIOS)
 	) {
 		console.log(
-			"Measurement protocol or CPU placement changed; historical timings are not a speed comparison. Establish a fresh baseline.",
+			"Measurement protocol, CPU placement, or sample counts changed; historical timings are not a speed comparison. Establish a fresh baseline.",
 		);
 		return;
 	}
@@ -535,7 +553,7 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 		measurementProtocol: MEASUREMENT_PROTOCOL,
 		cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 		generatedAt: new Date().toISOString(),
-		iterations: ITERATIONS,
+		...SAMPLING,
 		warmups: WARMUPS,
 		results: [...results],
 	};
@@ -925,14 +943,16 @@ try {
 		await runMemoryDiagnostic();
 	} else {
 		const results = measuredResults;
+		console.log(`Benchmark sampling: ${describeSampling(SAMPLING, SCENARIOS)} per library.`);
 		for (const scenario of SCENARIOS) {
+			const iterations = iterationsForScenario(SAMPLING, scenario);
 			for (const skipped of SKIPPED.filter((skip) => skip.scenario === scenario))
 				console.log(
 					`[skip] ${scenario} / ${skipped.implementation} (${skipped.category}: ${skipped.reason})`,
 				);
-			for (let iteration = -WARMUPS; iteration < ITERATIONS; iteration++) {
+			for (let iteration = -WARMUPS; iteration < iterations; iteration++) {
 				for (const implementation of sampleOrder(implementationsForScenario(scenario), iteration)) {
-					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${ITERATIONS}]`;
+					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${iterations}]`;
 					console.log(`${prefix} starting ${scenario} / ${implementation}…`);
 					const result = await runSampleWithRetry({ implementation, scenario });
 					if (iteration >= 0) {
@@ -942,6 +962,7 @@ try {
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 							startedAt: RUN_STARTED_AT.toISOString(),
 							iteration,
+							iterations,
 							result,
 						});
 						if (Result.isError(checkpoint)) throw checkpoint.error;
@@ -970,7 +991,9 @@ try {
 							generatedAt: new Date().toISOString(),
 							startedAt: RUN_STARTED_AT.toISOString(),
 							elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
-							iterations: ITERATIONS,
+							measurementProtocol: MEASUREMENT_PROTOCOL,
+							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
+							...SAMPLING,
 							warmups: WARMUPS,
 							skipped: SKIPPED,
 							incomplete: true,

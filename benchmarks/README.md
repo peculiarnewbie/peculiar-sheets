@@ -62,7 +62,7 @@ AG Grid Community's rectangular clipboard and range-selection cases are unsuppor
 
 ## Running
 
-Install workspace dependencies with `pnpm install`, then run twelve measured iterations of the selected scenarios and implementations using Node and the workspace's `tsx` runner:
+Install workspace dependencies with `pnpm install`, then run the default sampling plan using Node and the workspace's `tsx` runner: twelve measured repetitions per case and library, with 96 for `replace-large-disjoint`:
 
 ```sh
 pnpm benchmark
@@ -86,7 +86,7 @@ pnpm benchmark --include=gridsheet,univer --include-handsontable-writes
 pnpm benchmark --list
 ```
 
-The default run has 117 supported scenario/library pairs (1,404 measured samples at twelve iterations). Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted.
+The default run has 117 supported scenario/library pairs and 1,740 measured samples: twelve repetitions per pair, with 96 for the four `replace-large-disjoint` pairs. Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted. `--list` includes each pair's effective repetition count.
 
 Each completed run saves timestamped raw results and generates `.benchmark/overview.html` (six expandable summary categories), `comparison-table.html`, `summary.csv`, `summary.json`, and `report.md`. Regenerate reports without launching a browser, or validate the harness:
 
@@ -103,6 +103,8 @@ Tune repetition without changing source:
 ```sh
 BENCHMARK_WARMUPS=1 BENCHMARK_ITERATIONS=5 pnpm benchmark
 ```
+
+An explicit `BENCHMARK_ITERATIONS` overrides every selected case, including the 96-repetition precision allowance. Snapshots store the base `iterations` and any `scenarioIterations` overrides. Reports validate each pair against its own count and display the effective counts; CSV and JSON exports retain the actual sample count for every bar. Historical snapshots without overrides retain their original uniform counts. Baseline speed comparisons require matching counts for every selected case.
 
 Failed samples stop the run by default, preserving partial results and the per-sample journal. Set `BENCHMARK_RETRIES=1` to opt into retrying failures for diagnostics; retries are printed. Completed timing samples are never discarded or retried for their timing values. The journal is flushed to disk between samples, after browser cleanup.
 
@@ -158,8 +160,8 @@ The three write headline observations measure time from the first submission unt
 
 Synchronous submission and frame-settled wall time remain separate diagnostics. The latter includes validation and two animation frames and is not used to rank write API completion. Frame callbacks share a frame timestamp even when invoked at different wall-clock times; waiting for two callbacks can therefore reward a late start. See the [HTML animation-frame callback algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#run-the-animation-frame-callbacks). Browser probes also found large identical-code differences in this proxy. This protocol change is a measurement correction, not a library optimization.
 
-The default is twelve fixed repetitions, with implementation order rotated each repetition. Twelve balances every run position exactly for the default two-, three-, and four-library comparison groups. All samples are retained; no timing outliers are discarded. Each repetition still uses a fresh browser and the same short workload. Use `BENCHMARK_ITERATIONS` to override sampling for diagnostics.
+The default is twelve fixed repetitions, with 96 for the fast `replace-large-disjoint` workload. Its short frame-settled measurement showed excessive identical-code variation at twelve repetitions; two independent 96-repetition controls validated the higher count across every default library. This is a precision correction for a case Peculiar Sheets already led, not a library speedup. Both counts balance every run position exactly for the default two-, three-, and four-library comparison groups. All samples are retained; no timing outliers are discarded. Each repetition still uses a fresh browser and the same short workload. An explicit `BENCHMARK_ITERATIONS` overrides all cases for diagnostics.
 
-Snapshots record `measurementProtocol: "api-completion-v2"`. Historical snapshots retain their legacy interpretation and are not compared as speedups against v2. A fresh baseline is required. The same 39 headline observations, 31 scenarios, library versions, capability exclusions, datasets, and workloads remain; only the three write timing definitions and sampling/order policy change. At the default coverage this produces 1,404 samples (117 pairs × 12), rather than 351.
+Snapshots record `measurementProtocol: "api-completion-v2"`. Historical snapshots retain their legacy interpretation and are not compared as speedups against v2. A fresh baseline is required when the timing protocol, CPU placement, or effective sample counts change. The same 39 headline observations, 31 scenarios, library versions, capability exclusions, datasets, and workloads remain; only the three write timing definitions and sampling/order policy change. The final default sampling plan produces 1,740 samples; the initial uniform twelve-repetition v2 plan produced 1,404, and the older three-repetition plan produced 351.
 
 On Linux the launcher reads the process's allowed CPU list and per-core capacity. On heterogeneous CPUs it pins the entire runner and all browser descendants to the highest-capacity homogeneous cluster, using `taskset`. Homogeneous hosts retain their allowed CPUs. No system-wide governor or affinity setting changes. `BENCHMARK_CPUSET=all` opts out; an explicit list such as `BENCHMARK_CPUSET=6,7` overrides selection. Snapshots record effective CPU placement, and comparisons reject a baseline with different placement. The development machine has six cores with capacity 382 and two with capacity 1024; uncontrolled migration was a measured source of variation.

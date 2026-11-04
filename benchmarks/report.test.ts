@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { renderReport, type ReportSnapshot } from "./report";
+import { type ReportSnapshot, renderReport } from "./report";
 
 const sample = {
 	implementation: "peculiar-sheets" as const,
@@ -68,4 +68,37 @@ test("reports reject incomplete measurements and unexplained omissions", () => {
 		() => renderReport({ ...snapshot, skipped: [], results: [sample, mount] }),
 		/Missing measurements without a skip reason/,
 	);
+});
+
+test("mixed-count reports require complete case-specific samples and display their actual counts", () => {
+	const mount = { ...sample, scenario: "mount-small" as const, kind: "mount" as const };
+	const mixed: ReportSnapshot = {
+		...snapshot,
+		scenarioIterations: { "paste-small": 2 },
+		results: [sample, { ...sample }, mount, { ...mount, implementation: "ag-grid" }],
+	};
+	const report = renderReport(mixed);
+	assert.equal(report.rows.find((row) => row.scenario === "paste-small")?.bars[0]?.samples, 2);
+	assert.equal(report.rows.find((row) => row.scenario === "mount-small")?.bars[0]?.samples, 1);
+	assert.match(report.html, /median of 1–2 runs per case \(paste-small: 2\)/);
+	assert.match(report.markdown, /median of 1–2 runs per case/);
+	assert.match(report.csv, /"paste-small","[^"]+","peculiar-sheets","ms","2"/);
+	assert.throws(
+		() => renderReport({ ...mixed, results: mixed.results.slice(1) }),
+		/Incomplete measurements/,
+	);
+});
+
+test("invalid or unknown count overrides cannot bypass report completeness checks", () => {
+	for (const count of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+		assert.throws(
+			() => renderReport({ ...snapshot, scenarioIterations: { "paste-small": count } }),
+			/Invalid sample count/,
+		);
+	}
+	assert.throws(() => renderReport({ ...snapshot, iterations: 0 }), /Invalid default sample count/);
+	const unknown = JSON.parse(
+		JSON.stringify({ ...snapshot, scenarioIterations: { "unknown-case": 2 } }),
+	);
+	assert.throws(() => renderReport(unknown), /Unknown sampling scenario/);
 });
