@@ -7,6 +7,37 @@ export interface RowMetrics {
 	getVisualRowAtOffset(offsetY: number): VisualRowIndex;
 }
 
+/** Each grid retains geometry independently of the identities occupying its rows. */
+export function createRowMetricsCache() {
+	let previous:
+		| {
+				count: number;
+				height: number;
+				overrides: Map<number, number>;
+				metrics: RowMetrics;
+		  }
+		| undefined;
+	return (count: number, height: number, overrides: ReadonlyMap<number, number>): RowMetrics => {
+		if (
+			previous?.count === count &&
+			previous.height === height &&
+			previous.overrides.size === overrides.size
+		) {
+			let equal = true;
+			for (const [row, size] of overrides) {
+				if (previous.overrides.get(row) !== size) {
+					equal = false;
+					break;
+				}
+			}
+			if (equal) return previous.metrics;
+		}
+		const metrics = buildRowMetrics(count, height, overrides);
+		previous = { count, height, overrides: new Map(overrides), metrics };
+		return metrics;
+	};
+}
+
 /**
  * Sparse override tables for non-default row heights.
  * `prefixDelta[i]` is the cumulative (height - default) for overrides[0..i].
