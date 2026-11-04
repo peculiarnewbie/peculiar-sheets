@@ -227,8 +227,12 @@ export function createCellRows(initialData: readonly CellValue[][]) {
 		blocks.length = 0;
 		activeBlocks = 0;
 		views.clear();
-		values.length = 0;
-		for (const row of rows) values.push(row);
+		// Reserve the final size once instead of repeatedly growing the backing
+		// array during large host replacements. Preserve the stable values handle.
+		values.length = rows.length;
+		let index = 0;
+		for (const row of rows) values[index++] = row;
+		values.length = index;
 	}
 	return {
 		values,
