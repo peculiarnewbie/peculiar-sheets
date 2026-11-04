@@ -1,0 +1,1898 @@
+{
+	"startedAt": "2026-11-04T15:57:19.814Z",
+	"elapsedMs": 63182,
+	"skipped": [
+		{
+			"implementation": "handsontable",
+			"scenario": "batch-writes",
+			"category": "disabled",
+			"reason": "Enable with --include-handsontable-writes"
+		},
+		{
+			"implementation": "handsontable",
+			"scenario": "offscreen-writes",
+			"category": "disabled",
+			"reason": "Enable with --include-handsontable-writes"
+		}
+	],
+	"measurementProtocol": "api-completion-v2",
+	"timerProtocol": "cross-origin-isolated-v1",
+	"cpuAffinity": "unrestricted",
+	"generatedAt": "2026-11-04T15:58:22.996Z",
+	"iterations": 12,
+	"warmups": 0,
+	"results": [
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 58.020000010728836,
+			"mountMs": 32.78499999642372,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6655889,
+			"heapBytes": 5088458,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6349999904632568,
+				"completionDurationMs": 0.6349999904632568,
+				"settledDurationMs": 22.685000002384186,
+				"operationsPerSecond": 393700.7933143675
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 137.2650000154972,
+			"mountMs": 89.70500001311302,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14143652,
+			"heapBytes": 12313532,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.655000001192093,
+				"completionDurationMs": 3.655000001192093,
+				"settledDurationMs": 33.314999997615814,
+				"operationsPerSecond": 68399.45278206881
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 171.0600000023842,
+			"mountMs": 151.4200000166893,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 6988921,
+			"heapBytes": 5721048,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.09999999403953552,
+				"completionDurationMs": 0.17499998211860657,
+				"settledDurationMs": 25.21500000357628,
+				"operationsPerSecond": 1428571.574542002
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 123.18000000715256,
+			"mountMs": 79.5300000011921,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14112412,
+			"heapBytes": 12300428,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.4000000059604645,
+				"completionDurationMs": 3.4000000059604645,
+				"settledDurationMs": 33.5,
+				"operationsPerSecond": 73529.4116358031
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 176.22499999403954,
+			"mountMs": 156.96500000357628,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 6966193,
+			"heapBytes": 5723148,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.1300000250339508,
+				"completionDurationMs": 0.23500001430511475,
+				"settledDurationMs": 33.26000002026558,
+				"operationsPerSecond": 1063829.722475718
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.87999999523163,
+			"mountMs": 32.88499999046326,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6635705,
+			"heapBytes": 5088490,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6349999904632568,
+				"completionDurationMs": 0.6349999904632568,
+				"settledDurationMs": 26.07499998807907,
+				"operationsPerSecond": 393700.7933143675
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 175.60499998927116,
+			"mountMs": 156.12999999523163,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7009233,
+			"heapBytes": 5720132,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.17000001668930054,
+				"completionDurationMs": 0.2800000011920929,
+				"settledDurationMs": 33.314999997615814,
+				"operationsPerSecond": 892857.1390558262
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 59.980000019073486,
+			"mountMs": 35.730000019073486,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6561477,
+			"heapBytes": 5088602,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.7199999988079071,
+				"completionDurationMs": 0.7199999988079071,
+				"settledDurationMs": 33.53000000119209,
+				"operationsPerSecond": 347222.2227971127
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 130.65999999642372,
+			"mountMs": 86.53499999642372,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14072712,
+			"heapBytes": 12300612,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 4.020000010728836,
+				"completionDurationMs": 4.020000010728836,
+				"settledDurationMs": 33.310000002384186,
+				"operationsPerSecond": 62189.05456039398
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 61.43000000715256,
+			"mountMs": 36.314999997615814,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6624969,
+			"heapBytes": 5088586,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6649999916553497,
+				"completionDurationMs": 0.6699999868869781,
+				"settledDurationMs": 27.09000000357628,
+				"operationsPerSecond": 373134.3356610727
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 129.3149999976158,
+			"mountMs": 85.9050000011921,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14107044,
+			"heapBytes": 12300656,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.905000001192093,
+				"completionDurationMs": 3.905000001192093,
+				"settledDurationMs": 32.41499999165535,
+				"operationsPerSecond": 64020.486536154065
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 177.35499998927116,
+			"mountMs": 157.28499999642372,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7015361,
+			"heapBytes": 5720012,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.10499998927116394,
+				"completionDurationMs": 0.18000000715255737,
+				"settledDurationMs": 25.435000002384186,
+				"operationsPerSecond": 1388888.8336994052
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 124.81000000238419,
+			"mountMs": 80.02000001072884,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14072700,
+			"heapBytes": 12299416,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.2999999821186066,
+				"completionDurationMs": 3.2999999821186066,
+				"settledDurationMs": 33.32499998807907,
+				"operationsPerSecond": 75757.57616807608
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 181.4050000011921,
+			"mountMs": 161.66999998688698,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 6962293,
+			"heapBytes": 5714872,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.1550000011920929,
+				"completionDurationMs": 0.26499998569488525,
+				"settledDurationMs": 33.28000000119209,
+				"operationsPerSecond": 943396.2773411018
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 58.29499998688698,
+			"mountMs": 32.59499999880791,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6618385,
+			"heapBytes": 5088590,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6550000011920929,
+				"completionDurationMs": 0.6550000011920929,
+				"settledDurationMs": 21.520000010728836,
+				"operationsPerSecond": 381679.38861832477
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 177.1899999976158,
+			"mountMs": 157.8149999976158,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 6980393,
+			"heapBytes": 5719544,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.16499999165534973,
+				"completionDurationMs": 0.2749999761581421,
+				"settledDurationMs": 33.214999973773956,
+				"operationsPerSecond": 909090.9879069751
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.11500000953674,
+			"mountMs": 32.849999994039536,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6639473,
+			"heapBytes": 5088458,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.699999988079071,
+				"completionDurationMs": 0.699999988079071,
+				"settledDurationMs": 26.894999980926514,
+				"operationsPerSecond": 357142.86322496383
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.21500000357628,
+			"mountMs": 82.84999999403954,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14082364,
+			"heapBytes": 12299568,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.584999978542328,
+				"completionDurationMs": 3.584999978542328,
+				"settledDurationMs": 33.53000000119209,
+				"operationsPerSecond": 69735.00739089286
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 55.78499999642372,
+			"mountMs": 32.24499997496605,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6606493,
+			"heapBytes": 5088522,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6299999952316284,
+				"completionDurationMs": 0.6299999952316284,
+				"settledDurationMs": 24.054999977350235,
+				"operationsPerSecond": 396825.3998289063
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 131.38500002026558,
+			"mountMs": 86.75,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14131488,
+			"heapBytes": 12300668,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.4850000143051147,
+				"completionDurationMs": 3.4850000143051147,
+				"settledDurationMs": 33.435000002384186,
+				"operationsPerSecond": 71736.0111833022
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 180.33000001311302,
+			"mountMs": 161.4699999988079,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7048601,
+			"heapBytes": 5721208,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.12000000476837158,
+				"completionDurationMs": 0.19999998807907104,
+				"settledDurationMs": 33.24500000476837,
+				"operationsPerSecond": 1250000.0745058106
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 121.8449999988079,
+			"mountMs": 80.06499999761581,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14121368,
+			"heapBytes": 12298428,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.229999989271164,
+				"completionDurationMs": 3.2349999845027924,
+				"settledDurationMs": 33.48499998450279,
+				"operationsPerSecond": 77279.75307499856
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 175.50999999046326,
+			"mountMs": 155.71500000357628,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7038713,
+			"heapBytes": 5722992,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.125,
+				"completionDurationMs": 0.21000000834465027,
+				"settledDurationMs": 33.41499999165535,
+				"operationsPerSecond": 1190476.1431709188
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.69999998807907,
+			"mountMs": 32.71000000834465,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6645369,
+			"heapBytes": 5088554,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6550000011920929,
+				"completionDurationMs": 0.6550000011920929,
+				"settledDurationMs": 21.24499997496605,
+				"operationsPerSecond": 381679.38861832477
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 169.09000000357628,
+			"mountMs": 148.09000000357628,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7017089,
+			"heapBytes": 5721060,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.10500001907348633,
+				"completionDurationMs": 0.1850000023841858,
+				"settledDurationMs": 21.155000001192093,
+				"operationsPerSecond": 1351351.3339358235
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.214999973773956,
+			"mountMs": 32.94499999284744,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6628309,
+			"heapBytes": 5088506,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6449999809265137,
+				"completionDurationMs": 0.6449999809265137,
+				"settledDurationMs": 20.40999999642372,
+				"operationsPerSecond": 387596.91068654944
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 127.93500000238419,
+			"mountMs": 84.68500000238419,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14212792,
+			"heapBytes": 12312740,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.689999997615814,
+				"completionDurationMs": 3.689999997615814,
+				"settledDurationMs": 33.26500001549721,
+				"operationsPerSecond": 67750.67755055019
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 60.354999989271164,
+			"mountMs": 36.139999985694885,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6626001,
+			"heapBytes": 5088586,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.7900000214576721,
+				"completionDurationMs": 0.7900000214576721,
+				"settledDurationMs": 30.825000017881393,
+				"operationsPerSecond": 316455.68760708557
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 124.63499999046326,
+			"mountMs": 80.52000001072884,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14067852,
+			"heapBytes": 12299869,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.310000002384186,
+				"completionDurationMs": 3.310000002384186,
+				"settledDurationMs": 33.910000026226044,
+				"operationsPerSecond": 75528.70085194125
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 174.2049999833107,
+			"mountMs": 154.1850000023842,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7002245,
+			"heapBytes": 5718204,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.13999998569488525,
+				"completionDurationMs": 0.2549999952316284,
+				"settledDurationMs": 33.32499998807907,
+				"operationsPerSecond": 980392.1751955851
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.4200000166893,
+			"mountMs": 82.83000001311302,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14100752,
+			"heapBytes": 12311540,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 4.234999984502792,
+				"completionDurationMs": 4.234999984502792,
+				"settledDurationMs": 33.31999999284744,
+				"operationsPerSecond": 59031.87742971175
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 171.71500000357628,
+			"mountMs": 152.80000001192093,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7048761,
+			"heapBytes": 5716864,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.09999999403953552,
+				"completionDurationMs": 0.16999998688697815,
+				"settledDurationMs": 23.354999989271164,
+				"operationsPerSecond": 1470588.3487285713
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.42499998211861,
+			"mountMs": 32.964999973773956,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6629977,
+			"heapBytes": 5088746,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.625,
+				"completionDurationMs": 0.625,
+				"settledDurationMs": 18.65499997138977,
+				"operationsPerSecond": 400000
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 171.3149999976158,
+			"mountMs": 147.8100000023842,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7036789,
+			"heapBytes": 5721104,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.09999999403953552,
+				"completionDurationMs": 0.18000000715255737,
+				"settledDurationMs": 21.205000013113022,
+				"operationsPerSecond": 1388888.8336994052
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 58.479999989271164,
+			"mountMs": 33.439999997615814,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6568565,
+			"heapBytes": 5088458,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 0.6699999868869781,
+				"completionDurationMs": 0.6749999821186066,
+				"settledDurationMs": 33.63499999046326,
+				"operationsPerSecond": 370370.3801818348
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "batch-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 127.1550000011921,
+			"mountMs": 82.31499999761581,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 14153444,
+			"heapBytes": 12301177,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "batch",
+				"count": 250,
+				"durationMs": 3.2849999964237213,
+				"completionDurationMs": 3.2849999964237213,
+				"settledDurationMs": 34.13499999046326,
+				"operationsPerSecond": 76103.50084388655
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.275000005960464,
+			"mountMs": 31.905000001192093,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6569057,
+			"heapBytes": 5094366,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6400000154972076,
+				"completionDurationMs": 0.6400000154972076,
+				"settledDurationMs": 21.53499999642372,
+				"operationsPerSecond": 390624.99054125533
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 122.87999999523163,
+			"mountMs": 81.29499998688698,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13641001,
+			"heapBytes": 12279489,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.1599999964237213,
+				"completionDurationMs": 1.1700000166893005,
+				"settledDurationMs": 34.729999989271164,
+				"operationsPerSecond": 213675.21062727366
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 175.6899999976158,
+			"mountMs": 155.81999999284744,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7767687,
+			"heapBytes": 5611590,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.08499997854232788,
+				"completionDurationMs": 1.2099999785423279,
+				"settledDurationMs": 33.50499999523163,
+				"operationsPerSecond": 206611.57391190363
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 121.3299999833107,
+			"mountMs": 79.60499998927116,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13583873,
+			"heapBytes": 12282881,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.9699999988079071,
+				"completionDurationMs": 0.9799999892711639,
+				"settledDurationMs": 33.34499999880791,
+				"operationsPerSecond": 255102.0436091306
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 178.32499998807907,
+			"mountMs": 158.29499998688698,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7738491,
+			"heapBytes": 5609994,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.12000000476837158,
+				"completionDurationMs": 1.520000010728836,
+				"settledDurationMs": 33.2950000166893,
+				"operationsPerSecond": 164473.6830495979
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 59.71500000357628,
+			"mountMs": 34.53499999642372,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6594805,
+			"heapBytes": 5094322,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6949999928474426,
+				"completionDurationMs": 0.6949999928474426,
+				"settledDurationMs": 27.17500001192093,
+				"operationsPerSecond": 359712.2339177876
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 170.8149999976158,
+			"mountMs": 150.72499999403954,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7789271,
+			"heapBytes": 5620634,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.06999999284744263,
+				"completionDurationMs": 1.125,
+				"settledDurationMs": 26.399999976158142,
+				"operationsPerSecond": 222222.22222222222
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.83499997854233,
+			"mountMs": 32.48999997973442,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6562737,
+			"heapBytes": 5094590,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6899999976158142,
+				"completionDurationMs": 0.6949999928474426,
+				"settledDurationMs": 21.759999990463257,
+				"operationsPerSecond": 359712.2339177876
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.375,
+			"mountMs": 81.83500000834465,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13612797,
+			"heapBytes": 12283045,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0999999940395355,
+				"completionDurationMs": 1.0999999940395355,
+				"settledDurationMs": 33.31999999284744,
+				"operationsPerSecond": 227272.7285042282
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 58.810000002384186,
+			"mountMs": 32.71500000357628,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6549057,
+			"heapBytes": 5094526,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.675000011920929,
+				"completionDurationMs": 0.6800000071525574,
+				"settledDurationMs": 33.57500001788139,
+				"operationsPerSecond": 367647.0549564461
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 131.00499999523163,
+			"mountMs": 85.83500000834465,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13659905,
+			"heapBytes": 12284250,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0600000023841858,
+				"completionDurationMs": 1.0649999976158142,
+				"settledDurationMs": 33.09499999880791,
+				"operationsPerSecond": 234741.78456306856
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 173.13500002026558,
+			"mountMs": 154.0450000166893,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7801859,
+			"heapBytes": 5612254,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.06999999284744263,
+				"completionDurationMs": 1.125,
+				"settledDurationMs": 21.895000010728836,
+				"operationsPerSecond": 222222.22222222222
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 123.83499997854233,
+			"mountMs": 81.1749999821186,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13592173,
+			"heapBytes": 12285769,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.094999998807907,
+				"completionDurationMs": 1.0999999940395355,
+				"settledDurationMs": 33.46500000357628,
+				"operationsPerSecond": 227272.7285042282
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 164.13500002026558,
+			"mountMs": 144.8900000154972,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7863775,
+			"heapBytes": 5610310,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.11500000953674316,
+				"completionDurationMs": 1.4800000190734863,
+				"settledDurationMs": 33.310000002384186,
+				"operationsPerSecond": 168918.91674197794
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 56.45500001311302,
+			"mountMs": 32.25499999523163,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6550389,
+			"heapBytes": 5094194,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6749999821186066,
+				"completionDurationMs": 0.6849999725818634,
+				"settledDurationMs": 31.649999976158142,
+				"operationsPerSecond": 364963.5182578388
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 184.78999999165535,
+			"mountMs": 164.13999998569489,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7834111,
+			"heapBytes": 5610462,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.10499998927116394,
+				"completionDurationMs": 1.219999998807907,
+				"settledDurationMs": 20.96000000834465,
+				"operationsPerSecond": 204918.03298711585
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 60,
+			"mountMs": 34.04999998211861,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6525525,
+			"heapBytes": 5094110,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.050000011920929,
+				"completionDurationMs": 1.0550000071525574,
+				"settledDurationMs": 33.71500000357628,
+				"operationsPerSecond": 236966.82303799168
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.81499999761581,
+			"mountMs": 81.47999998927116,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13657165,
+			"heapBytes": 12292969,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.175000011920929,
+				"completionDurationMs": 1.1800000071525574,
+				"settledDurationMs": 33.5,
+				"operationsPerSecond": 211864.4054954472
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.639999985694885,
+			"mountMs": 32.75999999046326,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6518241,
+			"heapBytes": 5094270,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6300000250339508,
+				"completionDurationMs": 0.6400000154972076,
+				"settledDurationMs": 19.865000009536743,
+				"operationsPerSecond": 390624.99054125533
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 124.30000001192093,
+			"mountMs": 81.11500000953674,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13645781,
+			"heapBytes": 12283153,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0649999976158142,
+				"completionDurationMs": 1.070000022649765,
+				"settledDurationMs": 33.46500000357628,
+				"operationsPerSecond": 233644.85486728873
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 173.20500001311302,
+			"mountMs": 153.5150000154972,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7780215,
+			"heapBytes": 5610134,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.14000001549720764,
+				"completionDurationMs": 1.520000010728836,
+				"settledDurationMs": 33.28000000119209,
+				"operationsPerSecond": 164473.6830495979
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 136.47499999403954,
+			"mountMs": 90.88499999046326,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13676989,
+			"heapBytes": 12286986,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0049999952316284,
+				"completionDurationMs": 1.0100000202655792,
+				"settledDurationMs": 33.360000014305115,
+				"operationsPerSecond": 247524.7475086808
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 179.4699999988079,
+			"mountMs": 160.05000001192093,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7697191,
+			"heapBytes": 5609174,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.125,
+				"completionDurationMs": 1.520000010728836,
+				"settledDurationMs": 33.395000010728836,
+				"operationsPerSecond": 164473.6830495979
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 58.42499998211861,
+			"mountMs": 34.15500000119209,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6519953,
+			"heapBytes": 5094462,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6599999964237213,
+				"completionDurationMs": 0.6649999916553497,
+				"settledDurationMs": 31.530000001192093,
+				"operationsPerSecond": 375939.8543414836
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 169.80500000715256,
+			"mountMs": 151.40999999642372,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7746051,
+			"heapBytes": 5609918,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.07499998807907104,
+				"completionDurationMs": 1.1099999845027924,
+				"settledDurationMs": 21.969999998807907,
+				"operationsPerSecond": 225225.2283696956
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.314999997615814,
+			"mountMs": 32.349999994039536,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6564121,
+			"heapBytes": 5094398,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6699999868869781,
+				"completionDurationMs": 0.6749999821186066,
+				"settledDurationMs": 22.299999982118607,
+				"operationsPerSecond": 370370.3801818348
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.44499999284744,
+			"mountMs": 81.23500001430511,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13634873,
+			"heapBytes": 12282550,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.2049999833106995,
+				"completionDurationMs": 1.2049999833106995,
+				"settledDurationMs": 33.29499998688698,
+				"operationsPerSecond": 207468.88254150253
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.24500000476837,
+			"mountMs": 32.69999998807907,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6604541,
+			"heapBytes": 5094398,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6450000107288361,
+				"completionDurationMs": 0.6450000107288361,
+				"settledDurationMs": 20.69999998807907,
+				"operationsPerSecond": 387596.89277757594
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 132.77499997615814,
+			"mountMs": 87.38999998569489,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13652493,
+			"heapBytes": 12283554,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0150000154972076,
+				"completionDurationMs": 1.020000010728836,
+				"settledDurationMs": 22.62000000476837,
+				"operationsPerSecond": 245098.03663763075
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 175.25999999046326,
+			"mountMs": 155.97999998927116,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7872563,
+			"heapBytes": 5622694,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.08000001311302185,
+				"completionDurationMs": 1.1700000166893005,
+				"settledDurationMs": 33.375,
+				"operationsPerSecond": 213675.21062727366
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.68000000715256,
+			"mountMs": 81.36000001430511,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13596745,
+			"heapBytes": 12281093,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0550000071525574,
+				"completionDurationMs": 1.0550000071525574,
+				"settledDurationMs": 33.46999999880791,
+				"operationsPerSecond": 236966.82303799168
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 176.41499999165535,
+			"mountMs": 157.12999999523163,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7769187,
+			"heapBytes": 5610182,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.08000001311302185,
+				"completionDurationMs": 1.175000011920929,
+				"settledDurationMs": 33.28000000119209,
+				"operationsPerSecond": 212765.95528819758
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 60.185000002384186,
+			"mountMs": 33.25499999523163,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6569277,
+			"heapBytes": 5094322,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6650000214576721,
+				"completionDurationMs": 0.6650000214576721,
+				"settledDurationMs": 25.00500002503395,
+				"operationsPerSecond": 375939.8374935432
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "revogrid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 177.71500000357628,
+			"mountMs": 158.3149999976158,
+			"domNodes": 629,
+			"heapBytesBeforeGc": 7768071,
+			"heapBytes": 5611498,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.11500000953674316,
+				"completionDurationMs": 1.300000011920929,
+				"settledDurationMs": 33.310000002384186,
+				"operationsPerSecond": 192307.69054424128
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "peculiar-sheets",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 57.69000002741814,
+			"mountMs": 33.09500002861023,
+			"domNodes": 846,
+			"heapBytesBeforeGc": 6534361,
+			"heapBytes": 5094558,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 0.6850000023841858,
+				"completionDurationMs": 0.6949999928474426,
+				"settledDurationMs": 22.439999997615814,
+				"operationsPerSecond": 359712.2339177876
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		},
+		{
+			"implementation": "ag-grid",
+			"scenario": "offscreen-writes",
+			"rows": 10000,
+			"columns": 20,
+			"navigationToReadyMs": 125.16500002145767,
+			"mountMs": 81.84000000357628,
+			"domNodes": 1023,
+			"heapBytesBeforeGc": 13604893,
+			"heapBytes": 12282041,
+			"kind": "writes",
+			"writes": {
+				"distribution": "offscreen",
+				"mode": "independent",
+				"count": 250,
+				"durationMs": 1.0699999928474426,
+				"completionDurationMs": 1.0699999928474426,
+				"settledDurationMs": 33.28499999642372,
+				"operationsPerSecond": 233644.8613749143
+			},
+			"timingEnvironment": {
+				"crossOriginIsolated": true,
+				"timerGranularityMs": 0.004999995231628418,
+				"timerPositiveTicks": 128
+			}
+		}
+	]
+}

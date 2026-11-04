@@ -39,7 +39,6 @@ export type HistoryEntry =
 	| {
 			type: "cell-mutations";
 			forward: CellMutation[];
-			inverse: CellMutation[];
 			selectionBefore: Selection;
 			selectionAfter: Selection;
 	  }
@@ -123,12 +122,9 @@ function mutationHistoryEntry(
 	selectionBefore: Selection,
 	selectionAfter: Selection,
 ): HistoryEntry {
-	const inverse = forward.map(invertCellMutation);
-
 	return {
 		type: "cell-mutations",
 		forward,
-		inverse,
 		selectionBefore,
 		selectionAfter,
 	};
@@ -270,7 +266,7 @@ export function undo(history: HistoryStack): UndoResult | null {
 		case "cell-mutations":
 			return {
 				history: nextHistory,
-				mutations: entry.inverse,
+				mutations: entry.forward.map(invertCellMutation),
 				selection: entry.selectionBefore,
 			};
 

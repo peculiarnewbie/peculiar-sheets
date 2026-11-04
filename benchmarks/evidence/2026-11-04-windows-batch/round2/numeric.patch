@@ -1,0 +1,19 @@
+--- a/packages/spreadsheets/src/grid/Grid.tsx
++++ b/packages/spreadsheets/src/grid/Grid.tsx
+@@ -1249,9 +1249,14 @@
+ 	}
+ 
+ 	function buildExternalBatchMutations(writes: readonly CellWrite[]): CellMutation[] {
+-		const latestWrites = new Map<string, CellWrite>();
++		const width = props.columns.length;
++		const latestWrites = new Map<number | string, CellWrite>();
+ 		for (const write of writes) {
+-			latestWrites.set(`${write.row},${write.col}`, write);
++			const key = Number.isSafeInteger(write.row) && write.row >= 0 &&
++				Number.isInteger(write.col) && write.col >= 0 && write.col < width &&
++				Number.isSafeInteger(write.row * width + write.col)
++				? write.row * width + write.col : `${write.row},${write.col}`;
++			latestWrites.set(key, write);
+ 		}
+ 
+ 		// Resolve the batch's addressing context once. No writes occur until all

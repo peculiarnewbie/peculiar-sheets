@@ -3,13 +3,7 @@ import { columnIdx, physicalRow, rowId, formulaSheetId, visualRow } from "../cor
 import { createSheetStore, type HistoryTransitionTransaction } from "../core/state";
 import { selectCell } from "../core/selection";
 import { FormulaEngineSyncError } from "../internal/errors";
-import {
-	Result,
-	applied,
-	isApplied,
-	isNoop,
-	noop,
-} from "../internal/result";
+import { Result, applied, isApplied, isNoop, noop } from "../internal/result";
 import type { CellMutation, CellValue, ColumnDef, SheetOperation } from "../types";
 import {
 	buildCellsAfterMutations,
@@ -112,14 +106,23 @@ const columns: ColumnDef[] = [{ id: "A", header: "A", width: 100 }];
 
 describe("buildCellsAfterMutations", () => {
 	it("overlays proposed values without mutating the source grid", () => {
-		const cells: CellValue[][] = [["a", "b"], ["c", "d"]];
+		const cells: CellValue[][] = [
+			["a", "b"],
+			["c", "d"],
+		];
 		const next = buildCellsAfterMutations(cells, 2, [
 			mutation(0, 1, "b", "B"),
 			mutation(1, 0, "c", "C"),
 		]);
 
-		expect(cells).toEqual([["a", "b"], ["c", "d"]]);
-		expect(next).toEqual([["a", "B"], ["C", "d"]]);
+		expect(cells).toEqual([
+			["a", "b"],
+			["c", "d"],
+		]);
+		expect(next).toEqual([
+			["a", "B"],
+			["C", "d"],
+		]);
 	});
 });
 
@@ -238,6 +241,30 @@ describe("coordinateBatchMutations", () => {
 });
 
 describe("coordinateHistoryCommand", () => {
+	it("replays formula batch history across repeated undo and redo", () => {
+		const store = createSheetStore([["=1+1"], ["=A1*2"]], columns);
+		const edits = [mutation(0, 0, "=1+1", "=2+2"), mutation(1, 0, "=A1*2", "=A1*3")];
+		store.setCells(
+			edits.map((m) => ({ row: m.address.row, col: m.address.col, value: m.newValue })),
+		);
+		store.pushMutations(edits, store.selection(), store.selection());
+		const formula = createFakeFormula();
+		const operations: SheetOperation[] = [];
+		for (let cycle = 0; cycle < 2; cycle++) {
+			for (const undoing of [true, false]) {
+				const result = coordinateHistoryCommand({
+					beginTransition: () => (undoing ? store.beginUndo() : store.beginRedo()),
+					getCells: () => store.copyCells(),
+					emitOperation: (operation) => operations.push(operation),
+					formula: formula.port,
+				});
+				expectApplied(result);
+				expect(store.copyCells()).toEqual(undoing ? [["=1+1"], ["=A1*2"]] : [["=2+2"], ["=A1*3"]]);
+			}
+		}
+		expect(formula.setCellsCalls).toHaveLength(4);
+		expect(operations).toHaveLength(4);
+	});
 	it("syncs changed cells once and emits batch-edit after successful mutation undo", () => {
 		const store = createSheetStore([["old"]], columns);
 		store.setSelection(selectCell({ row: visualRow(0), col: columnIdx(0) }));

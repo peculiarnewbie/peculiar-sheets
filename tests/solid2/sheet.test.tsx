@@ -28,6 +28,7 @@ import type {
 	CellValue,
 	ColumnDef,
 	SheetController,
+	SheetOperation,
 	SheetCustomization,
 	VisualCellAddress,
 } from "../../packages/spreadsheets/src/types";
@@ -447,6 +448,24 @@ describe("Solid 2 Sheet", () => {
 		expect(runs).toEqual([2, 1, 2]);
 		expect(ids.map(store.rowRevision)).toEqual([1, 0, 1]);
 		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.trySetDistinctCells?.(
+			[
+				{ row: 0, col: 0, value: 12 },
+				{ row: 2, col: 0, value: 31 },
+			],
+			[{ id: "value", header: "Value" }],
+		);
+		flush();
+		expect(runs).toEqual([3, 1, 3]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
+		store.undo();
+		flush();
+		expect(runs).toEqual([4, 1, 4]);
+		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.redo();
+		flush();
+		expect(runs).toEqual([5, 1, 5]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
 	});
 
 	it("lets Solid settle asynchronous host data and discards an older response", async () => {
@@ -785,6 +804,148 @@ describe("Solid 2 Sheet", () => {
 		controller.undo();
 		expect(controller.getCellValue(1, 0)).toBe("next");
 		flush();
+	});
+
+	it("normalizes sorted public batches before committing history and notifying", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		const snapshots: CellValue[][] = [];
+		render(() => (
+			<Sheet
+				data={[
+					[2, "second"],
+					[1, "first"],
+				]}
+				rowIds={[rowId("two"), rowId("one")]}
+				columns={[
+					{ id: "key", header: "Key" },
+					{ id: "value", header: "Value" },
+				]}
+				defaultSortState={{ columnId: "key", direction: "asc" }}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+					snapshots.push([
+						controller?.getRawCellValue(0, 1) ?? null,
+						controller?.getRawCellValue(1, 1) ?? null,
+					]);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const selection = controller.getSelection();
+		controller.setCellValues([
+			{ row: 0, col: 1, value: "discarded" },
+			{ row: 1, col: 1, value: "temporary" },
+			{ row: 0, col: 1, value: "final" },
+			{ row: 1, col: 1, value: "second" },
+		]);
+		expect(snapshots).toEqual([["final", "second"]]);
+		const operation = operations[0];
+		if (operation?.type !== "batch-edit") throw new Error("Batch notification missing");
+		expect(operation.mutations).toEqual([
+			{
+				address: { row: 1, col: 1 },
+				viewAddress: { row: 0, col: 1 },
+				rowId: "one",
+				columnId: "value",
+				oldValue: "first",
+				newValue: "final",
+				source: "external",
+			},
+		]);
+		expect(controller.getSelection()).toEqual(selection);
+		controller.undo();
+		expect(snapshots[1]).toEqual(["first", "second"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse notification missing");
+		expect(inverse.mutations).toEqual([
+			{ ...operation.mutations[0], oldValue: "final", newValue: "first" },
+		]);
+		controller.redo();
+		expect(snapshots[2]).toEqual(["final", "second"]);
+		controller.setCellValues([{ row: 0, col: 1, value: "final" }]);
+		expect(operations).toHaveLength(3);
+		expect(controller.getSelection()).toEqual(selection);
+	});
+
+	it("normalizes multi-row batches and their complete undo/redo payloads", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		render(() => (
+			<Sheet
+				data={[
+					["a", "b"],
+					["c", "d"],
+				]}
+				columns={[
+					{ id: "left", header: "Left" },
+					{ id: "right", header: "Right" },
+				]}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const sheet = controller;
+		const values = () => [
+			sheet.getRawCellValue(0, 0),
+			sheet.getRawCellValue(0, 1),
+			sheet.getRawCellValue(1, 0),
+			sheet.getRawCellValue(1, 1),
+		];
+		controller.setCellValues([
+			{ row: 1, col: 1, value: "D" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 0, col: 1, value: "B" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		const forward = operations[0];
+		if (forward?.type !== "batch-edit") throw new Error("Batch missing");
+		expect(
+			forward.mutations.map((m) => [m.address.row, m.address.col, m.oldValue, m.newValue]),
+		).toEqual([
+			[1, 1, "d", "D"],
+			[0, 0, "a", "A"],
+			[0, 1, "b", "B"],
+		]);
+		controller.undo();
+		flush();
+		expect(values()).toEqual(["a", "b", "c", "d"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse missing");
+		expect(inverse.mutations).toEqual(
+			forward.mutations.map((m) => ({ ...m, oldValue: m.newValue, newValue: m.oldValue })),
+		);
+		controller.redo();
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		controller.setCellValues([
+			{ row: 0, col: 0, value: "temporary" },
+			{ row: 1, col: 0, value: "C" },
+			{ row: 0, col: 1, value: "last" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 1, col: 0, value: "final" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "last", "final", "D"]);
+		const normalized = operations[3];
+		if (normalized?.type !== "batch-edit") throw new Error("Normalized batch missing");
+		expect(normalized.mutations.map((m) => [m.address.row, m.address.col, m.newValue])).toEqual([
+			[1, 0, "final"],
+			[0, 1, "last"],
+		]);
 	});
 
 	it("cancels a queued editor focus when unmounted in the same turn", () => {
