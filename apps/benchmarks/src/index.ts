@@ -1,6 +1,7 @@
 import { Result, TaggedError } from "better-result";
 import { createDataset, createReplacementDataset } from "./datasets";
 import { createInteractionProbe } from "./interaction-probe";
+import { measureFrameAlignedReplacement } from "./replacement-timing";
 import { SCENARIOS } from "./scenarios";
 import type {
 	BenchmarkAdapter,
@@ -257,13 +258,12 @@ async function measureReplacement(
 	const replacement = createReplacementDataset(scenario, initial);
 	const steps: ReplacementStepMetrics[] = [];
 	const measureStep = async (name: string, from: BenchmarkDataset, to: BenchmarkDataset) => {
-		const start = performance.now();
-		controller.replaceDataset?.(to);
-		const synchronousMs = performance.now() - start;
-		await nextFrame();
-		const firstFrameMs = performance.now() - start;
-		await nextFrame();
-		const settledMs = performance.now() - start;
+		const measured = await measureFrameAlignedReplacement(() => controller.replaceDataset?.(to));
+		measured.tapError((error) =>
+			console.debug("benchmark.replacement.failed", { name, cause: error.cause }),
+		);
+		if (measured.isErr()) throw measured.error;
+		const { synchronousMs, firstFrameMs, secondFrameMs, settledMs } = measured.value;
 		const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
 		if (diagnostics) {
 			diagnostics.durations["virtualizer.firstFrame"] =
@@ -279,7 +279,15 @@ async function measureReplacement(
 			}
 		}
 
-		steps.push({ name, fromRows: from.rows, toRows: to.rows, synchronousMs, settledMs });
+		steps.push({
+			name,
+			fromRows: from.rows,
+			toRows: to.rows,
+			synchronousMs,
+			firstFrameMs,
+			secondFrameMs,
+			settledMs,
+		});
 	};
 	await measureStep("replace", initial, replacement);
 	if (scenario.replacement === "filter-roundtrip" || scenario.replacement === "insert-delete") {
@@ -292,6 +300,7 @@ async function measureReplacement(
 	const profile = window.__PECULIAR_SHEETS_RECONCILIATION__;
 	delete window.__PECULIAR_SHEETS_RECONCILIATION__;
 	const metrics: ReplacementMetrics = {
+		timingProtocol: "frame-aligned-v1",
 		mode: scenario.replacement,
 		steps,
 		...(profile ? { profile } : {}),

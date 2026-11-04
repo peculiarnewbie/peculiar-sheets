@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { MEASUREMENT_PROTOCOL } from "../apps/benchmarks/src/types";
 import { summarizeOverview } from "./overview";
 import type { ReportSnapshot } from "./report";
 
@@ -124,6 +125,10 @@ test("protocol v2 ranks awaited API completion and preserves legacy settled rank
 	assert.equal(current?.own, 8);
 	assert.equal(current?.best, 4);
 	assert.equal(current?.status, "behind");
+	assert.deepEqual(
+		summarizeOverview({ ...snapshot, measurementProtocol: MEASUREMENT_PROTOCOL }),
+		summarizeOverview(snapshot),
+	);
 	const { measurementProtocol: _protocol, ...legacy } = snapshot;
 	assert.equal(summarizeOverview(legacy)[0]?.cases[0]?.own, 100);
 	assert.equal(summarizeOverview(legacy)[0]?.cases[0]?.status, "best");
