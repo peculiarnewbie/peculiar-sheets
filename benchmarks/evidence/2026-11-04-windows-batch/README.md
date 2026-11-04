@@ -76,7 +76,7 @@ also had no resolved gain. Both were reverted to retain the simpler API and code
 - `pnpm install --frozen-lockfile`: passed.
 - `pnpm test`: 243 passed.
 - `pnpm test:solid2`: 18 passed (including the new public regression test).
-- `pnpm benchmark:test`: 22 passed.
+- `pnpm benchmark:test`: 22 passed before the harness merge; 25 passed after it.
 - `pnpm benchmark:typecheck`: both checks passed.
 - `pnpm typecheck:lib`, `pnpm typecheck:solid2`: passed.
 - `pnpm lint`, `pnpm format:check`: passed.
@@ -85,6 +85,11 @@ No full-suite goal claim is made. The batch gap remains about 3.5x. The required
 history, mutation identities, row revisions and normalization do more synchronous
 work than RevoGrid's assignments plus refresh; this is a plausible explanation,
 not a controlled attribution of the entire gap. A finer timer and CPU profile
-are needed before more invasive changes. The shared branch was checked throughout;
-`git merge perf/benchmark-within-twenty-percent` reported already up to date at
-26b275b. No cross-origin-isolation harness commit was available during this work.
+are needed before more invasive changes. The shared branch was checked throughout. The cross-origin-isolation harness
+commit 2f03419 arrived after the focused measurements and was merged in 926b888.
+The merged harness passes 25 benchmark tests and both benchmark typechecks.
+A precise-timer before/after run was queued, but another agent acquired the
+machine lock for a full-suite baseline. The optional queued run was canceled
+before acquiring the lock; the committed candidate was restored, and the other
+agent's lock was left untouched. These results therefore remain coarse-timer
+measurements; no precise-timer improvement is claimed.
