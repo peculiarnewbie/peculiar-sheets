@@ -1,0 +1,1662 @@
+{
+	"baseCommit": "139bf86",
+	"branch": "t3/optimize-streaming-wheel-benchmarks",
+	"host": {
+		"platform": "win32",
+		"architecture": "x64",
+		"processor": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+		"userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36"
+	},
+	"hostBaseline": {
+		"path": "C:/Users/Ryzen/git/other/peculiar-sheets/.benchmark/new-host-baseline-3/latest.json",
+		"sha256": "94b23c56b79af365d8897489c4f1945483e09cc544d9fe4b70dbfef0cb7d8419",
+		"samples": 1740,
+		"timerProtocol": "cross-origin-isolated-v1",
+		"cpuAffinity": "unrestricted"
+	},
+	"sourceHashes": {
+		"css": "0e9db59a01ec28b734e079a12bcea0481554063503747fe0ab419a12b4cda0db",
+		"test": "ca758f51af5e566b5d62d984669e679be26a180a4b121f3c9d4bed495fc1b466"
+	},
+	"iterations": 12,
+	"rows": [
+		{
+			"scenario": "scroll-wheel-slow",
+			"host": {
+				"values": {
+					"peculiar-sheets": 33.46499999999995,
+					"ag-grid": 16.82499999999999,
+					"handsontable": 16.8275000000001,
+					"revogrid": 16.83499999999981
+				},
+				"best": 16.82499999999999,
+				"ratio": 1.9890044576523014
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 33.504999999999995,
+					"ag-grid": 16.855000000000018,
+					"handsontable": 16.86250000000001,
+					"revogrid": 16.840000000000032
+				},
+				"best": 16.840000000000032,
+				"ratio": 1.9896080760094972
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.840000000000146,
+					"ag-grid": 16.829999999999927,
+					"handsontable": 16.84999999999991,
+					"revogrid": 16.850000000000023
+				},
+				"best": 16.829999999999927,
+				"ratio": 1.0005941770647784
+			}
+		},
+		{
+			"scenario": "scroll-wheel-bursts",
+			"host": {
+				"values": {
+					"peculiar-sheets": 33.43000000000018,
+					"ag-grid": 16.844999999999914,
+					"handsontable": 16.845000000000027,
+					"revogrid": 16.85749999999996
+				},
+				"best": 16.844999999999914,
+				"ratio": 1.9845651528643722
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 33.44500000000008,
+					"ag-grid": 16.864999999999895,
+					"handsontable": 16.86500000000001,
+					"revogrid": 16.867500000000064
+				},
+				"best": 16.864999999999895,
+				"ratio": 1.9831010969463556
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.847499999999968,
+					"ag-grid": 16.845000000000027,
+					"handsontable": 16.835000000000036,
+					"revogrid": 16.860000000000014
+				},
+				"best": 16.835000000000036,
+				"ratio": 1.0007425007424966
+			}
+		},
+		{
+			"scenario": "scroll-diagonal",
+			"host": {
+				"values": {
+					"peculiar-sheets": 33.422500000000014,
+					"ag-grid": 16.850000000000023,
+					"handsontable": 16.85499999999996,
+					"revogrid": 16.85749999999996
+				},
+				"best": 16.850000000000023,
+				"ratio": 1.9835311572700278
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 33.42999999999995,
+					"ag-grid": 16.862499999999955,
+					"handsontable": 16.862499999999955,
+					"revogrid": 16.862499999999955
+				},
+				"best": 16.862499999999955,
+				"ratio": 1.9825055596738348
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.857499999999845,
+					"ag-grid": 16.860000000000014,
+					"handsontable": 16.852499999999964,
+					"revogrid": 16.864999999999952
+				},
+				"best": 16.852499999999964,
+				"ratio": 1.0002966918854699
+			}
+		},
+		{
+			"scenario": "vertical-scroll",
+			"host": {
+				"values": {
+					"peculiar-sheets": 16.862500000000068,
+					"ag-grid": 16.915000000000077,
+					"handsontable": 16.852500000000077,
+					"revogrid": 16.837499999999977
+				},
+				"best": 16.837499999999977,
+				"ratio": 1.0014847809948086
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 16.86250000000001,
+					"ag-grid": 16.86999999999989,
+					"handsontable": 16.860000000000014,
+					"revogrid": 16.817499999999995
+				},
+				"best": 16.817499999999995,
+				"ratio": 1.0026757841534126
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.87000000000012,
+					"ag-grid": 16.894999999999982,
+					"handsontable": 16.85000000000008,
+					"revogrid": 16.840000000000003
+				},
+				"best": 16.840000000000003,
+				"ratio": 1.0017814726840923
+			}
+		},
+		{
+			"scenario": "scroll-jump",
+			"host": {
+				"values": {
+					"peculiar-sheets": 16.81750000000001,
+					"ag-grid": 16.814999999999998,
+					"handsontable": 16.807500000000005,
+					"revogrid": 16.877500000000026
+				},
+				"best": 16.807500000000005,
+				"ratio": 1.000594972482523
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 16.907499999999985,
+					"ag-grid": 16.837499999999977,
+					"handsontable": 16.817499999999995,
+					"revogrid": 16.867500000000007
+				},
+				"best": 16.817499999999995,
+				"ratio": 1.0053515683068226
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.86250000000001,
+					"ag-grid": 16.83000000000004,
+					"handsontable": 16.80250000000001,
+					"revogrid": 16.875
+				},
+				"best": 16.80250000000001,
+				"ratio": 1.0035708971879187
+			}
+		},
+		{
+			"scenario": "streaming-updates",
+			"host": {
+				"values": {
+					"peculiar-sheets": 16.862499999999898,
+					"ag-grid": 16.84250000000003,
+					"handsontable": 16.86500000000001,
+					"revogrid": 16.837499999999864
+				},
+				"best": 16.837499999999864,
+				"ratio": 1.0014847809948053
+			},
+			"before": {
+				"values": {
+					"peculiar-sheets": 16.86000000000007,
+					"ag-grid": 16.849999999999966,
+					"handsontable": 16.844999999999914,
+					"revogrid": 16.835000000000036
+				},
+				"best": 16.835000000000036,
+				"ratio": 1.0014850014850034
+			},
+			"after": {
+				"values": {
+					"peculiar-sheets": 16.829999999999927,
+					"ag-grid": 16.83750000000009,
+					"handsontable": 16.837500000000034,
+					"revogrid": 16.834999999999866
+				},
+				"best": 16.829999999999927,
+				"ratio": 1
+			}
+		}
+	],
+	"checks": [
+		{
+			"exitCode": 0,
+			"name": "test"
+		},
+		{
+			"exitCode": 0,
+			"name": "test:solid2"
+		},
+		{
+			"exitCode": 0,
+			"name": "benchmark:test"
+		},
+		{
+			"exitCode": 0,
+			"name": "benchmark:typecheck"
+		},
+		{
+			"exitCode": 0,
+			"name": "scroll-coverage production e2e"
+		}
+	],
+	"testCounts": {
+		"core": 244,
+		"solid2": 17,
+		"benchmark": 25,
+		"productionBrowser": 2
+	},
+	"focusedRuns": [
+		{
+			"startedAt": "2026-11-04T16:14:06.197Z",
+			"elapsedMs": 424472,
+			"samples": 144,
+			"timerProtocol": "cross-origin-isolated-v1",
+			"cpuAffinity": "unrestricted"
+		},
+		{
+			"startedAt": "2026-11-04T16:21:12.250Z",
+			"elapsedMs": 475078,
+			"samples": 144,
+			"timerProtocol": "cross-origin-isolated-v1",
+			"cpuAffinity": "unrestricted"
+		},
+		{
+			"startedAt": "2026-11-04T16:34:18.048Z",
+			"elapsedMs": 426152,
+			"samples": 144,
+			"timerProtocol": "cross-origin-isolated-v1",
+			"cpuAffinity": "unrestricted"
+		},
+		{
+			"startedAt": "2026-11-04T16:41:25.691Z",
+			"elapsedMs": 473243,
+			"samples": 144,
+			"timerProtocol": "cross-origin-isolated-v1",
+			"cpuAffinity": "unrestricted"
+		}
+	],
+	"profiles": [
+		{
+			"file": ".benchmark/clean-profile-baseline/streaming-updates-baseline/trace.json",
+			"frameCount": 300,
+			"over16_7": 136,
+			"missedVsyncs": 1,
+			"classes": {
+				"wheel": 1
+			},
+			"costs": {
+				"EventDispatch": {
+					"count": 341,
+					"totalMs": 52.97900000000004,
+					"maxMs": 2.097
+				},
+				"FunctionCall": {
+					"count": 1129,
+					"totalMs": 68.2110000000003,
+					"maxMs": 1.505
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 66,
+					"totalMs": 7.878999999999997,
+					"maxMs": 0.286
+				},
+				"Layout": {
+					"count": 62,
+					"totalMs": 10.610999999999997,
+					"maxMs": 0.558
+				},
+				"Paint": {
+					"count": 1010,
+					"totalMs": 73.29700000000024,
+					"maxMs": 1.442
+				},
+				"PrePaint": {
+					"count": 428,
+					"totalMs": 8.741000000000005,
+					"maxMs": 0.235
+				},
+				"Layerize": {
+					"count": 265,
+					"totalMs": 23.309000000000168,
+					"maxMs": 0.707
+				},
+				"MinorGC": {
+					"count": 3,
+					"totalMs": 2.6769999999999996,
+					"maxMs": 1.067
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 23,
+				"examples": [
+					{
+						"ms": 0.081,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "7",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					},
+					{
+						"ms": 0.062,
+						"stack": [
+							{
+								"columnNumber": 165870,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "7",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":153,\"class\":675,\"aria-selected\":42,\"title\":295,\"characterData\":295,\"style\":41,\"rowsCreated\":61,\"rowsRemoved\":59,\"id\":294,\"aria-rowindex\":21,\"rowRebindings\":21}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 638,
+				"left": 0
+			},
+			"traceSha256": "d4e8620a37ff272726653c010f39f8e9ff1fc4efdb5acceb4c57ea6f7ac426db"
+		},
+		{
+			"file": ".benchmark/clean-profile-baseline/scroll-wheel-slow-baseline/trace.json",
+			"frameCount": 86,
+			"over16_7": 61,
+			"missedVsyncs": 39,
+			"classes": {
+				"wheel": 39
+			},
+			"costs": {
+				"EventDispatch": {
+					"count": 265,
+					"totalMs": 24.970000000000024,
+					"maxMs": 1.622
+				},
+				"FunctionCall": {
+					"count": 505,
+					"totalMs": 27.871000000000002,
+					"maxMs": 0.872
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 41,
+					"totalMs": 3.74,
+					"maxMs": 0.163
+				},
+				"Layout": {
+					"count": 41,
+					"totalMs": 7.124999999999999,
+					"maxMs": 0.308
+				},
+				"Paint": {
+					"count": 1001,
+					"totalMs": 43.42600000000011,
+					"maxMs": 1.135
+				},
+				"PrePaint": {
+					"count": 258,
+					"totalMs": 5.728999999999989,
+					"maxMs": 0.12
+				},
+				"Layerize": {
+					"count": 79,
+					"totalMs": 22.085000000000015,
+					"maxMs": 0.641
+				},
+				"MinorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.085,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":96,\"rowsCreated\":61,\"rowsRemoved\":60,\"id\":378,\"title\":378,\"characterData\":378,\"aria-rowindex\":27,\"rowRebindings\":27,\"style\":27}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 960,
+				"left": 0
+			},
+			"traceSha256": "01dcee8d1ec422121e7f409bb2fabb95d6d65cab0e6cb545991a8642a17c90a7"
+		},
+		{
+			"file": ".benchmark/clean-profile-baseline/scroll-wheel-bursts-baseline/trace.json",
+			"frameCount": 105,
+			"over16_7": 52,
+			"missedVsyncs": 19,
+			"classes": {
+				"wheel": 19
+			},
+			"costs": {
+				"EventDispatch": {
+					"count": 189,
+					"totalMs": 38.64400000000003,
+					"maxMs": 3.165
+				},
+				"FunctionCall": {
+					"count": 409,
+					"totalMs": 42.26300000000002,
+					"maxMs": 2.577
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 21,
+					"totalMs": 15.021,
+					"maxMs": 0.916
+				},
+				"Layout": {
+					"count": 21,
+					"totalMs": 25.146,
+					"maxMs": 1.496
+				},
+				"Paint": {
+					"count": 7553,
+					"totalMs": 117.83600000000368,
+					"maxMs": 3.53
+				},
+				"PrePaint": {
+					"count": 217,
+					"totalMs": 10.315999999999999,
+					"maxMs": 0.503
+				},
+				"Layerize": {
+					"count": 86,
+					"totalMs": 10.55599999999999,
+					"maxMs": 0.627
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 0.695,
+					"maxMs": 0.695
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.082,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "7",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":750,\"rowsRemoved\":498,\"rowsCreated\":499,\"id\":3486,\"class\":16,\"aria-selected\":1,\"title\":3486,\"characterData\":3486,\"aria-rowindex\":249,\"rowRebindings\":249,\"style\":249}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 7000,
+				"left": 0
+			},
+			"traceSha256": "658f3426a0b75942921099099cdb7eebd08cf9473cf172cedb324b54d1816758"
+		},
+		{
+			"file": ".benchmark/clean-profile-baseline/scroll-diagonal-baseline/trace.json",
+			"frameCount": 105,
+			"over16_7": 53,
+			"missedVsyncs": 19,
+			"classes": {
+				"wheel": 19
+			},
+			"costs": {
+				"EventDispatch": {
+					"count": 189,
+					"totalMs": 63.818999999999996,
+					"maxMs": 3.853
+				},
+				"FunctionCall": {
+					"count": 409,
+					"totalMs": 67.98200000000007,
+					"maxMs": 3.159
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 21,
+					"totalMs": 22.416000000000004,
+					"maxMs": 1.274
+				},
+				"Layout": {
+					"count": 21,
+					"totalMs": 30.080000000000005,
+					"maxMs": 1.841
+				},
+				"Paint": {
+					"count": 8510,
+					"totalMs": 142.3420000000056,
+					"maxMs": 4.277
+				},
+				"PrePaint": {
+					"count": 217,
+					"totalMs": 12.484999999999989,
+					"maxMs": 0.705
+				},
+				"Layerize": {
+					"count": 93,
+					"totalMs": 12.12099999999999,
+					"maxMs": 0.654
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 0.721,
+					"maxMs": 0.721
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.078,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":2588,\"style\":305,\"rowsRemoved\":498,\"rowsCreated\":499,\"id\":4062,\"class\":16,\"aria-selected\":1,\"title\":4062,\"characterData\":4062,\"aria-rowindex\":249,\"rowRebindings\":249,\"aria-colindex\":476}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 7000,
+				"left": 2400
+			},
+			"traceSha256": "26777295fabebc74a843b91964050c05b52beea270377b97702f638115cdcf3e"
+		},
+		{
+			"file": ".benchmark/clean-profile-baseline/vertical-scroll-baseline/trace.json",
+			"frameCount": 122,
+			"over16_7": 56,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 240,
+					"totalMs": 243.13500000000045,
+					"maxMs": 4.355
+				},
+				"FunctionCall": {
+					"count": 725,
+					"totalMs": 480.4209999999998,
+					"maxMs": 5.346
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 120,
+					"totalMs": 55.291000000000004,
+					"maxMs": 0.788
+				},
+				"Layout": {
+					"count": 120,
+					"totalMs": 178.183,
+					"maxMs": 2.276
+				},
+				"Paint": {
+					"count": 1161,
+					"totalMs": 23.37200000000015,
+					"maxMs": 3.726
+				},
+				"PrePaint": {
+					"count": 122,
+					"totalMs": 76.29499999999999,
+					"maxMs": 1.024
+				},
+				"Layerize": {
+					"count": 122,
+					"totalMs": 8.732999999999999,
+					"maxMs": 0.593
+				},
+				"MinorGC": {
+					"count": 3,
+					"totalMs": 2.134,
+					"maxMs": 0.804
+				},
+				"MajorGC": {
+					"count": 6,
+					"totalMs": 9.133,
+					"maxMs": 2.193
+				}
+			},
+			"forcedLayouts": {
+				"count": 120,
+				"examples": [
+					{
+						"ms": 1.597,
+						"stack": [
+							{
+								"columnNumber": 20150,
+								"functionName": "Z",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							},
+							{
+								"columnNumber": 20781,
+								"functionName": "s",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							}
+						]
+					},
+					{
+						"ms": 1.723,
+						"stack": [
+							{
+								"columnNumber": 20150,
+								"functionName": "Z",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							},
+							{
+								"columnNumber": 20781,
+								"functionName": "s",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":981,\"rowsRemoved\":589,\"rowsCreated\":591,\"id\":47110,\"title\":47110,\"characterData\":47110,\"aria-rowindex\":3365,\"rowRebindings\":3365,\"style\":3365,\"class\":16,\"aria-selected\":1}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 0,
+				"left": 0
+			},
+			"traceSha256": "18f7f9c93bd7d2dc8ce5a33be7e8b95e0723ddb73134095a6abd83a811946f92"
+		},
+		{
+			"file": ".benchmark/clean-profile-baseline/scroll-jump-baseline/trace.json",
+			"frameCount": 11,
+			"over16_7": 4,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 71,
+					"totalMs": 16.391000000000002,
+					"maxMs": 3.897
+				},
+				"FunctionCall": {
+					"count": 95,
+					"totalMs": 16.845999999999993,
+					"maxMs": 3.218
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 7,
+					"totalMs": 2.347,
+					"maxMs": 0.614
+				},
+				"Layout": {
+					"count": 7,
+					"totalMs": 5.396,
+					"maxMs": 1.691
+				},
+				"Paint": {
+					"count": 434,
+					"totalMs": 19.86900000000002,
+					"maxMs": 3.461
+				},
+				"PrePaint": {
+					"count": 51,
+					"totalMs": 2.612999999999999,
+					"maxMs": 0.677
+				},
+				"Layerize": {
+					"count": 14,
+					"totalMs": 2.549,
+					"maxMs": 0.542
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 0.9,
+					"maxMs": 0.9
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 4,
+				"examples": [
+					{
+						"ms": 0.079,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					},
+					{
+						"ms": 0.137,
+						"stack": [
+							{
+								"columnNumber": 163814,
+								"functionName": "Ct",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 164366,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 17808,
+								"functionName": "P",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 164360,
+								"functionName": "po.defer",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 21108,
+								"functionName": "lr",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 7500,
+								"functionName": "Ot",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 5761,
+								"functionName": "run",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 4771,
+								"functionName": "flush",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 7438,
+								"functionName": "Dt",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":55,\"rowsRemoved\":25,\"rowsCreated\":27,\"id\":1162,\"title\":1162,\"characterData\":1162,\"aria-rowindex\":83,\"rowRebindings\":83,\"style\":87,\"class\":96,\"aria-selected\":6}",
+			"viewportLayers": [],
+			"layerCount": 7,
+			"finalScroll": {
+				"top": 251405,
+				"left": 0
+			},
+			"traceSha256": "037ac54caf24c5efba4029aa608490b6546c7ed3b5dcf20d64432ea5e6467bc1"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/streaming-updates-scroll-hint/trace.json",
+			"frameCount": 301,
+			"over16_7": 131,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 341,
+					"totalMs": 53.97599999999998,
+					"maxMs": 2.116
+				},
+				"FunctionCall": {
+					"count": 1131,
+					"totalMs": 70.31500000000021,
+					"maxMs": 1.597
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 66,
+					"totalMs": 8.021,
+					"maxMs": 0.321
+				},
+				"Layout": {
+					"count": 62,
+					"totalMs": 10.712999999999997,
+					"maxMs": 0.508
+				},
+				"Paint": {
+					"count": 1010,
+					"totalMs": 78.8680000000004,
+					"maxMs": 1.438
+				},
+				"PrePaint": {
+					"count": 429,
+					"totalMs": 8.62799999999998,
+					"maxMs": 0.25
+				},
+				"Layerize": {
+					"count": 253,
+					"totalMs": 16.538000000000125,
+					"maxMs": 0.481
+				},
+				"MinorGC": {
+					"count": 2,
+					"totalMs": 1.736,
+					"maxMs": 0.909
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 23,
+				"examples": [
+					{
+						"ms": 0.108,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					},
+					{
+						"ms": 0.063,
+						"stack": [
+							{
+								"columnNumber": 165870,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":153,\"class\":675,\"aria-selected\":42,\"title\":295,\"characterData\":295,\"style\":41,\"rowsCreated\":61,\"rowsRemoved\":59,\"id\":294,\"aria-rowindex\":21,\"rowRebindings\":21}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 2000,
+					"height": 280033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 638,
+				"left": 0
+			},
+			"traceSha256": "9d8fff3cd697fa91d58dedad839b8ab55d434355b9648ceb8fcae355db71e3de"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/scroll-wheel-slow-scroll-hint/trace.json",
+			"frameCount": 124,
+			"over16_7": 60,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 265,
+					"totalMs": 26.349000000000004,
+					"maxMs": 1.62
+				},
+				"FunctionCall": {
+					"count": 581,
+					"totalMs": 32.005,
+					"maxMs": 0.847
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 41,
+					"totalMs": 4.054,
+					"maxMs": 0.16
+				},
+				"Layout": {
+					"count": 41,
+					"totalMs": 7.743,
+					"maxMs": 0.29
+				},
+				"Paint": {
+					"count": 1001,
+					"totalMs": 45.87500000000012,
+					"maxMs": 1.239
+				},
+				"PrePaint": {
+					"count": 296,
+					"totalMs": 6.475999999999986,
+					"maxMs": 0.159
+				},
+				"Layerize": {
+					"count": 104,
+					"totalMs": 14.108999999999991,
+					"maxMs": 0.4
+				},
+				"MinorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.105,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":96,\"rowsCreated\":61,\"rowsRemoved\":60,\"id\":378,\"title\":378,\"characterData\":378,\"aria-rowindex\":27,\"rowRebindings\":27,\"style\":27}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 2000,
+					"height": 280033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 960,
+				"left": 0
+			},
+			"traceSha256": "09ae0373e344bc1cb953198d98aee437bd0a11e7e2c7f2ab3bd9d00c1daafc44"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/scroll-wheel-bursts-scroll-hint/trace.json",
+			"frameCount": 124,
+			"over16_7": 56,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 189,
+					"totalMs": 38.785999999999994,
+					"maxMs": 3.06
+				},
+				"FunctionCall": {
+					"count": 448,
+					"totalMs": 59.565,
+					"maxMs": 15.445
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 21,
+					"totalMs": 14.866000000000001,
+					"maxMs": 0.926
+				},
+				"Layout": {
+					"count": 21,
+					"totalMs": 25.977,
+					"maxMs": 1.801
+				},
+				"Paint": {
+					"count": 7553,
+					"totalMs": 117.24300000000338,
+					"maxMs": 3.458
+				},
+				"PrePaint": {
+					"count": 237,
+					"totalMs": 10.919999999999993,
+					"maxMs": 0.634
+				},
+				"Layerize": {
+					"count": 99,
+					"totalMs": 7.486000000000009,
+					"maxMs": 0.431
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 1.01,
+					"maxMs": 1.01
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.086,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":750,\"rowsRemoved\":498,\"rowsCreated\":499,\"id\":3486,\"class\":16,\"aria-selected\":1,\"title\":3486,\"characterData\":3486,\"aria-rowindex\":249,\"rowRebindings\":249,\"style\":249}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 2000,
+					"height": 280033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 7000,
+				"left": 0
+			},
+			"traceSha256": "dbae8b8c12fb3004e10b5b98114035a536181c6aafd6305cf29433a8423a8fa3"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/scroll-diagonal-scroll-hint/trace.json",
+			"frameCount": 123,
+			"over16_7": 55,
+			"missedVsyncs": 1,
+			"classes": {
+				"wheel": 1
+			},
+			"costs": {
+				"EventDispatch": {
+					"count": 189,
+					"totalMs": 63.39699999999999,
+					"maxMs": 4.538
+				},
+				"FunctionCall": {
+					"count": 445,
+					"totalMs": 82.21600000000008,
+					"maxMs": 13.748
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 21,
+					"totalMs": 22.102,
+					"maxMs": 1.308
+				},
+				"Layout": {
+					"count": 21,
+					"totalMs": 29.666,
+					"maxMs": 1.821
+				},
+				"Paint": {
+					"count": 8510,
+					"totalMs": 136.30900000000577,
+					"maxMs": 4.166
+				},
+				"PrePaint": {
+					"count": 235,
+					"totalMs": 12.23599999999999,
+					"maxMs": 0.654
+				},
+				"Layerize": {
+					"count": 110,
+					"totalMs": 8.542000000000003,
+					"maxMs": 0.49
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 0.729,
+					"maxMs": 0.729
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 1,
+				"examples": [
+					{
+						"ms": 0.087,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":2588,\"style\":305,\"rowsRemoved\":498,\"rowsCreated\":499,\"id\":4062,\"class\":16,\"aria-selected\":1,\"title\":4062,\"characterData\":4062,\"aria-rowindex\":249,\"rowRebindings\":249,\"aria-colindex\":476}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 20000,
+					"height": 28033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 7000,
+				"left": 2400
+			},
+			"traceSha256": "7c146b9109622abbf521535fadfba101e7deb5b85a75301998dcebbfe9382835"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/vertical-scroll-scroll-hint/trace.json",
+			"frameCount": 122,
+			"over16_7": 54,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 240,
+					"totalMs": 233.8430000000005,
+					"maxMs": 3.894
+				},
+				"FunctionCall": {
+					"count": 725,
+					"totalMs": 461.7629999999989,
+					"maxMs": 4.827
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 120,
+					"totalMs": 53.01400000000002,
+					"maxMs": 0.744
+				},
+				"Layout": {
+					"count": 120,
+					"totalMs": 171.05900000000003,
+					"maxMs": 1.956
+				},
+				"Paint": {
+					"count": 1115,
+					"totalMs": 22.563000000000105,
+					"maxMs": 3.953
+				},
+				"PrePaint": {
+					"count": 122,
+					"totalMs": 75.66999999999999,
+					"maxMs": 0.85
+				},
+				"Layerize": {
+					"count": 122,
+					"totalMs": 6.648999999999999,
+					"maxMs": 0.336
+				},
+				"MinorGC": {
+					"count": 3,
+					"totalMs": 2.273,
+					"maxMs": 0.911
+				},
+				"MajorGC": {
+					"count": 5,
+					"totalMs": 7.068,
+					"maxMs": 2
+				}
+			},
+			"forcedLayouts": {
+				"count": 120,
+				"examples": [
+					{
+						"ms": 1.034,
+						"stack": [
+							{
+								"columnNumber": 20150,
+								"functionName": "Z",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							},
+							{
+								"columnNumber": 20781,
+								"functionName": "s",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							}
+						]
+					},
+					{
+						"ms": 1.545,
+						"stack": [
+							{
+								"columnNumber": 20150,
+								"functionName": "Z",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							},
+							{
+								"columnNumber": 20781,
+								"functionName": "s",
+								"lineNumber": 4,
+								"scriptId": "5",
+								"url": "http://localhost:4178/assets/index-BQJ_4fXp.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":899,\"rowsRemoved\":524,\"rowsCreated\":525,\"id\":46886,\"class\":16,\"aria-selected\":1,\"title\":46886,\"characterData\":46886,\"aria-rowindex\":3349,\"rowRebindings\":3349,\"style\":3349}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 2000,
+					"height": 280033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 0,
+				"left": 0
+			},
+			"traceSha256": "7f6beff57e42949fe7ab1cc2da7e48a2956505f6df2948d2aab51147e52194c8"
+		},
+		{
+			"file": ".benchmark/clean-profile-scroll-hint/scroll-jump-scroll-hint/trace.json",
+			"frameCount": 11,
+			"over16_7": 4,
+			"missedVsyncs": 0,
+			"classes": {},
+			"costs": {
+				"EventDispatch": {
+					"count": 71,
+					"totalMs": 15.561000000000005,
+					"maxMs": 4.301
+				},
+				"FunctionCall": {
+					"count": 95,
+					"totalMs": 15.840999999999998,
+					"maxMs": 3.564
+				},
+				"RunMicrotasks": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				},
+				"UpdateLayoutTree": {
+					"count": 7,
+					"totalMs": 2.279,
+					"maxMs": 0.601
+				},
+				"Layout": {
+					"count": 7,
+					"totalMs": 5.175,
+					"maxMs": 1.621
+				},
+				"Paint": {
+					"count": 434,
+					"totalMs": 20.313000000000013,
+					"maxMs": 3.662
+				},
+				"PrePaint": {
+					"count": 51,
+					"totalMs": 2.523999999999999,
+					"maxMs": 0.653
+				},
+				"Layerize": {
+					"count": 13,
+					"totalMs": 2.143,
+					"maxMs": 0.511
+				},
+				"MinorGC": {
+					"count": 1,
+					"totalMs": 0.647,
+					"maxMs": 0.647
+				},
+				"MajorGC": {
+					"count": 0,
+					"totalMs": 0,
+					"maxMs": 0
+				}
+			},
+			"forcedLayouts": {
+				"count": 4,
+				"examples": [
+					{
+						"ms": 0.079,
+						"stack": [
+							{
+								"columnNumber": 170600,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					},
+					{
+						"ms": 0.121,
+						"stack": [
+							{
+								"columnNumber": 163814,
+								"functionName": "Ct",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 164366,
+								"functionName": "",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 17808,
+								"functionName": "P",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 164360,
+								"functionName": "po.defer",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 21108,
+								"functionName": "lr",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 7500,
+								"functionName": "Ot",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 5761,
+								"functionName": "run",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 4771,
+								"functionName": "flush",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							},
+							{
+								"columnNumber": 7438,
+								"functionName": "Dt",
+								"lineNumber": 1,
+								"scriptId": "8",
+								"url": "http://localhost:4178/assets/peculiar-sheets-dfldkVND.js"
+							}
+						]
+					}
+				]
+			},
+			"lastMutations": "diagnostic.mutations:{\"childList\":55,\"rowsRemoved\":25,\"rowsCreated\":27,\"id\":1162,\"title\":1162,\"characterData\":1162,\"aria-rowindex\":83,\"rowRebindings\":83,\"style\":87,\"class\":96,\"aria-selected\":6}",
+			"viewportLayers": [
+				{
+					"width": 1271,
+					"height": 694,
+					"reasons": {
+						"compositingReasons": ["Is a scrollable overflow element using accelerated scrolling."],
+						"compositingReasonIds": ["OverflowScrolling"]
+					}
+				},
+				{
+					"width": 15,
+					"height": 15,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				},
+				{
+					"width": 2000,
+					"height": 280033,
+					"reasons": {
+						"compositingReasons": ["Overlaps other composited content."],
+						"compositingReasonIds": ["Overlap"]
+					}
+				}
+			],
+			"layerCount": 10,
+			"finalScroll": {
+				"top": 251405,
+				"left": 0
+			},
+			"traceSha256": "3f4e17da9359fff99587a1c07f429f2361e40b5ade7a24fd9b6f759b49cad4e9"
+		}
+	]
+}
