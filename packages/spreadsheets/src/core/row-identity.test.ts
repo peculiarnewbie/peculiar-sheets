@@ -28,6 +28,14 @@ describe("validateRowIds", () => {
 		flush();
 		expect(() => validateRowIds([rowId("a"), rowId("a")], 2)).toThrow(/Duplicate/);
 	});
+
+	it("accepts large unique identity sets and names the first duplicate", () => {
+		const ids = Array.from({ length: 10000 }, (_, index) => rowId(`row-${index}`));
+		expect(() => validateRowIds(ids, ids.length)).not.toThrow();
+		expect(() => validateRowIds([rowId("a"), rowId("b"), rowId("b"), rowId("a")], 4)).toThrow(
+			"Duplicate rowId found: b",
+		);
+	});
 });
 
 describe("identity reconciliation via reconcileFromHost", () => {
