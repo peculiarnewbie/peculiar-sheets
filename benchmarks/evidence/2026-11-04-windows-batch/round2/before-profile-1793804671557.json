@@ -1,0 +1,423 @@
+{
+	"profile": {
+		"profile": {
+			"nodes": [
+				{
+					"id": 1,
+					"callFrame": {
+						"functionName": "(root)",
+						"scriptId": "0",
+						"url": "",
+						"lineNumber": -1,
+						"columnNumber": -1
+					},
+					"hitCount": 0,
+					"children": [2, 3, 11, 12, 24, 31]
+				},
+				{
+					"id": 2,
+					"callFrame": {
+						"functionName": "(program)",
+						"scriptId": "0",
+						"url": "",
+						"lineNumber": -1,
+						"columnNumber": -1
+					},
+					"hitCount": 4
+				},
+				{
+					"id": 3,
+					"callFrame": {
+						"functionName": "",
+						"scriptId": "10",
+						"url": "",
+						"lineNumber": 0,
+						"columnNumber": 0
+					},
+					"hitCount": 0,
+					"children": [4]
+				},
+				{
+					"id": 4,
+					"callFrame": {
+						"functionName": "",
+						"scriptId": "10",
+						"url": "",
+						"lineNumber": 0,
+						"columnNumber": 1
+					},
+					"hitCount": 0,
+					"children": [5]
+				},
+				{
+					"id": 5,
+					"callFrame": {
+						"functionName": "__fn",
+						"scriptId": "10",
+						"url": "",
+						"lineNumber": 1,
+						"columnNumber": 23
+					},
+					"hitCount": 0,
+					"children": [6]
+				},
+				{
+					"id": 6,
+					"callFrame": {
+						"functionName": "run",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 25928
+					},
+					"hitCount": 0,
+					"children": [7]
+				},
+				{
+					"id": 7,
+					"callFrame": {
+						"functionName": "be",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 14718
+					},
+					"hitCount": 0,
+					"children": [8]
+				},
+				{
+					"id": 8,
+					"callFrame": {
+						"functionName": "x",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 1454
+					},
+					"hitCount": 0,
+					"children": [9]
+				},
+				{
+					"id": 9,
+					"callFrame": {
+						"functionName": "n",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 1473
+					},
+					"hitCount": 0,
+					"children": [10]
+				},
+				{
+					"id": 10,
+					"callFrame": {
+						"functionName": "try",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 14836
+					},
+					"hitCount": 1,
+					"positionTicks": [{ "line": 4, "ticks": 1 }]
+				},
+				{
+					"id": 11,
+					"callFrame": {
+						"functionName": "(idle)",
+						"scriptId": "0",
+						"url": "",
+						"lineNumber": -1,
+						"columnNumber": -1
+					},
+					"hitCount": 66
+				},
+				{
+					"id": 12,
+					"callFrame": {
+						"functionName": "try",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 14836
+					},
+					"hitCount": 0,
+					"children": [13, 19]
+				},
+				{
+					"id": 13,
+					"callFrame": {
+						"functionName": "writeCells",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 2,
+						"columnNumber": 20220
+					},
+					"hitCount": 0,
+					"children": [14]
+				},
+				{
+					"id": 14,
+					"callFrame": {
+						"functionName": "setCellValues",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 2,
+						"columnNumber": 11547
+					},
+					"hitCount": 1,
+					"children": [15],
+					"positionTicks": [{ "line": 3, "ticks": 1 }]
+				},
+				{
+					"id": 15,
+					"callFrame": {
+						"functionName": "on",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 43959
+					},
+					"hitCount": 0,
+					"children": [16]
+				},
+				{
+					"id": 16,
+					"callFrame": {
+						"functionName": "ku",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 22755
+					},
+					"hitCount": 0,
+					"children": [17]
+				},
+				{
+					"id": 17,
+					"callFrame": {
+						"functionName": "applyMutations",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 43982
+					},
+					"hitCount": 0,
+					"children": [18]
+				},
+				{
+					"id": 18,
+					"callFrame": {
+						"functionName": "Ol",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 262
+					},
+					"hitCount": 1,
+					"positionTicks": [{ "line": 2, "ticks": 1 }]
+				},
+				{
+					"id": 19,
+					"callFrame": {
+						"functionName": "readCell",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 2,
+						"columnNumber": 20103
+					},
+					"hitCount": 0,
+					"children": [20]
+				},
+				{
+					"id": 20,
+					"callFrame": {
+						"functionName": "Kt",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 42231
+					},
+					"hitCount": 0,
+					"children": [21]
+				},
+				{
+					"id": 21,
+					"callFrame": {
+						"functionName": "Wt",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 41999
+					},
+					"hitCount": 0,
+					"children": [22]
+				},
+				{
+					"id": 22,
+					"callFrame": {
+						"functionName": "getCellValue",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 111732
+					},
+					"hitCount": 0,
+					"children": [23]
+				},
+				{
+					"id": 23,
+					"callFrame": {
+						"functionName": "p",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 98200
+					},
+					"hitCount": 0
+				},
+				{
+					"id": 24,
+					"callFrame": {
+						"functionName": "Ot",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 7326
+					},
+					"hitCount": 0,
+					"children": [25]
+				},
+				{
+					"id": 25,
+					"callFrame": {
+						"functionName": "flush",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 4644
+					},
+					"hitCount": 0,
+					"children": [26]
+				},
+				{
+					"id": 26,
+					"callFrame": {
+						"functionName": "Lt",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 8277
+					},
+					"hitCount": 0,
+					"children": [27]
+				},
+				{
+					"id": 27,
+					"callFrame": {
+						"functionName": "ht._e",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 13478
+					},
+					"hitCount": 0,
+					"children": [28]
+				},
+				{
+					"id": 28,
+					"callFrame": {
+						"functionName": "vn",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 0,
+						"columnNumber": 13599
+					},
+					"hitCount": 0,
+					"children": [29]
+				},
+				{
+					"id": 29,
+					"callFrame": {
+						"functionName": "U.e.e",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 11257
+					},
+					"hitCount": 0,
+					"children": [30]
+				},
+				{
+					"id": 30,
+					"callFrame": {
+						"functionName": "get formattedText",
+						"scriptId": "8",
+						"url": "http://localhost:4178/assets/peculiar-sheets-Cagmgyva.js",
+						"lineNumber": 1,
+						"columnNumber": 9042
+					},
+					"hitCount": 0
+				},
+				{
+					"id": 31,
+					"callFrame": {
+						"functionName": "run",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 25928
+					},
+					"hitCount": 0,
+					"children": [32]
+				},
+				{
+					"id": 32,
+					"callFrame": {
+						"functionName": "n",
+						"scriptId": "5",
+						"url": "http://localhost:4178/assets/index-DZbD7ZH0.js",
+						"lineNumber": 3,
+						"columnNumber": 25937
+					},
+					"hitCount": 0,
+					"children": [33]
+				},
+				{
+					"id": 33,
+					"callFrame": {
+						"functionName": "get memory",
+						"scriptId": "0",
+						"url": "",
+						"lineNumber": -1,
+						"columnNumber": -1
+					},
+					"hitCount": 1,
+					"positionTicks": [{ "line": 4, "ticks": 1 }]
+				}
+			],
+			"startTime": 217851661058,
+			"endTime": 217851715090,
+			"samples": [
+				2, 10, 11, 11, 11, 11, 11, 14, 18, 23, 28, 30, 2, 2, 2, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+				11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+				11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+				11, 11, 11, 11, 33, 11, 11, 2
+			],
+			"timeDeltas": [
+				14861, 1237, 553, 525, 519, 506, 518, 532, 536, 98, 112, 53, 244, 554, 527, 533, 517, 501,
+				536, 534, 498, 517, 514, 517, 506, 512, 561, 524, 508, 525, 516, 515, 505, 513, 514, 514,
+				507, 512, 513, 514, 506, 514, 544, 550, 459, 530, 517, 515, 507, 506, 512, 513, 507, 514,
+				513, 553, 510, 524, 514, 516, 509, 515, 513, 514, 506, 513, 513, 514, 505, 513, 513, 518,
+				504, 513, 534, 511, 504, 532
+			]
+		}
+	},
+	"phases": [
+		{ "name": "r2.dedupe", "duration": 0.09999999403953552 },
+		{ "name": "r2.prepare", "duration": 0.17500001192092896 },
+		{ "name": "r2.ownedWritesAndRowSet", "duration": 0.1300000250339508 },
+		{ "name": "r2.rowRevisions", "duration": 0.07499998807907104 },
+		{ "name": "r2.history", "duration": 0.0949999988079071 }
+	]
+}

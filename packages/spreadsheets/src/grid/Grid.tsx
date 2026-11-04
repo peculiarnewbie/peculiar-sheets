@@ -1254,14 +1254,35 @@ export default function Grid(props: GridProps) {
 			latestWrites.set(`${write.row},${write.col}`, write);
 		}
 
+		// Resolve the batch's addressing context once. No writes occur until all
+		// mutations are prepared, so duplicates compare against the original model.
+		const store = props.store;
+		const columns = props.columns;
+		const sortedIds = isViewSortActive() ? visualRowIds() : null;
+		const ids = store.rowIds();
 		const mutations: CellMutation[] = [];
 		for (const write of latestWrites.values()) {
-			const mutation = buildCellMutation(
-				{ row: visualRow(write.row), col: columnIdx(write.col) },
-				write.value,
-				"external",
-			);
-			if (mutation) mutations.push(mutation);
+			const column = columns[write.col];
+			if (!column) continue;
+			const sortedId = sortedIds?.[write.row];
+			const physical =
+				sortedId === undefined
+					? physicalRow(write.row)
+					: (store.getPhysicalRowForRowId(sortedId) ?? physicalRow(write.row));
+			const id = sortedId ?? ids[physical];
+			subscribeRawRow(physical);
+			const oldValue = store.getCellValue(physical, columnIdx(write.col)) ?? null;
+			if (oldValue === write.value) continue;
+			const mutation: CellMutation = {
+				address: { row: physical, col: columnIdx(write.col) },
+				viewAddress: { row: visualRow(write.row), col: columnIdx(write.col) },
+				columnId: column.id,
+				oldValue,
+				newValue: write.value,
+				source: "external",
+			};
+			if (id !== undefined) mutation.rowId = id;
+			mutations.push(mutation);
 		}
 		return mutations;
 	}

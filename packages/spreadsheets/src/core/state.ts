@@ -776,8 +776,16 @@ export function createSheetStore(
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
 			if (mutations.length === 0) return;
 			const colCount = dimensions().colCount;
-			for (const m of mutations) ownedCells.write(toNumber(m.row), m.col, m.value, colCount);
-			bumpRowRevisionsForPhysicalRows(mutations.map((m) => toNumber(m.row)));
+			const ids = rowIds();
+			const changedIds = new Set<RowId>();
+			for (const m of mutations) {
+				ownedCells.write(toNumber(m.row), m.col, m.value, colCount);
+				const id = ids[m.row];
+				if (id !== undefined) changedIds.add(id);
+			}
+			if (changedIds.size === 0) return;
+			rowRevisions.bump(changedIds);
+			bumpDataRevision();
 		},
 
 		reorderRows,
