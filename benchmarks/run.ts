@@ -20,6 +20,7 @@ import {
 } from "../apps/benchmarks/src/types";
 import type { PageLike } from "./browser-types";
 import { runBrowserWorkload } from "./browser-workloads";
+import { timerMetadata } from "./timer-metadata";
 import { appendSampleCheckpoint } from "./checkpoint";
 import { writeBenchmarkReport } from "./report";
 import {
@@ -60,6 +61,7 @@ const BROWSER_ARGS = [
 const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-latest.json");
 
 interface BenchmarkSnapshot extends SamplingMetadata {
+	timerProtocol?: string;
 	measurementProtocol?: string;
 	cpuAffinity?: string;
 	startedAt?: string;
@@ -82,6 +84,7 @@ interface MemoryCheckpoint {
 }
 
 interface MemoryDiagnosticSample {
+	timingEnvironment: ReturnType<typeof timerMetadata>;
 	implementation: ImplementationName;
 	rows: number;
 	columns: number;
@@ -511,6 +514,7 @@ function printBaselineComparison(
 ): void {
 	if (
 		baseline.measurementProtocol !== MEASUREMENT_PROTOCOL ||
+		baseline.timerProtocol !== "cross-origin-isolated-v1" ||
 		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled") ||
 		!sameSamplingCounts(baseline, SAMPLING, SCENARIOS)
 	) {
@@ -554,6 +558,7 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 		elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
 		skipped: SKIPPED,
 		measurementProtocol: MEASUREMENT_PROTOCOL,
+		timerProtocol: "cross-origin-isolated-v1",
 		cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 		generatedAt: new Date().toISOString(),
 		...SAMPLING,
@@ -666,6 +671,9 @@ async function runMemoryDiagnosticSample(options: {
 		});
 		await page.goto(`${BASE_URL}?${query}`);
 		await waitForReady(page);
+		const timingEnvironment = await page.evaluate(timerMetadata);
+		if (!timingEnvironment.crossOriginIsolated)
+			throw new Error("Benchmark preview must be cross-origin isolated for high-resolution timing");
 		const browserVersion = await page.sendCDP<{
 			product: string;
 			revision: string;
@@ -743,6 +751,7 @@ async function runMemoryDiagnosticSample(options: {
 			durationMs: DIAGNOSTIC_DURATION_MS,
 			viewport,
 			browser: browserVersion,
+			timingEnvironment,
 			startedAt,
 			cycles,
 			checkpoints,
@@ -843,6 +852,9 @@ async function runSample(options: {
 		});
 		await page.goto(`${BASE_URL}?${query}`);
 		await waitForReady(page);
+		const timingEnvironment = await page.evaluate(timerMetadata);
+		if (!timingEnvironment.crossOriginIsolated)
+			throw new Error("Benchmark preview must be cross-origin isolated for high-resolution timing");
 		if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
 			const interaction = await runBrowserWorkload(page, options.scenario);
 			if (interaction.isErr()) throw interaction.error;
@@ -856,7 +868,7 @@ async function runSample(options: {
 			const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
 			return memory?.usedJSHeapSize ?? null;
 		});
-		return { ...result, heapBytes };
+		return { ...result, heapBytes, timingEnvironment };
 	} finally {
 		await browser.close();
 	}
@@ -962,6 +974,7 @@ try {
 						results.push(result);
 						const checkpoint = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
 							measurementProtocol: MEASUREMENT_PROTOCOL,
+							timerProtocol: "cross-origin-isolated-v1",
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 							startedAt: RUN_STARTED_AT.toISOString(),
 							iteration,
@@ -995,6 +1008,7 @@ try {
 							startedAt: RUN_STARTED_AT.toISOString(),
 							elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
 							measurementProtocol: MEASUREMENT_PROTOCOL,
+							timerProtocol: "cross-origin-isolated-v1",
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 							...SAMPLING,
 							warmups: WARMUPS,
