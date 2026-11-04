@@ -1,0 +1,72 @@
+before batch-writes {"peculiar-sheets":0.4675000011920929,"revogrid":0.19999998807907104} ratio 2.3375001452863304
+before offscreen-writes {"peculiar-sheets":0.6574999988079071,"revogrid":1.1899999976158142} ratio 1
+before visible-writes {"peculiar-sheets":0.6450000107288361,"revogrid":6.445000022649765} ratio 1
+after batch-writes {"peculiar-sheets":0.42749999463558197,"revogrid":0.20999997854232788} ratio 2.0357144681775026
+after offscreen-writes {"peculiar-sheets":0.6574999988079071,"revogrid":1.2449999898672104} ratio 1
+after visible-writes {"peculiar-sheets":0.6375000029802322,"revogrid":6.415000006556511} ratio 1
+final batch-writes {"peculiar-sheets":0.4124999940395355,"ag-grid":3.4925000071525574,"revogrid":0.18000000715255737} ratio 2.2916665424903284
+final offscreen-writes {"peculiar-sheets":0.6424999982118607,"ag-grid":1.1200000047683716,"revogrid":1.1924999803304672} ratio 1
+final visible-writes {"peculiar-sheets":0.614999994635582,"ag-grid":4.017500013113022,"revogrid":6.442499995231628} ratio 1
+final-focused batch-writes {"peculiar-sheets":0.4050000011920929,"revogrid":0.21000000834465027} ratio 1.928571357613521
+final-focused offscreen-writes {"peculiar-sheets":0.6375000029802322,"revogrid":1.1749999970197678} ratio 1
+final-focused visible-writes {"peculiar-sheets":0.6099999845027924,"revogrid":6.409999996423721} ratio 1
+confirmation batch-writes {"peculiar-sheets":0.4074999988079071,"ag-grid":3.8799999952316284,"revogrid":0.26749998331069946} ratio 1.523364576567463
+confirmation offscreen-writes {"peculiar-sheets":0.6649999916553497,"ag-grid":1.0674999952316284,"revogrid":1.270000010728836} ratio 1
+confirmation visible-writes {"peculiar-sheets":0.6124999821186066,"ag-grid":4.060000002384186,"revogrid":6.299999997019768} ratio 1
+PHASES before 36 {
+  "r4.timer-entry → r4.adapter-entry": 0.025000005960464478,
+  "r4.adapter-entry → r4.grid-entry": 0.034999996423721313,
+  "r4.grid-entry → r4.state-entry": 0.06000000238418579,
+  "r4.state-entry → r4.preflight-complete": 0.05500000715255737,
+  "r4.preflight-complete → r4.fused-complete": 0.15000000596046448,
+  "r4.fused-complete → r4.rows-complete": 0.09000000357627869,
+  "r4.rows-complete → r4.data-complete": 0.009999990463256836,
+  "r4.data-complete → r4.selection-complete": 0.002499997615814209,
+  "r4.selection-complete → r4.history-append": 0.02000001072883606,
+  "r4.history-append → r4.history-complete": 0.009999990463256836,
+  "r4.history-complete → r4.store-complete": 0,
+  "r4.store-complete → r4.coord-wrapper": 0.015000015497207642,
+  "r4.coord-wrapper → r4.formula-port": 0.014999985694885254,
+  "r4.formula-port → r4.coordinate-entry": 0.019999995827674866,
+  "r4.coordinate-entry → r4.sync-complete": 0.02000001072883606,
+  "r4.sync-complete → r4.notification-entry": 0.005000025033950806,
+  "r4.notification-entry → r4.notification-complete": 0.009999990463256836,
+  "r4.notification-complete → r4.grid-complete": 0.004999995231628418,
+  "r4.grid-complete → r4.timer-complete": 0,
+  "total": 0.552499994635582
+}
+COUNTS before {"signal-write":{"median":1,"min":1,"max":1},"computation-update":{"median":0,"min":0,"max":0},"computation-run":{"median":0,"min":0,"max":0}}
+PHASES after 36 {
+  "r4.timer-entry → r4.adapter-entry": 0.025000005960464478,
+  "r4.adapter-entry → r4.grid-entry": 0.03999999165534973,
+  "r4.grid-entry → r4.state-entry": 0.06000000238418579,
+  "r4.state-entry → r4.preflight-complete": 0.05500000715255737,
+  "r4.preflight-complete → r4.fused-complete": 0.14999999105930328,
+  "r4.fused-complete → r4.rows-complete": 0.0949999988079071,
+  "r4.rows-complete → r4.data-complete": 0.009999990463256836,
+  "r4.data-complete → r4.selection-complete": 0,
+  "r4.selection-complete → r4.history-append": 0.02000001072883606,
+  "r4.history-append → r4.history-complete": 0.004999995231628418,
+  "r4.history-complete → r4.store-complete": 0,
+  "r4.store-complete → r4.grid-complete": 0.005000025033950806,
+  "r4.grid-complete → r4.timer-complete": 0.004999995231628418,
+  "total": 0.4650000035762787
+}
+COUNTS after {"signal-write":{"median":1,"min":1,"max":1},"computation-update":{"median":0,"min":0,"max":0},"computation-run":{"median":0,"min":0,"max":0}}
+PHASES retained 36 {
+  "r4.timer-entry → r4.adapter-entry": 0.025000005960464478,
+  "r4.adapter-entry → r4.grid-entry": 0.040000006556510925,
+  "r4.grid-entry → r4.state-entry": 0.06000000238418579,
+  "r4.state-entry → r4.preflight-complete": 0.054999977350234985,
+  "r4.preflight-complete → r4.fused-complete": 0.14750000834465027,
+  "r4.fused-complete → r4.rows-complete": 0.09000000357627869,
+  "r4.rows-complete → r4.data-complete": 0.009999990463256836,
+  "r4.data-complete → r4.selection-complete": 0,
+  "r4.selection-complete → r4.history-append": 0.02000001072883606,
+  "r4.history-append → r4.history-complete": 0.004999995231628418,
+  "r4.history-complete → r4.store-complete": 0.004999995231628418,
+  "r4.store-complete → r4.grid-complete": 0.004999995231628418,
+  "r4.grid-complete → r4.timer-complete": 0.002499997615814209,
+  "total": 0.4699999988079071
+}
+COUNTS retained {"signal-write":{"median":1,"min":1,"max":1},"computation-update":{"median":0,"min":0,"max":0},"computation-run":{"median":0,"min":0,"max":0}}

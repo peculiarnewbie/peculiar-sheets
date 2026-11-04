@@ -1,0 +1,13 @@
+
+> @ test:solid2 C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-3aa0f8f5
+> vitest run
+
+
+ RUN  v5.0.5 C:/Users/Ryzen/.t3/worktrees/peculiar-sheets/t3-3aa0f8f5
+
+
+ Test Files  2 passed (2)
+      Tests  20 passed (20)
+   Start at  00:57:05
+   Duration  544ms (environment 60%, import 17%, tests 15%, transform 8%, worker 1%)
+

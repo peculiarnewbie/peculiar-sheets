@@ -1,0 +1,8 @@
+
+> @ lint C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-3aa0f8f5
+> bun scripts/check-changed.ts lint
+
+warning: in the working copy of 'benchmarks/evidence/2026-11-04-windows-batch/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'packages/spreadsheets/src/grid/Grid.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/solid2/sheet.test.tsx', LF will be replaced by CRLF the next time Git touches it
+Checked 116 files in 34ms. No fixes applied.

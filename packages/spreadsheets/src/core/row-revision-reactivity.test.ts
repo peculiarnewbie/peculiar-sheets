@@ -104,4 +104,29 @@ describe("row-granular cell revisions", () => {
 		flush();
 		expect(store.rowIds()).toEqual([rowId("r0")]);
 	});
+	it("keeps exact identity counts across adoption and temporary snapshot removal", () => {
+		const a = rowId("a"),
+			b = rowId("b");
+		const store = createSheetStore([[0], [0]], makeColumns(1), [a, b]);
+		store.setCell(physicalRow(0), 0, 1);
+		store.setCell(physicalRow(1), 0, 1);
+		store.setCell(physicalRow(1), 0, 2);
+		store.adoptRowIds([b, a]);
+		store.setCell(physicalRow(0), 0, 3);
+		flush();
+		expect(store.rowRevision(a)).toBe(1);
+		flush();
+		expect(store.rowRevision(b)).toBe(3);
+		store.restoreSnapshot([[1]], [a]);
+		flush();
+		expect(store.rowRevision(b)).toBe(3);
+		store.restoreSnapshot([[1], [3]], [a, b]);
+		flush();
+		expect(store.rowRevision(a)).toBe(1);
+		flush();
+		expect(store.rowRevision(b)).toBe(3);
+		store.deleteRows(physicalRow(1), 1);
+		flush();
+		expect(store.rowRevision(b)).toBe(0);
+	});
 });

@@ -1239,7 +1239,9 @@ export default function Grid(props: GridProps) {
 	function applyBatchMutations(mutations: CellMutation[]) {
 		coordinateBatchMutations(
 			{
-				applyMutations: (batch) => applyMutations(props.store, batch),
+				applyMutations: (batch) => {
+					applyMutations(props.store, batch);
+				},
 				emitOperation: (operation) => {
 					props.onOperation?.(operation);
 				},
@@ -1250,19 +1252,61 @@ export default function Grid(props: GridProps) {
 	}
 
 	function buildExternalBatchMutations(writes: readonly CellWrite[]): CellMutation[] {
-		const latestWrites = new Map<string, CellWrite>();
+		const width = props.columns.length;
+		const latestWrites = new Map<number | string, CellWrite>();
 		for (const write of writes) {
-			latestWrites.set(`${write.row},${write.col}`, write);
+			const key =
+				Number.isSafeInteger(write.row) &&
+				write.row >= 0 &&
+				Number.isInteger(write.col) &&
+				write.col >= 0 &&
+				write.col < width &&
+				Number.isSafeInteger(write.row * width + write.col)
+					? write.row * width + write.col
+					: `${write.row},${write.col}`;
+			latestWrites.set(key, write);
 		}
 
+		// Resolve the batch's addressing context once. No writes occur until all
+		// mutations are prepared, so duplicates compare against the original model.
+		const store = props.store;
+		const columns = props.columns;
+		const sortedIds = isViewSortActive() ? visualRowIds() : null;
+		const ids = store.rowIds();
 		const mutations: CellMutation[] = [];
+		const tracked = getObserver();
 		for (const write of latestWrites.values()) {
-			const mutation = buildCellMutation(
-				{ row: visualRow(write.row), col: columnIdx(write.col) },
-				write.value,
-				"external",
-			);
-			if (mutation) mutations.push(mutation);
+			const column = columns[write.col];
+			if (!column) continue;
+			const sortedId = sortedIds?.[write.row];
+			const physical =
+				sortedId === undefined
+					? (write.row as PhysicalRowIndex)
+					: (store.getPhysicalRowForRowId(sortedId) ?? (write.row as PhysicalRowIndex));
+			const id = sortedId ?? ids[physical];
+			if (tracked) subscribeRawRow(physical);
+			const oldValue = store.getCellValue(physical, write.col as ColumnIndex) ?? null;
+			if (oldValue === write.value) continue;
+			const mutation: CellMutation =
+				id !== undefined
+					? {
+							address: { row: physical, col: write.col as ColumnIndex },
+							viewAddress: { row: write.row as VisualRowIndex, col: write.col as ColumnIndex },
+							rowId: id,
+							columnId: column.id,
+							oldValue,
+							newValue: write.value,
+							source: "external",
+						}
+					: {
+							address: { row: physical, col: write.col as ColumnIndex },
+							viewAddress: { row: write.row as VisualRowIndex, col: write.col as ColumnIndex },
+							columnId: column.id,
+							oldValue,
+							newValue: write.value,
+							source: "external",
+						};
+			mutations.push(mutation);
 		}
 		return mutations;
 	}
@@ -2726,7 +2770,17 @@ export default function Grid(props: GridProps) {
 					props.onOperation?.({ type: "cell-edit", mutation });
 				},
 				setCellValues: (writes) => {
-					applyBatchMutations(buildExternalBatchMutations(writes));
+					// Formula batches retain their prepare → sync → commit barrier.
+					const committed =
+						!props.formulaBridge && !isViewSortActive() && !getObserver()
+							? props.store.trySetDistinctCells?.(writes, props.columns)
+							: undefined;
+					if (committed !== undefined) {
+						// The store already committed history and revisions, with no formula engine.
+						// Read the callback at emission time so reactive host subscriptions stay current.
+						if (committed.length > 0)
+							props.onOperation?.({ type: "batch-edit", mutations: committed });
+					} else applyBatchMutations(buildExternalBatchMutations(writes));
 				},
 				getColumnMeta: (columnId) => props.columns.find((column) => column.id === columnId)?.meta,
 				undo: () => {

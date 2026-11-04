@@ -1,0 +1,22 @@
+
+> @ build:lib C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028
+> pnpm --filter peculiar-sheets build
+
+
+> peculiar-sheets@0.16.0 build C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028\packages\spreadsheets
+> tsdown
+
+ℹ tsdown v0.23.4 powered by rolldown v1.2.16
+ℹ config file: C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028\packages\spreadsheets\tsdown.config.ts 
+ℹ entry: ./src/index.ts
+ℹ tsconfig: tsconfig.json
+ℹ Build start
+ℹ Cleaning 5 files
+
+ WARN  TypeScript 7.0 does not yet have a stable API and is experimental. Some options will be unavailable.
+
+ℹ Emit types with typescript@7.0.2
+ℹ dist\index.js    257.59 kB │ gzip: 55.37 kB
+ℹ dist\index.d.ts   44.50 kB │ gzip: 10.64 kB
+ℹ 2 files, total: 302.10 kB
+✔ Build complete in 221ms

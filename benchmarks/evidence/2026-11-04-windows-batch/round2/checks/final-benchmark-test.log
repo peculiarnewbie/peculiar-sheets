@@ -1,0 +1,59 @@
+
+> @ benchmark:test C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028
+> tsx --test benchmarks/*.test.ts
+
+(node:15540) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ each completed sample is a durable independent journal record (20.2231ms)
+(node:35248) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ Windows build commands can launch a cmd shim (31.8855ms)
+✔ Unix build commands continue to spawn directly (70.793ms)
+(node:45760) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ CPU placement selects the same homogeneous high-capacity cluster for every implementation (1.4019ms)
+(node:45724) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ page readiness functions serialize without driver-side runtime helpers (6.8472ms)
+✔ editor readiness requires grid focus and complete text selection, including shadow DOM (3.5109ms)
+(node:47168) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ a slow stream completes and verifies every batch before measurement ends (26.9601ms)
+(node:37796) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ replacement roundtrips count once and use both steps (0.9288ms)
+✔ cases without a comparison are omitted (0.4947ms)
+✔ protocol v2 ranks awaited API completion and preserves legacy settled rankings (0.6333ms)
+(node:40844) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ an unsupported clipboard case stays missing rather than becoming a zero or a winner (15.9442ms)
+✔ reports reject incomplete measurements and unexplained omissions (0.7063ms)
+✔ mixed-count reports require complete case-specific samples and display their actual counts (0.9837ms)
+✔ invalid or unknown count overrides cannot bypass report completeness checks (0.341ms)
+(node:49372) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ default sample counts balance every run position for two, three, and four libraries (1.4286ms)
+✔ the fixed precision count is case-wide and explicit overrides preserve uniform diagnostics (0.3139ms)
+✔ baseline speed comparisons require equal counts for every selected case (0.1126ms)
+(node:49696) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ all scenario IDs resolve and unsupported editions have explicit reasons (1.1118ms)
+✔ structural replacement changes preserve source data and unique row identities (0.7284ms)
+✔ blank-heavy and mixed workloads retain their intended data distributions (0.259ms)
+(node:49832) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ timer metadata observes positive quantization steps and bounds a stalled clock (3.3388ms)
+(node:49900) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ API completion includes asynchronous work, excluding unrelated frame waiting (1.3261ms)
+✔ batch completion awaits the returned batch promise without expanding it into single writes (0.2745ms)
+✔ a resolved promise that has not applied its writes cannot produce a measurement (4.4407ms)
+✔ unresolved clock measurements cannot become zero-time winners (0.3902ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 949.2526
