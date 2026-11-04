@@ -28,6 +28,7 @@ import type {
 	CellValue,
 	ColumnDef,
 	SheetController,
+	SheetOperation,
 	SheetCustomization,
 	VisualCellAddress,
 } from "../../packages/spreadsheets/src/types";
@@ -785,6 +786,73 @@ describe("Solid 2 Sheet", () => {
 		controller.undo();
 		expect(controller.getCellValue(1, 0)).toBe("next");
 		flush();
+	});
+
+	it("normalizes sorted public batches before committing history and notifying", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		const snapshots: CellValue[][] = [];
+		render(() => (
+			<Sheet
+				data={[
+					[2, "second"],
+					[1, "first"],
+				]}
+				rowIds={[rowId("two"), rowId("one")]}
+				columns={[
+					{ id: "key", header: "Key" },
+					{ id: "value", header: "Value" },
+				]}
+				defaultSortState={{ columnId: "key", direction: "asc" }}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+					snapshots.push([
+						controller?.getRawCellValue(0, 1) ?? null,
+						controller?.getRawCellValue(1, 1) ?? null,
+					]);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const selection = controller.getSelection();
+		controller.setCellValues([
+			{ row: 0, col: 1, value: "discarded" },
+			{ row: 1, col: 1, value: "temporary" },
+			{ row: 0, col: 1, value: "final" },
+			{ row: 1, col: 1, value: "second" },
+		]);
+		expect(snapshots).toEqual([["final", "second"]]);
+		const operation = operations[0];
+		if (operation?.type !== "batch-edit") throw new Error("Batch notification missing");
+		expect(operation.mutations).toEqual([
+			{
+				address: { row: 1, col: 1 },
+				viewAddress: { row: 0, col: 1 },
+				rowId: "one",
+				columnId: "value",
+				oldValue: "first",
+				newValue: "final",
+				source: "external",
+			},
+		]);
+		expect(controller.getSelection()).toEqual(selection);
+		controller.undo();
+		expect(snapshots[1]).toEqual(["first", "second"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse notification missing");
+		expect(inverse.mutations).toEqual([
+			{ ...operation.mutations[0], oldValue: "final", newValue: "first" },
+		]);
+		controller.redo();
+		expect(snapshots[2]).toEqual(["final", "second"]);
+		controller.setCellValues([{ row: 0, col: 1, value: "final" }]);
+		expect(operations).toHaveLength(3);
+		expect(controller.getSelection()).toEqual(selection);
 	});
 
 	it("cancels a queued editor focus when unmounted in the same turn", () => {
