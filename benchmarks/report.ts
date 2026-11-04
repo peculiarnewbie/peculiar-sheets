@@ -1,3 +1,4 @@
+import { usesApiCompletion, validateReplacementTiming } from "./measurement-protocol";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,6 +69,7 @@ const median = (values: readonly number[]) => {
 
 export function summarize(snapshot: ReportSnapshot) {
 	validateSampling(snapshot);
+	validateReplacementTiming(snapshot);
 	const implementations = IMPLEMENTATIONS.filter(
 		(implementation) =>
 			snapshot.results.some((sample) => sample.implementation === implementation) ||
@@ -111,7 +113,7 @@ export function summarize(snapshot: ReportSnapshot) {
 				read: (sample) => (sample.heapBytes === null ? undefined : sample.heapBytes / 1e6),
 			});
 		} else if (config.kind === "writes") {
-			if (snapshot.measurementProtocol === "api-completion-v2")
+			if (usesApiCompletion(snapshot.measurementProtocol))
 				metrics.push({
 					scenario,
 					label: `${label} · API completion`,
@@ -193,6 +195,7 @@ export function summarize(snapshot: ReportSnapshot) {
 		}
 	}
 	const rows = metrics.map((metric) => ({
+		measurementProtocol: snapshot.measurementProtocol ?? "legacy-frame-settled",
 		scenario: metric.scenario,
 		label: metric.label,
 		unit: metric.unit,
@@ -277,7 +280,7 @@ export function renderReport(snapshot: ReportSnapshot) {
 </style></head><body><p class="meta">${scenarios.length} scenarios · ${snapshot.results.length} measured samples · ${escape(describeSampling(snapshot, scenarios))}; fresh browser per sample${runtime}.<br>Lower is better. Independent bar scales per row; bold values are lowest at displayed precision. Hover for sample ranges or omission reasons.</p><div class="legend">${implementations.map((implementation) => `<span><i class="swatch color-${IMPLEMENTATIONS.indexOf(implementation)}"></i>${SHORT[implementation]} · ${LABELS[implementation]}</span>`).join("")}</div><table><colgroup><col class="metric"><col></colgroup><thead><tr><th scope="col">Measurement</th><th scope="col">${implementations.length} libraries · same order throughout</th></tr></thead><tbody>${tableRows}</tbody></table><footer><p>${escape(streamingNote)}</p><p>Trusted browser input drives editing, navigation, native clipboard paste, and wheel scrolling. Input response is measured from the browser's event handler entry through two animation frames. It is a rendering-response proxy, not INP or proof of final paint. Values and focus are verified separately. Verified completion includes the driver verification roundtrip and excludes cell-scan cost. Scripted total duration includes driver overhead and pacing and is omitted from rankings.</p><p>Mount includes initialization and two frames; navigation to ready also includes adapter loading. Write diagnostics separate synchronous submission, awaited API completion (protocol v2), and frame settling. Historical protocols retain their original scoring. Replacement timings exclude data-integrity scans. Retained heap is JavaScript memory after explicit GC, in decimal MB. The sparse workload uses a dense matrix with 95% blank cells.</p><p>Unsupported Community-edition features and disabled cases appear with omission reasons. GridSheet and Univer remain opt-in; their new browser interaction adapters are not implemented. Long-session and formula workloads are excluded. Measurements: ${escape(snapshot.generatedAt)}. Protocol: ${escape(snapshot.measurementProtocol ?? "legacy-frame-settled")}. CPU affinity: ${escape(snapshot.cpuAffinity ?? "unrecorded")}.</p></footer></body></html>`;
 	const csv =
 		[
-			"scenario,metric,implementation,unit,samples,median,min,max,omission",
+			"scenario,metric,implementation,unit,samples,median,min,max,omission,measurementProtocol",
 			...rows.flatMap((row) =>
 				row.bars.map((bar) =>
 					[
@@ -290,6 +293,7 @@ export function renderReport(snapshot: ReportSnapshot) {
 						bar.min ?? "",
 						bar.max ?? "",
 						bar.reason ?? "",
+						snapshot.measurementProtocol ?? "legacy-frame-settled",
 					]
 						.map((value) => `"${String(value).replaceAll('"', '""')}"`)
 						.join(","),
@@ -298,6 +302,7 @@ export function renderReport(snapshot: ReportSnapshot) {
 		].join("\n") + "\n";
 	const markdown = [
 		"# Spreadsheet core benchmark results",
+		`Measurement protocol: ${snapshot.measurementProtocol ?? "legacy-frame-settled"}. Different protocols must not be compared as speedups.`,
 		`Measured ${snapshot.generatedAt}; ${snapshot.results.length} samples across ${scenarios.length} scenarios, ${describeSampling(snapshot, scenarios)}, ${snapshot.warmups} warmups${runtime}.`,
 		"Input response measures trusted event-handler entry through two animation frames. It is a rendering-response proxy, not INP. Scripted duration includes driver overhead; correctness checks run separately. Memory is decimal MB after explicit GC. See comparison-table.html for the complete table and summary.csv for raw median/range exports.",
 		[

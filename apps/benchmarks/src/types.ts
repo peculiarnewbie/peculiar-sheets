@@ -188,7 +188,7 @@ export interface BenchmarkDiagnosticSnapshot {
 	lifecycle: GridLifecycleCounts | null;
 }
 
-export const MEASUREMENT_PROTOCOL = "api-completion-v2";
+export const MEASUREMENT_PROTOCOL = "api-completion-v2-frame-aligned-v1";
 
 export interface WriteMetrics {
 	distribution: "visible" | "offscreen";
@@ -204,6 +204,10 @@ export interface WriteMetrics {
 }
 
 export interface ReplacementStepMetrics {
+	/** Start to rAF1 callback entry; absent in historical snapshots. */
+	firstFrameMs?: number;
+	/** rAF1 to rAF2 callback entry. */
+	secondFrameMs?: number;
 	name: string;
 	fromRows: number;
 	toRows: number;
@@ -212,6 +216,7 @@ export interface ReplacementStepMetrics {
 }
 
 export interface ReplacementMetrics {
+	timingProtocol?: "frame-aligned-v1";
 	mode: Extract<BenchmarkScenario, { kind: "replace" }>["replacement"];
 	steps: ReplacementStepMetrics[];
 	state?: {

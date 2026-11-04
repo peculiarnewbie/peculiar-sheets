@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
-import { withBrowserProfile } from "./browser-profile";
+import { browserProfileCleanupSummary, withBrowserProfile } from "./browser-profile";
 import { Stagehand } from "@browserbasehq/stagehand";
 import { Result, TaggedError } from "better-result";
 import { SCENARIOS as SCENARIO_CONFIG, scenarioSkip } from "../apps/benchmarks/src/scenarios";
@@ -1052,4 +1052,11 @@ try {
 	process.exitCode = 1;
 } finally {
 	preview?.kill("SIGTERM");
+	const profiles = browserProfileCleanupSummary();
+	if (profiles.leakedDirectories.length) {
+		console.error("benchmark.browser.profiles.leaked", profiles);
+		process.exitCode = 1;
+	} else {
+		console.log("Browser profile cleanup:", JSON.stringify(profiles));
+	}
 }

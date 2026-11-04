@@ -8,6 +8,17 @@ class BrowserProfileError extends TaggedError("BrowserProfileError")<{
 	cause: unknown;
 }> {}
 
+let createdProfiles = 0;
+const ownedProfiles = new Set<string>();
+
+export function browserProfileCleanupSummary() {
+	return {
+		createdProfiles,
+		removedProfiles: createdProfiles - ownedProfiles.size,
+		leakedDirectories: [...ownedProfiles],
+	};
+}
+
 /** Own the profile explicitly: Stagehand's internally created profiles can survive close on Windows. */
 export function withBrowserProfile<B extends { close(): Promise<void> }, T>(options: {
 	create(userDataDir: string): B;
@@ -16,6 +27,8 @@ export function withBrowserProfile<B extends { close(): Promise<void> }, T>(opti
 	return Result.tryPromise({
 		try: async () => {
 			const userDataDir = await mkdtemp(path.join(os.tmpdir(), "peculiar-bench-profile-"));
+			createdProfiles++;
+			ownedProfiles.add(userDataDir);
 			let browser: B | undefined;
 			try {
 				browser = options.create(userDataDir);
@@ -35,9 +48,10 @@ export function withBrowserProfile<B extends { close(): Promise<void> }, T>(opti
 				} finally {
 					const cleaned = await Result.tryPromise({
 						try: () =>
-							rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }),
+							rm(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
 						catch: (cause) => new BrowserProfileError({ phase: "cleanup", cause }),
 					});
+					cleaned.tap(() => ownedProfiles.delete(userDataDir));
 					cleaned.tapError((error) =>
 						console.debug("benchmark.browser.profile.cleanup.failed", {
 							userDataDir,

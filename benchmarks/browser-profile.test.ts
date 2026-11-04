@@ -3,7 +3,7 @@ import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { withBrowserProfile } from "./browser-profile";
+import { browserProfileCleanupSummary, withBrowserProfile } from "./browser-profile";
 
 test("owned profiles are removed after success, failed initialization, failed sample and failed close", async (context) => {
 	const unrelated = await mkdtemp(path.join(os.tmpdir(), "unrelated-browser-profile-"));
@@ -35,5 +35,8 @@ test("owned profiles are removed after success, failed initialization, failed sa
 		assert.equal(result.isErr(), ["constructor", "init", "sample"].includes(failure));
 		await assert.rejects(access(profile));
 		await access(unrelated);
+		assert.equal(browserProfileCleanupSummary().leakedDirectories.length, 0);
 	}
+	assert.equal(browserProfileCleanupSummary().createdProfiles, 5);
+	assert.equal(browserProfileCleanupSummary().removedProfiles, 5);
 });

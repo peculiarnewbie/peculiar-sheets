@@ -197,3 +197,49 @@ The default is twelve fixed repetitions, with 96 for the fast `replace-large-dis
 Snapshots record `measurementProtocol: "api-completion-v2"`. Historical snapshots retain their legacy interpretation and are not compared as speedups against v2. A fresh baseline is required when the timing protocol, CPU placement, or effective sample counts change. The same 39 headline observations, 31 scenarios, library versions, capability exclusions, datasets, and workloads remain; only the three write timing definitions and sampling/order policy change. The final default sampling plan produces 1,740 samples; the initial uniform twelve-repetition v2 plan produced 1,404, and the older three-repetition plan produced 351.
 
 On Linux the launcher reads the process's allowed CPU list and per-core capacity. On heterogeneous CPUs it pins the entire runner and all browser descendants to the highest-capacity homogeneous cluster, using `taskset`. Homogeneous hosts retain their allowed CPUs. No system-wide governor or affinity setting changes. `BENCHMARK_CPUSET=all` opts out; an explicit list such as `BENCHMARK_CPUSET=6,7` overrides selection. Snapshots record effective CPU placement, and comparisons reject a baseline with different placement. The development machine has six cores with capacity 382 and two with capacity 1024; uncontrolled migration was a measured source of variation.
+
+## Replacement timing: frame-aligned v1
+
+New snapshots and per-sample/failure checkpoints use
+`measurementProtocol: "api-completion-v2-frame-aligned-v1"`; replacement samples
+also carry `replacement.timingProtocol: "frame-aligned-v1"`. Write API completion
+scoring and all other categories are unchanged. Baseline comparison rejects old
+protocols; report and overview reject mixed replacement samples and label the
+protocol (also exported in CSV). Establish a fresh baseline: this is a
+**measurement change, never a library speedup**.
+
+Every step of all `replace-*`, `row-reorder`, and `row-insert-delete` scenarios
+starts timing and calls the adapter **inside an initial requestAnimationFrame
+callback**. Both shrink/restore and insert/delete independently acquire this
+boundary. This gives each adapter the start-of-frame budget, without a promise
+continuation before submission or an arbitrary delay. Other callbacks or browser
+work can still consume part of that budget; this does not guarantee identical
+physical presentation. The endpoint remains callback entry after two subsequent
+rAF callbacks, a rendering-response proxy, not proof of two presented frames.
+Dataset construction, state preparation and integrity scans remain outside timing.
+
+Each step records `firstFrameMs` (start to rAF1 callback entry) and `secondFrameMs`
+(rAF1 to rAF2 callback entry), using the same wall clock as `settledMs`. The first
+interval includes synchronous submission and asynchronous rendering; subtract
+`synchronousMs` for the wait after submission. Diagnostic component medians need
+not add to a median total. Unaligned starts previously let long synchronous work
+receive two closely spaced callbacks while shorter work waited a full refresh
+interval. Frame alignment controls this source of phase bias uniformly across
+libraries; it does not eliminate scheduler noise or prove repeatability.
+
+
+The [Windows validation report](FRAME_ALIGNED_FINDINGS.md) records two complete
+12-iteration focused passes, all four library medians, exact headline ratios and
+per-step frame diagnostics. Ratios met 1.2 in both passes; absolute timing
+repeatability remains limited.
+
+## Temporary browser profiles
+
+Normal samples and memory diagnostics explicitly own a fresh profile under
+os.tmpdir(). After browser close, finally removes it with up to ten 100 ms
+backoff retries, handling Windows child-process file handles. Cleanup failures
+are logged without masking sample errors. The final run summary lists created,
+removed and leaked profiles; remaining owned directories make the run exit
+unsuccessfully. The shared E2E launcher also owns and retries profile cleanup.
+This prevents Stagehand 3.7.3's immediate, silently failing Windows cleanup from
+accumulating a profile for every sample.

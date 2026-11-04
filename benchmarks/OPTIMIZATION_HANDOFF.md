@@ -106,3 +106,27 @@ without new profile evidence. Intrusive profiles are diagnostics, never rankings
 At unchanged production source `2b2062b`, the final quick checks passed:
 243 core tests, 17 Solid 2 tests, 20 benchmark tests and both benchmark typechecks.
 Their logs are archived. No additional timed suite was run for parking the PR.
+
+## Windows replacement protocol correction (2026-11-04)
+
+The user authorized a uniform frame-aligned start for every replacement step,
+including structural scenarios and both roundtrip steps. Protocol
+`api-completion-v2-frame-aligned-v1` begins timing and adapter submission inside
+rAF and keeps the two-subsequent-callback endpoint. This corrects the uncontrolled
+start phase that could reward slower synchronous work with closely spaced rAF
+callbacks. It is a measurement change, not a speedup; historical replacement
+rankings cannot establish a code improvement. Fresh baselines are required.
+Per-step first/second callback intervals are retained; correctness scans stay
+outside timing. Other categories keep their existing timing and write scoring.
+The user explicitly requested two focused twelve-iteration validation runs under
+the machine-wide lock; this supersedes the earlier parked-run instruction for
+that focused validation only. See README for exact boundaries and limitations.
+
+
+Validation is recorded in [FRAME_ALIGNED_FINDINGS.md](FRAME_ALIGNED_FINDINGS.md):
+two complete 480-sample runs, all integrity checks passed, all ten focused
+PS/best ratios <=1.2 in each pass. Six of forty scenario/library median pairs
+still have a larger/smaller ratio above 1.2, so absolute repeatability is not established.
+This does not validate the other categories or the complete 39-headline goal.
+The separate profile-lifecycle correction is commit 2e54065; final smoke and
+both complete passes left zero owned profiles and kept Stagehand's count flat.

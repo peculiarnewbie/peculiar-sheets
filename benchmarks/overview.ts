@@ -1,3 +1,4 @@
+import { usesApiCompletion, validateReplacementTiming } from "./measurement-protocol";
 import type {
 	BenchmarkResult,
 	ImplementationName,
@@ -138,8 +139,9 @@ const CATEGORIES: readonly Category[] = [
 
 export function summarizeOverview(snapshot: ReportSnapshot) {
 	validateSampling(snapshot);
+	validateReplacementTiming(snapshot);
 	if (
-		snapshot.measurementProtocol === "api-completion-v2" &&
+		usesApiCompletion(snapshot.measurementProtocol) &&
 		snapshot.results.some(
 			(sample) =>
 				sample.kind === "writes" &&
@@ -158,7 +160,7 @@ export function summarizeOverview(snapshot: ReportSnapshot) {
 					.filter((sample) => sample.implementation === implementation)
 					.map((sample) =>
 						category.id === "updates" && sample.kind === "writes"
-							? snapshot.measurementProtocol === "api-completion-v2"
+							? usesApiCompletion(snapshot.measurementProtocol)
 								? sample.writes.completionDurationMs
 								: sample.writes.settledDurationMs
 							: category.read(sample),
@@ -192,9 +194,11 @@ export function summarizeOverview(snapshot: ReportSnapshot) {
 			id: category.id,
 			label: category.label,
 			note:
-				category.id === "updates" && snapshot.measurementProtocol !== "api-completion-v2"
+				category.id === "updates" && !usesApiCompletion(snapshot.measurementProtocol)
 					? "Legacy settled writes include two animation-frame waits; not comparable to protocol v2 API completion."
-					: category.note,
+					: category.id === "replacement"
+						? `Timing: ${snapshot.measurementProtocol ?? "legacy unaligned"}. Protocol changes are measurement changes, not speedups. ${category.note}`
+						: category.note,
 			unit: category.unit,
 			cases,
 			best: cases.filter((item) => item.status === "best").length,
