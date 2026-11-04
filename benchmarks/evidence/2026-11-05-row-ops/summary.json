@@ -1,0 +1,695 @@
+{
+	"source": "03f8f01",
+	"sameTreeAs": "f1accbb",
+	"protocol": "api-completion-v2-frame-aligned-v1",
+	"retainedRowSpecificChanges": [],
+	"runs": [
+		{
+			"run": "row-aligned-before",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 33.49999998509884,
+					"syncMs": 0.12250000238418579
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 50.13249997794628,
+					"syncMs": 29.18250000476837
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 33.452499985694885,
+					"syncMs": 14.502499997615814
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 34.69499999284744,
+					"syncMs": 12.445000007748604
+				}
+			},
+			"ratio": 1.0014199237553028
+		},
+		{
+			"run": "row-aligned-before",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 66.75000001490116,
+					"syncMs": 0.25
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 83.50249999761581,
+					"syncMs": 66.66999997198582
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 57.40500000119209,
+					"syncMs": 26.862499997019768
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 70.94500002264977,
+					"syncMs": 23.31750001013279
+				}
+			},
+			"ratio": 1.1627906979098512
+		},
+		{
+			"run": "row-aligned-after-1",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 33.3999999910593,
+					"syncMs": 0.12000000476837158
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 50.09249998629093,
+					"syncMs": 29.332499980926514
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 33.52250000834465,
+					"syncMs": 14.264999985694885
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 34.747500002384186,
+					"syncMs": 12.30749998986721
+				}
+			},
+			"ratio": 1
+		},
+		{
+			"run": "row-aligned-after-1",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 66.7250000089407,
+					"syncMs": 0.24000000953674316
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 83.38999998569489,
+					"syncMs": 66.70000000298023
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 57.12499998509884,
+					"syncMs": 26.507500007748604
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 70.9125000089407,
+					"syncMs": 23.617499992251396
+				}
+			},
+			"ratio": 1.1680525168725784
+		},
+		{
+			"run": "row-aligned-after-2",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 33.434999987483025,
+					"syncMs": 0.125
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 34.23250000178814,
+					"syncMs": 28.315000012516975
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 33.50999999046326,
+					"syncMs": 13.947500005364418
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 34.79749999940395,
+					"syncMs": 12.449999988079071
+				}
+			},
+			"ratio": 1
+		},
+		{
+			"run": "row-aligned-after-2",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 66.73749999701977,
+					"syncMs": 0.26000000536441803
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 83.7124999910593,
+					"syncMs": 66.97499997913837
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 57.58500000834465,
+					"syncMs": 26.395000010728836
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 71.04250001907349,
+					"syncMs": 23.76000002026558
+				}
+			},
+			"ratio": 1.158938959578863
+		}
+	],
+	"profileFrames": [
+		{
+			"label": "aligned-before",
+			"lib": "peculiar-sheets",
+			"scenario": "row-reorder",
+			"step": "replace",
+			"synchronousMs": 0.10000002384185791,
+			"firstFrameMs": 16.609000030517578,
+			"secondFrameMs": 33.26500003051758,
+			"cost": {
+				"Layout": {
+					"calls": 2,
+					"ms": 2.169
+				},
+				"UpdateLayoutTree": {
+					"calls": 2,
+					"ms": 0.687
+				},
+				"Paint": {
+					"calls": 2,
+					"ms": 1.458
+				},
+				"PrePaint": {
+					"calls": 2,
+					"ms": 0.46
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.446
+				}
+			}
+		},
+		{
+			"label": "aligned-before",
+			"lib": "peculiar-sheets",
+			"scenario": "row-insert-delete",
+			"step": "replace",
+			"synchronousMs": 0.09000000357627869,
+			"firstFrameMs": 17.802,
+			"secondFrameMs": 33.165,
+			"cost": {
+				"Layout": {
+					"calls": 3,
+					"ms": 5.642
+				},
+				"UpdateLayoutTree": {
+					"calls": 3,
+					"ms": 0.9
+				},
+				"Paint": {
+					"calls": 3,
+					"ms": 2.493
+				},
+				"PrePaint": {
+					"calls": 2,
+					"ms": 0.866
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.379
+				}
+			}
+		},
+		{
+			"label": "aligned-before",
+			"lib": "peculiar-sheets",
+			"scenario": "row-insert-delete",
+			"step": "delete-inserted",
+			"synchronousMs": 0.10999998450279236,
+			"firstFrameMs": 16.23899996948242,
+			"secondFrameMs": 32.89099996948242,
+			"cost": {
+				"Layout": {
+					"calls": 3,
+					"ms": 3.158
+				},
+				"UpdateLayoutTree": {
+					"calls": 3,
+					"ms": 1.136
+				},
+				"Paint": {
+					"calls": 3,
+					"ms": 1.853
+				},
+				"PrePaint": {
+					"calls": 2,
+					"ms": 0.678
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.487
+				}
+			}
+		},
+		{
+			"label": "aligned-before",
+			"lib": "handsontable",
+			"scenario": "row-reorder",
+			"step": "replace",
+			"synchronousMs": 19.144999980926514,
+			"firstFrameMs": 20.92499996948242,
+			"secondFrameMs": 33.37299996948242,
+			"cost": {
+				"Layout": {
+					"calls": 4,
+					"ms": 4.025
+				},
+				"UpdateLayoutTree": {
+					"calls": 9,
+					"ms": 6.21
+				},
+				"Paint": {
+					"calls": 3,
+					"ms": 1.121
+				},
+				"PrePaint": {
+					"calls": 2,
+					"ms": 0.466
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.478
+				}
+			}
+		},
+		{
+			"label": "aligned-before",
+			"lib": "handsontable",
+			"scenario": "row-insert-delete",
+			"step": "replace",
+			"synchronousMs": 14.75,
+			"firstFrameMs": 16.908,
+			"secondFrameMs": 33.864,
+			"cost": {
+				"Layout": {
+					"calls": 6,
+					"ms": 1.09
+				},
+				"UpdateLayoutTree": {
+					"calls": 11,
+					"ms": 5.901
+				},
+				"Paint": {
+					"calls": 6,
+					"ms": 0.974
+				},
+				"PrePaint": {
+					"calls": 3,
+					"ms": 0.215
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.419
+				}
+			}
+		},
+		{
+			"label": "aligned-before",
+			"lib": "handsontable",
+			"scenario": "row-insert-delete",
+			"step": "delete-inserted",
+			"synchronousMs": 13.865000009536743,
+			"firstFrameMs": 15.468,
+			"secondFrameMs": 20.014,
+			"cost": {
+				"Layout": {
+					"calls": 6,
+					"ms": 0.871
+				},
+				"UpdateLayoutTree": {
+					"calls": 11,
+					"ms": 6.417
+				},
+				"Paint": {
+					"calls": 6,
+					"ms": 0.982
+				},
+				"PrePaint": {
+					"calls": 3,
+					"ms": 0.216
+				},
+				"Layerize": {
+					"calls": 2,
+					"ms": 0.552
+				}
+			}
+		}
+	],
+	"checks": [
+		{
+			"check": "test",
+			"exitCode": 0
+		},
+		{
+			"check": "test:solid2",
+			"exitCode": 0
+		},
+		{
+			"check": "benchmark:test",
+			"exitCode": 0
+		},
+		{
+			"check": "benchmark:typecheck",
+			"exitCode": 0
+		},
+		{
+			"check": "typecheck:lib",
+			"exitCode": 0
+		},
+		{
+			"check": "typecheck:solid2",
+			"exitCode": 0
+		},
+		{
+			"check": "lint",
+			"exitCode": 0
+		},
+		{
+			"check": "format:check",
+			"exitCode": 0
+		}
+	],
+	"rejectedOldProtocolRuns": [
+		{
+			"run": "row-before",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 32.75,
+					"syncMs": 0.08000001311302185
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 45.75999999046326,
+					"syncMs": 29.52750000357628
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 23.99500000476837,
+					"syncMs": 15.132499992847443
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 27.37000000476837,
+					"syncMs": 12.120000004768372
+				}
+			},
+			"ratio": 1.364867680495595
+		},
+		{
+			"run": "row-before",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 54.73750001192093,
+					"syncMs": 0.19500000774860382
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 102.51499998569489,
+					"syncMs": 69.52249999344349
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 48.01000000536442,
+					"syncMs": 26.96000000834465
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 53.66500000655651,
+					"syncMs": 23.67000000178814
+				}
+			},
+			"ratio": 1.1401270569840618
+		},
+		{
+			"run": "row-after-1",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 32.84749999642372,
+					"syncMs": 0.08250001072883606
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 49.19250001013279,
+					"syncMs": 29.547499999403954
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 22.849999994039536,
+					"syncMs": 15.092500001192093
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 30.987499997019768,
+					"syncMs": 12.17000000178814
+				}
+			},
+			"ratio": 1.4375273525160635
+		},
+		{
+			"run": "row-after-1",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 57.57999999821186,
+					"syncMs": 0.19749999046325684
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 95.24499998986721,
+					"syncMs": 67.31749998033047
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 49.622500002384186,
+					"syncMs": 27.0450000166893
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 56.962500005960464,
+					"syncMs": 23.15499998629093
+				}
+			},
+			"ratio": 1.160360723370353
+		},
+		{
+			"run": "row-after-2",
+			"scenario": "row-reorder",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 32.875,
+					"syncMs": 0.09749998152256012
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 48.63249999284744,
+					"syncMs": 29.389999985694885
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 25.09749999642372,
+					"syncMs": 14.412500008940697
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 31.45999999344349,
+					"syncMs": 12.147499993443489
+				}
+			},
+			"ratio": 1.3098914236352042
+		},
+		{
+			"run": "row-after-2",
+			"scenario": "row-insert-delete",
+			"libraries": {
+				"peculiar-sheets": {
+					"n": 12,
+					"settledMs": 55.979999989271164,
+					"syncMs": 0.19750000536441803
+				},
+				"ag-grid": {
+					"n": 12,
+					"settledMs": 102.13499999046326,
+					"syncMs": 69.67250001430511
+				},
+				"handsontable": {
+					"n": 12,
+					"settledMs": 50.30249999463558,
+					"syncMs": 27.60250000655651
+				},
+				"revogrid": {
+					"n": 12,
+					"settledMs": 51.50500001013279,
+					"syncMs": 23.344999998807907
+				}
+			},
+			"ratio": 1.1128671536253874
+		}
+	],
+	"profileMarkOffsetsNote": "profileFrames offsets are derived from intrusive user-timing marks; native step metrics below are authoritative for diagnostic intervals. These are not ranking samples.",
+	"profileNativeSteps": [
+		{
+			"lib": "peculiar-sheets",
+			"scenario": "row-reorder",
+			"steps": [
+				{
+					"name": "replace",
+					"fromRows": 10000,
+					"toRows": 10000,
+					"synchronousMs": 0.10000002384185791,
+					"firstFrameMs": 16.665000021457672,
+					"secondFrameMs": 16.634999990463257,
+					"settledMs": 33.30000001192093
+				}
+			],
+			"profile": {
+				"counts": {
+					"identity.bulkReplaceCalls": 1,
+					"structure.deleteCalls": 0,
+					"structure.insertCalls": 0,
+					"formula.authoritativeHostSkips": 1,
+					"structure.bulkCellStoreWrites": 1,
+					"revision.structuralBumps": 1
+				},
+				"durations": {
+					"solid.hostSignalUpdate": 0.06999999284744263,
+					"identity.structuralDiff": 0.014999985694885254,
+					"identity.bulkMaterializeCells": 1.6850000023841858,
+					"cell.bulkStoreWrite": 0.2849999964237213,
+					"identity.bulkRowIdAdoption": 0.030000001192092896,
+					"state.bulkCleanup": 0.1899999976158142,
+					"solid.bulkStoreTransaction": 0.6399999856948853,
+					"identity.bulkReplace": 2.3899999856948853,
+					"virtualizer.firstFrame": 16.564999997615814,
+					"virtualizer.secondFrame": 16.634999990463257
+				}
+			}
+		},
+		{
+			"lib": "peculiar-sheets",
+			"scenario": "row-insert-delete",
+			"steps": [
+				{
+					"name": "replace",
+					"fromRows": 10000,
+					"toRows": 10100,
+					"synchronousMs": 0.09000000357627869,
+					"firstFrameMs": 17.849999994039536,
+					"secondFrameMs": 15.355000019073486,
+					"settledMs": 33.20500001311302
+				},
+				{
+					"name": "delete-inserted",
+					"fromRows": 10100,
+					"toRows": 10000,
+					"synchronousMs": 0.10999998450279236,
+					"firstFrameMs": 16.25,
+					"secondFrameMs": 16.650000005960464,
+					"settledMs": 32.900000005960464
+				}
+			],
+			"profile": {
+				"counts": {
+					"identity.bulkReplaceCalls": 2,
+					"structure.deleteCalls": 0,
+					"structure.insertCalls": 0,
+					"formula.authoritativeHostSkips": 2,
+					"structure.bulkCellStoreWrites": 2,
+					"revision.structuralBumps": 2
+				},
+				"durations": {
+					"solid.hostSignalUpdate": 0.16999998688697815,
+					"identity.structuralDiff": 0.04499998688697815,
+					"identity.bulkMaterializeCells": 2.7100000083446503,
+					"cell.bulkStoreWrite": 0.4350000023841858,
+					"identity.bulkRowIdAdoption": 0.0350000262260437,
+					"state.bulkCleanup": 0.20499998331069946,
+					"solid.bulkStoreTransaction": 0.8050000071525574,
+					"identity.bulkReplace": 3.5900000035762787,
+					"virtualizer.firstFrame": 33.900000005960464,
+					"virtualizer.secondFrame": 32.00500002503395
+				}
+			}
+		},
+		{
+			"lib": "handsontable",
+			"scenario": "row-reorder",
+			"steps": [
+				{
+					"name": "replace",
+					"fromRows": 10000,
+					"toRows": 10000,
+					"synchronousMs": 19.144999980926514,
+					"firstFrameMs": 20.984999984502792,
+					"secondFrameMs": 12.430000007152557,
+					"settledMs": 33.41499999165535
+				}
+			],
+			"profile": {
+				"counts": {},
+				"durations": {
+					"virtualizer.firstFrame": 1.8400000035762787,
+					"virtualizer.secondFrame": 12.430000007152557
+				}
+			}
+		},
+		{
+			"lib": "handsontable",
+			"scenario": "row-insert-delete",
+			"steps": [
+				{
+					"name": "replace",
+					"fromRows": 10000,
+					"toRows": 10100,
+					"synchronousMs": 14.75,
+					"firstFrameMs": 16.94999998807907,
+					"secondFrameMs": 16.939999997615814,
+					"settledMs": 33.889999985694885
+				},
+				{
+					"name": "delete-inserted",
+					"fromRows": 10100,
+					"toRows": 10000,
+					"synchronousMs": 13.865000009536743,
+					"firstFrameMs": 15.480000019073486,
+					"secondFrameMs": 4.564999997615814,
+					"settledMs": 20.0450000166893
+				}
+			],
+			"profile": {
+				"counts": {},
+				"durations": {
+					"virtualizer.firstFrame": 3.814999997615814,
+					"virtualizer.secondFrame": 21.50499999523163
+				}
+			}
+		}
+	]
+}
