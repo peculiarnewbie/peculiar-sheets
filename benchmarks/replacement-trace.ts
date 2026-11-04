@@ -1,8 +1,10 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import type { PageLike } from "./browser-types";
 
 /** Diagnostic capture only; traced samples must not be used as rankings. */
 export async function startReplacementTrace(page: PageLike, output: string) {
+	await mkdir(dirname(output), { recursive: true });
 	const session = page.getSessionForFrame(page.mainFrameId());
 	const complete = new Promise<{ stream: string }>((resolve) => {
 		const handler = (event: { stream: string }) => {
