@@ -256,14 +256,19 @@ async function measureReplacement(
 	const scrollBefore = scrollPosition();
 	const replacement = createReplacementDataset(scenario, initial);
 	const steps: ReplacementStepMetrics[] = [];
+	const trace = new URLSearchParams(location.search).get("trace") === "1";
 	const measureStep = async (name: string, from: BenchmarkDataset, to: BenchmarkDataset) => {
+		if (trace) performance.mark(`replace:${name}:start`);
 		const start = performance.now();
 		controller.replaceDataset?.(to);
 		const synchronousMs = performance.now() - start;
+		if (trace) performance.mark(`replace:${name}:submitted`);
 		await nextFrame();
 		const firstFrameMs = performance.now() - start;
+		if (trace) performance.mark(`replace:${name}:raf1`);
 		await nextFrame();
 		const settledMs = performance.now() - start;
+		if (trace) performance.mark(`replace:${name}:raf2`);
 		const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
 		if (diagnostics) {
 			diagnostics.durations["virtualizer.firstFrame"] =

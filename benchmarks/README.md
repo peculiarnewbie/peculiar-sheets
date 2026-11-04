@@ -197,3 +197,21 @@ The default is twelve fixed repetitions, with 96 for the fast `replace-large-dis
 Snapshots record `measurementProtocol: "api-completion-v2"`. Historical snapshots retain their legacy interpretation and are not compared as speedups against v2. A fresh baseline is required when the timing protocol, CPU placement, or effective sample counts change. The same 39 headline observations, 31 scenarios, library versions, capability exclusions, datasets, and workloads remain; only the three write timing definitions and sampling/order policy change. The final default sampling plan produces 1,740 samples; the initial uniform twelve-repetition v2 plan produced 1,404, and the older three-repetition plan produced 351.
 
 On Linux the launcher reads the process's allowed CPU list and per-core capacity. On heterogeneous CPUs it pins the entire runner and all browser descendants to the highest-capacity homogeneous cluster, using `taskset`. Homogeneous hosts retain their allowed CPUs. No system-wide governor or affinity setting changes. `BENCHMARK_CPUSET=all` opts out; an explicit list such as `BENCHMARK_CPUSET=6,7` overrides selection. Snapshots record effective CPU placement, and comparisons reject a baseline with different placement. The development machine has six cores with capacity 382 and two with capacity 1024; uncontrolled migration was a measured source of variation.
+
+## Frame timeline diagnostics
+
+Under the machine-wide benchmark lock, set `BENCHMARK_REPLACEMENT_TRACE=1`
+with a short replacement selection and `BENCHMARK_ITERATIONS=1`. Each sample
+writes a separate Chrome `.trace.json` into `BENCHMARK_OUTPUT_DIR`. Capture uses
+CDP Tracing with timeline, V8, user timing, compositor and viz categories.
+Traced results are intrusive diagnostics and must not be used as rankings.
+The `trace=1` query marks adapter entry, synchronous submission, and both rAF
+completions uniformly for every adapter. Normal runs emit none of these marks;
+the workload and measurement boundary are unchanged.
+
+`replacementTimeline` in `benchmarks/trace-timeline.ts` extracts each step's
+renderer-thread events relative to adapter entry, retaining enclosing tasks and
+separating the first-frame interval from the second. Nested durations overlap:
+do not add parent tasks and their child events as CPU totals. Compositor events
+remain available in the raw trace. Two rAF callbacks do not establish presentation
+of the resulting pixels; inspect paint/commit/presentation events separately.

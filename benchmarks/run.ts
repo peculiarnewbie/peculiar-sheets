@@ -21,6 +21,7 @@ import {
 import type { PageLike } from "./browser-types";
 import { runBrowserWorkload } from "./browser-workloads";
 import { timerMetadata } from "./timer-metadata";
+import { startReplacementTrace } from "./replacement-trace";
 import { appendSampleCheckpoint } from "./checkpoint";
 import { writeBenchmarkReport } from "./report";
 import {
@@ -847,9 +848,20 @@ async function runSample(options: {
 		const query = new URLSearchParams({
 			implementation: options.implementation,
 			scenario: options.scenario,
+			...(process.env.BENCHMARK_REPLACEMENT_TRACE === "1" ? { trace: "1" } : {}),
 			...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
 			...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
 		});
+		const stopTrace =
+			process.env.BENCHMARK_REPLACEMENT_TRACE === "1"
+				? await startReplacementTrace(
+						page,
+						path.join(
+							OUTPUT_DIRECTORY,
+							`${options.scenario}-${options.implementation}-${Date.now()}.trace.json`,
+						),
+					)
+				: undefined;
 		await page.goto(`${BASE_URL}?${query}`);
 		await waitForReady(page);
 		const timingEnvironment = await page.evaluate(timerMetadata);
@@ -863,6 +875,7 @@ async function runSample(options: {
 			if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
 			return window.__BENCHMARK__.run();
 		});
+		await stopTrace?.();
 		await page.sendCDP("HeapProfiler.collectGarbage");
 		const heapBytes = await page.evaluate(() => {
 			const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
