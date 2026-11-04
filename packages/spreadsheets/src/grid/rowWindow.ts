@@ -14,7 +14,7 @@ export function getRowWindow(
 	scrollTop: number,
 	viewportHeight: number,
 	previous: RowWindowItem[],
-	overscan = 3,
+	overscan = 1,
 ): RowWindowItem[] {
 	if (rowCount <= 0 || viewportHeight <= 0) return previous.length ? [] : previous;
 	const offset = Math.max(0, scrollTop);

@@ -25,6 +25,7 @@ import {
 	type VisualRowIndex,
 	visualRow,
 } from "../core/brands";
+import type { CellRowValues } from "../core/cellRows";
 import { parseTSV } from "../core/clipboard";
 import { applyMutations } from "../core/commands";
 import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
@@ -427,7 +428,7 @@ export default function Grid(props: GridProps) {
 			observeElementOffset: observeViewportOffset,
 			scrollToFn: elementScroll,
 			horizontal: true,
-			overscan: 2,
+			overscan: 1,
 			onChange: (instance) => {
 				setVirtualColumnItems((previous) => snapshotVirtualItems(instance, previous));
 			},
@@ -1033,7 +1034,7 @@ export default function Grid(props: GridProps) {
 		},
 	);
 
-	function getRawRowForPhysicalRow(row: PhysicalRowIndex): readonly CellValue[] | undefined {
+	function subscribeRawRow(row: PhysicalRowIndex): void {
 		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
 		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
 		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
@@ -1042,11 +1043,16 @@ export default function Grid(props: GridProps) {
 			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
 			if (id !== null) props.store.rowRevision(id);
 		}
+	}
+
+	function getRawRowForPhysicalRow(row: PhysicalRowIndex): CellRowValues | undefined {
+		subscribeRawRow(row);
 		return props.store.getRowValues(row);
 	}
 
 	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
-		return getRawRowForPhysicalRow(row)?.[toNumber(col)] ?? null;
+		subscribeRawRow(row);
+		return props.store.getCellValue(row, col) ?? null;
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -1065,7 +1071,7 @@ export default function Grid(props: GridProps) {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
 	}
 
-	function getRawRowValues(row: VisualRowIndex): readonly CellValue[] | undefined {
+	function getRawRowValues(row: VisualRowIndex): CellRowValues | undefined {
 		if (props.formulaBridge) return undefined;
 		return getRawRowForPhysicalRow(getPhysicalRowForVisualRow(row));
 	}
@@ -1205,10 +1211,20 @@ export default function Grid(props: GridProps) {
 
 		if (oldValue === newValue) return null;
 
+		if (id != null) {
+			return {
+				address: { row: physical, col: viewAddress.col },
+				viewAddress,
+				rowId: id,
+				columnId: column.id,
+				oldValue,
+				newValue,
+				source,
+			};
+		}
 		return {
 			address: { row: physical, col: viewAddress.col },
 			viewAddress,
-			...(id != null ? { rowId: id } : {}),
 			columnId: column.id,
 			oldValue,
 			newValue,

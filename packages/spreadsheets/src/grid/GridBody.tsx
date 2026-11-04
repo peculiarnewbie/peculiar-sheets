@@ -1,5 +1,6 @@
 import { createMemo, createProjection, For, Show } from "solid-js";
 import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/brands";
+import type { CellRowValues } from "../core/cellRows";
 import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
 import type { CellStyle, CellValue, ColumnDef, RowClassContext } from "../types";
@@ -21,7 +22,7 @@ interface GridBodyProps extends GridCellContext {
 	/** Share row dependencies while preserving per-cell formula dependencies. */
 	getRowDisplayValues?: (row: VisualRowIndex, columns: readonly { index: number }[]) => CellValue[];
 	/** Owned raw rows can be read independently of the horizontal window. */
-	getRawRowValues?: (row: VisualRowIndex) => readonly CellValue[] | undefined;
+	getRawRowValues?: (row: VisualRowIndex) => CellRowValues | undefined;
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
