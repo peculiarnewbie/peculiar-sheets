@@ -8,8 +8,9 @@ export function isProvisionalRowId(id: RowId): boolean {
 }
 
 export function allocateProvisionalRowIds(count: number, startCounter: number): RowId[] {
-	return Array.from({ length: count }, (_, index) =>
-		`${PROVISIONAL_ROW_ID_PREFIX}${startCounter + index}` as RowId,
+	return Array.from(
+		{ length: count },
+		(_, index) => `${PROVISIONAL_ROW_ID_PREFIX}${startCounter + index}` as RowId,
 	);
 }
 
@@ -17,6 +18,9 @@ export function validateRowIds(ids: readonly RowId[], rowCount: number): void {
 	if (ids.length !== rowCount) {
 		throw new Error(`rowIds length (${ids.length}) must match data length (${rowCount})`);
 	}
+	// Native Set construction avoids a separate lookup for every valid ID.
+	// Keep the diagnostic scan on invalid input to name the first duplicate.
+	if (new Set(ids).size === ids.length) return;
 	const seen = new Set<string>();
 	for (const id of ids) {
 		if (seen.has(id)) {

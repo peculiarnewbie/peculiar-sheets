@@ -14,6 +14,23 @@ const makeData = (): CellValue[][] =>
 	Array.from({ length: count }, (_, row) => Array.from({ length: 20 }, (_, col) => row * 20 + col));
 
 describe("owned cell rows", () => {
+	it("keeps the storage handle across growth, shrink, and empty replacement", () => {
+		const rows = createCellRows([[1]]);
+		const handle = rows.values;
+		const replacement = Array.from({ length: 10000 }, (_, index) => [index]);
+		rows.replace(replacement);
+		expect(rows.values).toBe(handle);
+		expect(rows.copy()).toEqual(replacement);
+		// Replacement receives already-owned rows, but owns the outer storage.
+		replacement.pop();
+		expect(rows.values.length).toBe(10000);
+		rows.replace([[7]]);
+		expect(rows.copy()).toEqual([[7]]);
+		expect(rows.readRow(9999)).toBeUndefined();
+		rows.replace([]);
+		expect(handle).toEqual([]);
+	});
+
 	it("owns values before a row is read, without materializing unrelated rows for snapshots", () => {
 		const input = makeData();
 		const first = input[0];
