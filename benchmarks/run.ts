@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { buildCommandOptions } from "./command";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -252,9 +253,11 @@ if (options.list) {
 }
 
 function command(commandName: string, args: string[]): Promise<void> {
-	const executable =
-		process.platform === "win32" && commandName === "pnpm" ? "pnpm.cmd" : commandName;
-	const child = spawn(executable, args, { cwd: process.cwd(), stdio: "inherit" });
+	const child = spawn(commandName, args, {
+		cwd: process.cwd(),
+		stdio: "inherit",
+		...buildCommandOptions(),
+	});
 	return new Promise((resolve, reject) => {
 		child.on("error", reject);
 		child.on("close", (code) =>
