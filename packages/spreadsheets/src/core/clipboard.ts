@@ -26,7 +26,8 @@ export function serializeToTSV(
 export function parseTSV(text: string): CellValue[][] {
 	if (!text.trim()) return [];
 
-	return text.split("\n").map((line) =>
+	// Windows clipboards deliver CRLF line endings.
+	return text.split(/\r?\n/).map((line) =>
 		line.split("\t").map((cell) => parseCellValue(cell)),
 	);
 }
