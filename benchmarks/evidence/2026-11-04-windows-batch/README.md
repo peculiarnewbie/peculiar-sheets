@@ -374,3 +374,171 @@ CPU attribution was established. Reaching 1.2 would require another approximatel
 
 Logs are in [round3/checks](round3/checks). No benchmark workload, adapter, timing
 boundary, feature default, warm-up behavior or formula synchronization was changed.
+
+## Round 4: remove redundant post-commit coordination (2026-11-05)
+
+The final scope accepts approximately 2x RevoGrid while preserving synchronous
+history, revisions and notifications. No structural revision or mutation-shape
+redesign is retained. Branch: `t3/batch-writes-perf-round-4`. Nothing was pushed.
+
+### Retained implementation
+
+For a successful formula-free distinct-store commit, Grid now emits the existing
+`batch-edit` operation directly, only when a callback exists. The store has
+already completed writes, row/data revisions and history. Previously this path
+entered `applyBatchMutations`, allocated dependency callbacks, looked up a null
+formula port, constructed Result outcomes, invoked a no-op commit callback and
+emitted through a wrapper even without a host listener. Fallback batches still
+use explicit Result coordination with the formula-before-store barrier. This
+branch already had plain explicit Results: no Result generators needed removal.
+No expected error is swallowed and formula errors retain their tagged Results.
+
+The public payload, mutation order, normalization, sorted addressing, selection,
+history and synchronous listener ordering remain intact. Tests cover listener
+replacement/removal and synchronous reentrant edits with undo, plus exact revision
+identity retention, forgetting and reuse. Existing formula, sorted, duplicate,
+row observer disposal/return and complete history tests remain in force.
+
+A numeric-counter/separate-signal Map experiment was rejected. Its intrusive row
+phase was 0.0949999988079071 ms versus 0.09000000357627869 ms before; it provides
+no evidence of a revision improvement. Row revision production source is restored
+byte-for-byte. The round-3 0.095 vs round-2 0.075 comparison also included the
+global data bump only in round 3, so it did not isolate a row-counter regression.
+A physical-index array or owned-row redesign was not pursued after the scope
+update. Mutation construction already uses a single literal shape with all
+fields present and no spreads; it remains unchanged. Selection reads return an
+existing value, not a cloned snapshot. They were unresolved or ~5 microseconds;
+no capture semantics were changed.
+
+### Complete interval attribution
+
+The reproducible temporary probe installer is [round4/probes.cjs](round4/probes.cjs).
+It instruments the outer timer envelope, adapter, public Grid entry, store phases,
+coordination, and Solid's actual signal-write and computation functions. All
+probes, dependency edits, adapter and harness edits were restored before checks.
+Dependency edits use atomic file replacement to avoid altering shared pnpm inodes.
+Each trace has 36 fresh-browser, zero-warmup batch calls. Raw marks and complete
+precision phase medians are archived under round4; [summary.txt](round4/summary.txt)
+contains every adjacent interval. Thus each individual trace partitions its whole
+envelope without an unexplained gap. Independent phase medians need not sum to
+the median total. Timers resolve about 0.005 ms; zero means unresolved, not free.
+Marks and counting add overhead, and these traces are not ranking measurements.
+
+The before trace records one Solid signal write and zero synchronous computation
+updates/runs in every sample. Render flushing is not the missing cost in this
+workload. Entry marks count one adapter, Grid entry and store entry per call;
+before also has one coordination wrapper, formula-port lookup and coordinator,
+all absent from the retained committed path. The fused loop visits 250 cells;
+source inspection shows 250 row `bumpOne` calls and one batch bump in the unchanged
+revision implementation, one data bump and one history append/revision bump.
+There is no owned-row writer fallback for these ordinary populated rows.
+
+Source-level allocation accounting for this workload: 250 mapped adapter objects
+and one mapped array; 250 mutation records and 500 nested address objects; one
+mutation array and two Sets; one forward history record. The before wrapper adds
+one dependencies object, three callback closures, two Result/outcome pairs and
+one operation object even without a listener. The retained committed branch
+creates none of those wrapper objects when no callback exists. Revision entry
+objects and required mutation/history records remain. These are explicit source
+constructions, not an exact V8 heap-allocation count: Map/Set backing storage,
+engine metadata, escape elimination and compiler allocations are not measured.
+No heap sampling claim is made for a sub-millisecond interval.
+
+### Measurement and validation
+
+The initial 36-sample baseline and combined experiment ran back to back under
+separate lock acquisitions. After the scope update removed the revision
+experiment, final-source focused and confirmation runs were collected. They are
+not a new back-to-back baseline comparison; the original baseline is retained.
+All ranking runs use unchanged workloads, adapters, timing boundary, defaults,
+fresh browsers and zero warmups. Decision runs use 36 iterations, three write
+scenarios and Peculiar Sheets/RevoGrid. Confirmation uses default 12 iterations
+and all default supported libraries for those scenarios. This is not a full-suite
+or all-headlines performance claim.
+
+Every timed run and trace acquired the specified machine-wide directory lock
+with a two-second retry and `batch-r4` marker, with an EXIT trap releasing only
+the acquired lock, including failures. No hold exceeded 15 minutes. Other owners
+were left untouched. The profile-leak fix `2e54065` was already present after the
+requested merge from the local performance branch. Every run reports all owned
+profiles removed and an empty leak list; consequently no own leftover profile
+older than ten minutes remained to delete. Required work was neither prewarmed
+nor moved outside API completion.
+
+### Practical floor
+
+The trace identifies a removable coordinator cost, not a reason to weaken the
+store contract. Preflight plus fused mutation/write construction and revisions
+remain the bulk of the call. They already require roughly 0.30 ms in intrusive
+traces before adapter mapping, public entry, history and return. This is an
+observed cost at this implementation, not a mathematical lower bound. Approximately
+0.4 ms cold completion is consistent with the evidence; reaching ~0.22 ms would
+require a larger redesign of required semantics and data structures. RevoGrid's
+bare assignment path does less synchronous work. Under the revised scope, there
+is no justification for riskier changes to chase that denominator.
+
+### Retained-source results
+
+| Run | Scenario | Samples/library | Peculiar ms | Best ms | Unrounded ratio |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Baseline | batch-writes | 36 | 0.4675000011920929 | 0.19999998807907104 | 2.3375001452863304 |
+| Baseline | offscreen-writes | 36 | 0.6574999988079071 | 0.6574999988079071 | 1 |
+| Baseline | visible-writes | 36 | 0.6450000107288361 | 0.6450000107288361 | 1 |
+| Retained | batch-writes | 36 | 0.4050000011920929 | 0.21000000834465027 | 1.928571357613521 |
+| Retained | offscreen-writes | 36 | 0.6375000029802322 | 0.6375000029802322 | 1 |
+| Retained | visible-writes | 36 | 0.6099999845027924 | 0.6099999845027924 | 1 |
+| Confirmation | batch-writes | 12 | 0.4074999988079071 | 0.26749998331069946 | 1.523364576567463 |
+| Confirmation | offscreen-writes | 12 | 0.6649999916553497 | 0.6649999916553497 | 1 |
+| Confirmation | visible-writes | 12 | 0.6124999821186066 | 0.6124999821186066 | 1 |
+
+Batch saves 0.0625 ms (13.36898392312926% of baseline). Focused independent
+medians improve by 0.019999995827674866 and 0.0350000262260437 ms. Confirmation
+uses a slower RevoGrid denominator; its lower ratio is not an additional code
+speedup. Raw ranking samples: [baseline](round4/before.json),
+[retained](round4/final-focused.json), [confirmation](round4/confirmation.json).
+The rejected combined experiment and its confirmation are also archived, with
+batch medians 0.42749999463558197 and 0.4124999940395355 ms respectively.
+No statistical repeatability or isolated per-instruction causal claim is made.
+
+| Adjacent instrumented interval | Before median ms | Retained median ms |
+| --- | ---: | ---: |
+| Outer envelope to adapter entry | 0.025000005960464478 | 0.025000005960464478 |
+| Adapter mapping to Grid entry | 0.034999996423721313 | 0.040000006556510925 |
+| Grid guards/props to store entry | 0.06000000238418579 | 0.06000000238418579 |
+| Store entry and preflight | 0.05500000715255737 | 0.054999977350234985 |
+| Mutation construction, writes, changed-row collection | 0.15000000596046448 | 0.14750000834465027 |
+| Row revisions | 0.09000000357627869 | 0.09000000357627869 |
+| Global data revision | 0.009999990463256836 | 0.009999990463256836 |
+| First selection read | 0.002499997615814209 | 0 |
+| Second selection read and history append | 0.02000001072883606 | 0.02000001072883606 |
+| History revision | 0.009999990463256836 | 0.004999995231628418 |
+| Store return | 0 | 0.004999995231628418 |
+| Store completion to coordination wrapper | 0.015000015497207642 | removed |
+| Wrapper to null formula-port lookup | 0.014999985694885254 | removed |
+| Port lookup to coordinator entry | 0.019999995827674866 | removed |
+| Coordinator formula-free Result work | 0.02000001072883606 | removed |
+| No-op apply callback | 0.005000025033950806 | removed |
+| Notification emission wrapper | 0.009999990463256836 | removed |
+| Coordinator return to Grid completion | 0.004999995231628418 | removed |
+| Direct notification/return | — | 0.004999995231628418 |
+| Grid return to timer completion | 0 | 0.002499997615814209 |
+| Whole instrumented envelope | 0.552499994635582 | 0.4699999988079071 |
+
+Every interval is included. Instrumented API-envelope savings are
+0.08249999582767487 ms; the uninstrumented focused ranking saves 0.0625 ms.
+The difference illustrates instrumentation and cold-code sensitivity. No
+sub-resolution assignment is claimed. The remaining public entry (~0.06 ms)
+was measured but left alone: avoiding reactive props/sort guards would require
+more intrusive assumptions. Notification has no listener in the benchmark, so
+the retained optional callback also avoids creating a throwaway operation.
+
+### Final checks
+
+Frozen-lockfile install passed. Final uninstrumented source passes `pnpm test`
+(252 tests), `pnpm test:solid2` (20 tests), `pnpm benchmark:test` (26 tests),
+`pnpm benchmark:typecheck`, `pnpm typecheck:lib`, and the additional
+`pnpm typecheck:solid2`. Lint and format results and all check logs are in
+[round4/checks](round4/checks). The only retained production diff is Grid.tsx;
+revision storage, mutation construction, adapter, timing harness and installed
+Solid dependency are restored. Approximate 2x is met in the 36-sample decision
+run with required semantics intact.

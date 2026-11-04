@@ -1235,11 +1235,11 @@ export default function Grid(props: GridProps) {
 		};
 	}
 
-	function applyBatchMutations(mutations: CellMutation[], committed = false) {
+	function applyBatchMutations(mutations: CellMutation[]) {
 		coordinateBatchMutations(
 			{
 				applyMutations: (batch) => {
-					if (!committed) applyMutations(props.store, batch);
+					applyMutations(props.store, batch);
 				},
 				emitOperation: (operation) => {
 					props.onOperation?.(operation);
@@ -2774,8 +2774,12 @@ export default function Grid(props: GridProps) {
 						!props.formulaBridge && !isViewSortActive() && !getObserver()
 							? props.store.trySetDistinctCells?.(writes, props.columns)
 							: undefined;
-					if (committed !== undefined) applyBatchMutations(committed, true);
-					else applyBatchMutations(buildExternalBatchMutations(writes));
+					if (committed !== undefined) {
+						// The store already committed history and revisions, with no formula engine.
+						// Read the callback at emission time so reactive host subscriptions stay current.
+						if (committed.length > 0)
+							props.onOperation?.({ type: "batch-edit", mutations: committed });
+					} else applyBatchMutations(buildExternalBatchMutations(writes));
 				},
 				getColumnMeta: (columnId) => props.columns.find((column) => column.id === columnId)?.meta,
 				undo: () => {

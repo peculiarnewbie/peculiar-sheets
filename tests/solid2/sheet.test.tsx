@@ -873,6 +873,54 @@ describe("Solid 2 Sheet", () => {
 		expect(controller.getSelection()).toEqual(selection);
 	});
 
+	it("uses the current batch listener and permits synchronous reentrant writes", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		const data = [["a"], ["b"]];
+		const columns = [{ id: "value", header: "Value" }];
+		const [listener, setListener] = createSignal<
+			((operation: SheetOperation) => void) | undefined
+		>();
+		const operationProps = createMemo(() => {
+			const current = listener();
+			return current ? { onOperation: current } : {};
+		});
+		render(() => (
+			<Sheet
+				data={data}
+				columns={columns}
+				{...operationProps()}
+				ref={(value) => {
+					controller = value;
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const sheet = controller;
+		sheet.setCellValues([{ row: 0, col: 0, value: "a" }]);
+		setListener(() => (operation: SheetOperation) => {
+			operations.push(operation);
+			if (operation.type === "batch-edit" && operation.mutations[0]?.newValue === "B") {
+				expect(sheet.getRawCellValue(1, 0)).toBe("B");
+				expect(sheet.canUndo()).toBe(true);
+				sheet.setCellValue(0, 0, "nested");
+			}
+		});
+		flush();
+		sheet.setCellValues([{ row: 1, col: 0, value: "B" }]);
+		expect(operations.map((operation) => operation.type)).toEqual(["batch-edit", "cell-edit"]);
+		sheet.undo();
+		expect(sheet.getRawCellValue(0, 0)).toBe("a");
+		sheet.undo();
+		expect(sheet.getRawCellValue(1, 0)).toBe("b");
+		setListener(undefined);
+		flush();
+		const count = operations.length;
+		sheet.setCellValues([{ row: 1, col: 0, value: "quiet" }]);
+		expect(operations).toHaveLength(count);
+	});
+
 	it("normalizes multi-row batches and their complete undo/redo payloads", () => {
 		let controller: SheetController | undefined;
 		const operations: SheetOperation[] = [];
