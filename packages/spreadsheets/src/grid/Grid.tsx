@@ -92,7 +92,7 @@ import {
 	coordinateHistoryCommand,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
-import { buildRowMetrics } from "./rowMetrics";
+import { createRowMetricsCache } from "./rowMetrics";
 import { getRowWindow } from "./rowWindow";
 import SearchBar from "./SearchBar";
 import SelectionOverlay from "./SelectionOverlay";
@@ -396,6 +396,7 @@ export default function Grid(props: GridProps) {
 		return nextOrder.map((entry) => entry.rowId);
 	});
 
+	const cachedRowMetrics = createRowMetricsCache();
 	const rowMetrics = createMemo(() => {
 		const heightOverrides = new Map<number, number>();
 		for (const [id, height] of committedRowHeights()) {
@@ -403,7 +404,7 @@ export default function Grid(props: GridProps) {
 			if (visual === null) continue;
 			heightOverrides.set(toNumber(visual), height);
 		}
-		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
+		return cachedRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
 	});
 	// Rows use the shared sparse geometry; columns bridge TanStack into Solid.
 	const [virtualRows, setVirtualRows] = createSignal<VirtualItemSnapshot[]>([]);

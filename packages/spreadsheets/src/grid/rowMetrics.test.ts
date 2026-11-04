@@ -1,12 +1,50 @@
 import { describe, expect, it } from "bun:test";
 import { visualRow } from "../core/brands";
-import { buildRowMetrics } from "./rowMetrics";
+import { buildRowMetrics, createRowMetricsCache } from "./rowMetrics";
 
 function overrides(entries: Array<[number, number]>): Map<number, number> {
 	return new Map(entries);
 }
 
 describe("row metrics", () => {
+	it("retains equal geometry and invalidates count, default height and mapped overrides", () => {
+		const read = createRowMetricsCache();
+		const sizes = overrides([
+			[1, 44],
+			[2, 50],
+		]);
+		const initial = read(10, 28, sizes);
+		expect(
+			read(
+				10,
+				28,
+				overrides([
+					[2, 50],
+					[1, 44],
+				]),
+			),
+		).toBe(initial);
+		sizes.set(1, 60);
+		const resized = read(10, 28, sizes);
+		expect(resized).not.toBe(initial);
+		expect(resized.getRowHeight(visualRow(1))).toBe(60);
+		expect(initial.getRowHeight(visualRow(1))).toBe(44);
+		const grown = read(100, 28, sizes);
+		expect(grown.getTotalHeight()).toBe(2854);
+		expect(read(100, 30, sizes).getTotalHeight()).toBe(3050);
+		const remapped = read(
+			100,
+			30,
+			overrides([
+				[3, 60],
+				[2, 50],
+			]),
+		);
+		expect(remapped.getRowHeight(visualRow(1))).toBe(30);
+		expect(remapped.getRowHeight(visualRow(3))).toBe(60);
+		expect(read(100, 30, new Map()).getTotalHeight()).toBe(3000);
+		expect(read(0, 30, new Map()).getTotalHeight()).toBe(0);
+	});
 	it("uses the default row height when no override exists", () => {
 		const metrics = buildRowMetrics(3, 28);
 
