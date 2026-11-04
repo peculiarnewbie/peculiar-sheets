@@ -1,0 +1,854 @@
+{
+  "exportedAt": "2026-11-04T13:44:11.156Z",
+  "sourceCommit": "2b2062b778559f2d2046d5d7de40d629d9e4d6fb",
+  "librarySourceCommit": "405e3c158fb2b5dffa5abd528b09d5d200d1eb84",
+  "measurementProtocol": "api-completion-v2",
+  "cpuAffinity": "6,7",
+  "goalComplete": false,
+  "direction": "Resume profiling and optimization on stronger hardware after one fresh host baseline. Do not resume the stopped measurement-control campaign.",
+  "latestFullRun": {
+    "directory": "baseline-precision-2b2062b",
+    "samples": 1740,
+    "pairs": 117,
+    "iterations": 12,
+    "scenarioIterations": {
+      "replace-large-disjoint": 96
+    },
+    "elapsedMs": 4772144,
+    "checks": {
+      "samples": true,
+      "iterations": true,
+      "scenarioCounts": true,
+      "metricCoverage": true,
+      "scenarios": true,
+      "pairs": true,
+      "libraries": true,
+      "protocol": true,
+      "cpuAffinity": true,
+      "source": true,
+      "headlineCases": true,
+      "streamWork": true,
+      "writeCompletion": true,
+      "journal": true,
+      "unchangedTimingDefinitions": true,
+      "protectedScope": true
+    },
+    "counts": {
+      "best": 33,
+      "near": 3,
+      "behind": 3,
+      "total": 39,
+      "strictWithinTwenty": 36,
+      "strictOutsideTwenty": 3
+    },
+    "behind": [
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "batch-writes",
+        "own": 4.749999998137355,
+        "best": 0.900000000372529,
+        "status": "behind",
+        "winners": [
+          "RevoGrid"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 427.77777735235884
+      },
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "streaming-updates",
+        "own": 33.299999999999955,
+        "best": 16.799999999999727,
+        "status": "behind",
+        "winners": [
+          "AG Grid"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 98.21428571428868
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "scroll-wheel-slow",
+        "own": 33.40000000000009,
+        "best": 16.799999999999727,
+        "status": "behind",
+        "winners": [
+          "AG Grid",
+          "RevoGrid"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 98.80952380952759
+      }
+    ],
+    "cases": [
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-small",
+        "own": 358.3500000014901,
+        "best": 358.3500000014901,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-large",
+        "own": 407.05000000074506,
+        "best": 407.05000000074506,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-tall",
+        "own": 772.0500000007451,
+        "best": 772.0500000007451,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-wide",
+        "own": 434.05000000074506,
+        "best": 434.05000000074506,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-mixed",
+        "own": 443.74999999813735,
+        "best": 443.74999999813735,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "opening",
+        "unit": "ms",
+        "scenario": "mount-sparse",
+        "own": 778,
+        "best": 778,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "editing",
+        "unit": "ms",
+        "scenario": "edit-commit",
+        "own": 56.54999999888241,
+        "best": 56.54999999888241,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "editing",
+        "unit": "ms",
+        "scenario": "keyboard-navigation",
+        "own": 54.44999999925494,
+        "best": 54.44999999925494,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "editing",
+        "unit": "ms",
+        "scenario": "paste-small",
+        "own": 95.30000000074506,
+        "best": 95.30000000074506,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "editing",
+        "unit": "ms",
+        "scenario": "paste-large",
+        "own": 261.44999999925494,
+        "best": 261.44999999925494,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "editing",
+        "unit": "ms",
+        "scenario": "clear-undo-redo",
+        "own": 90.20000000111759,
+        "best": 90.20000000111759,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 1,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "visible-writes",
+        "own": 3.750000001862645,
+        "best": 3.750000001862645,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "offscreen-writes",
+        "own": 3.950000001117587,
+        "best": 3.950000001117587,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "batch-writes",
+        "own": 4.749999998137355,
+        "best": 0.900000000372529,
+        "status": "behind",
+        "winners": [
+          "RevoGrid"
+        ],
+        "competitors": 2,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 427.77777735235884
+      },
+      {
+        "category": "updates",
+        "unit": "ms",
+        "scenario": "streaming-updates",
+        "own": 33.299999999999955,
+        "best": 16.799999999999727,
+        "status": "behind",
+        "winners": [
+          "AG Grid"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 98.21428571428868
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-large-disjoint",
+        "own": 21.949999999254942,
+        "best": 21.949999999254942,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-large-retained",
+        "own": 25.949999999254942,
+        "best": 25.949999999254942,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-small-disjoint",
+        "own": 17.199999999254942,
+        "best": 17.199999999254942,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-small-large",
+        "own": 45.69999999925494,
+        "best": 45.69999999925494,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-filter-roundtrip",
+        "own": 69.65000000037253,
+        "best": 69.65000000037253,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-few-cells",
+        "own": 17.550000000745058,
+        "best": 17.550000000745058,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-wide-retained",
+        "own": 42.40000000037253,
+        "best": 42.40000000037253,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "replace-wide-grow",
+        "own": 71.05000000074506,
+        "best": 71.05000000074506,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "row-reorder",
+        "own": 90.94999999925494,
+        "best": 90.94999999925494,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "replacement",
+        "unit": "ms",
+        "scenario": "row-insert-delete",
+        "own": 198.80000000074506,
+        "best": 194.15000000037253,
+        "status": "near",
+        "winners": [
+          "Handsontable"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 2.39505536974689
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "vertical-scroll",
+        "own": 33.40000000000009,
+        "best": 33.40000000000009,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "horizontal-scroll",
+        "own": 50.10000000000008,
+        "best": 50.10000000000008,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "scroll-wheel-slow",
+        "own": 33.40000000000009,
+        "best": 16.799999999999727,
+        "status": "behind",
+        "winners": [
+          "AG Grid",
+          "RevoGrid"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": false,
+        "behindBestPercent": 98.80952380952759
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "scroll-wheel-bursts",
+        "own": 33.39999999999998,
+        "best": 33.39999999999998,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "scroll-diagonal",
+        "own": 33.40000000000009,
+        "best": 33.40000000000009,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "scrolling",
+        "unit": "ms",
+        "scenario": "scroll-jump",
+        "own": 33.39999999999998,
+        "best": 33.39999999999998,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-small",
+        "own": 2.7410699999999997,
+        "best": 2.7410699999999997,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-large",
+        "own": 5.013712,
+        "best": 5.013712,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-tall",
+        "own": 27.22488,
+        "best": 23.442186,
+        "status": "near",
+        "winners": [
+          "Handsontable"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 16.136268179085334
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-wide",
+        "own": 4.229152,
+        "best": 4.229152,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-mixed",
+        "own": 13.333229,
+        "best": 13.333229,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "mount-sparse",
+        "own": 23.986814,
+        "best": 23.44169,
+        "status": "near",
+        "winners": [
+          "Handsontable"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 2.3254466721469136
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "vertical-scroll",
+        "own": 5.52929,
+        "best": 5.52929,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      },
+      {
+        "category": "memory",
+        "unit": "MB",
+        "scenario": "horizontal-scroll",
+        "own": 4.790127,
+        "best": 4.790127,
+        "status": "best",
+        "winners": [
+          "Peculiar Sheets"
+        ],
+        "competitors": 3,
+        "strictWithinTwenty": true,
+        "behindBestPercent": 0
+      }
+    ]
+  },
+  "repeatability": {
+    "summary": {
+      "observations": 149,
+      "aboveTenPercent": 17,
+      "aboveTwentyPercent": 3,
+      "perLibrary": [
+        {
+          "implementation": "peculiar-sheets",
+          "observations": 39,
+          "aboveTenPercent": 9,
+          "aboveTwentyPercent": 1
+        },
+        {
+          "implementation": "ag-grid",
+          "observations": 36,
+          "aboveTenPercent": 4,
+          "aboveTwentyPercent": 2
+        },
+        {
+          "implementation": "handsontable",
+          "observations": 36,
+          "aboveTenPercent": 1,
+          "aboveTwentyPercent": 0
+        },
+        {
+          "implementation": "revogrid",
+          "observations": 38,
+          "aboveTenPercent": 3,
+          "aboveTwentyPercent": 0
+        }
+      ]
+    },
+    "flagged": [
+      {
+        "category": "updates",
+        "scenario": "offscreen-writes",
+        "implementation": "ag-grid",
+        "unit": "ms",
+        "freshMedian": 5.849999999627471,
+        "samplesPerRun": 12,
+        "references": [
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb",
+            "median": 5.949999999254942,
+            "samples": 12
+          },
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb-repeat",
+            "median": 7.100000001490116,
+            "samples": 12
+          }
+        ],
+        "maximumGapPercent": 21.367521400722133,
+        "aboveTenPercent": true,
+        "aboveTwentyPercent": true
+      },
+      {
+        "category": "replacement",
+        "scenario": "replace-small-disjoint",
+        "implementation": "ag-grid",
+        "unit": "ms",
+        "freshMedian": 29.200000001117587,
+        "samplesPerRun": 12,
+        "references": [
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb",
+            "median": 22.549999999813735,
+            "samples": 12
+          },
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb-repeat",
+            "median": 22.34999999962747,
+            "samples": 12
+          }
+        ],
+        "maximumGapPercent": 30.648769582122103,
+        "aboveTenPercent": true,
+        "aboveTwentyPercent": true
+      },
+      {
+        "category": "replacement",
+        "scenario": "replace-small-large",
+        "implementation": "peculiar-sheets",
+        "unit": "ms",
+        "freshMedian": 45.69999999925494,
+        "samplesPerRun": 12,
+        "references": [
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb",
+            "median": 37.35000000055879,
+            "samples": 12
+          },
+          {
+            "directory": ".benchmark/all-within20/baseline-v2-c9ba1bb-repeat",
+            "median": 38.149999998509884,
+            "samples": 12
+          }
+        ],
+        "maximumGapPercent": 22.356091026964453,
+        "aboveTenPercent": true,
+        "aboveTwentyPercent": true
+      }
+    ],
+    "note": "Maximum drift across fresh full baseline and both relevant prior controls. Measurement changes are not library speedups."
+  },
+  "checks": {
+    "coreTests": 243,
+    "solid2Tests": 17,
+    "benchmarkTests": 20,
+    "benchmarkTypechecks": true,
+    "sourceCommit": "2b2062b778559f2d2046d5d7de40d629d9e4d6fb",
+    "logs": "inside raw-results.tar.gz, parking-checks/"
+  },
+  "archive": {
+    "file": "raw-results.tar.gz",
+    "bytes": 714399,
+    "sha256": "0ff8f71dd1281221921b3839919ada03cc109d3ef318265723bac26cc484159e",
+    "payloadFiles": 43,
+    "completeRunSamples": 6372,
+    "interruptedSamples": 9
+  },
+  "runs": [
+    {
+      "directory": "baseline-v2-c9ba1bb",
+      "status": "complete",
+      "scope": "full suite",
+      "sourceCommit": "c9ba1bb1deab21eadee59515a4bf2c06dee53131",
+      "samples": 1404,
+      "expectedSamples": 1404,
+      "iterations": 12,
+      "startedAt": "2026-11-04T08:31:23.346Z",
+      "generatedAt": "2026-11-04T09:40:04.183Z",
+      "elapsedMs": 4120837,
+      "pairedRepeatabilityGate": "see audited full-suite comparison; residual noise remains"
+    },
+    {
+      "directory": "baseline-v2-c9ba1bb-repeat",
+      "status": "complete",
+      "scope": "full suite",
+      "sourceCommit": "c9ba1bb1deab21eadee59515a4bf2c06dee53131",
+      "samples": 1404,
+      "expectedSamples": 1404,
+      "iterations": 12,
+      "startedAt": "2026-11-04T09:40:17.001Z",
+      "generatedAt": "2026-11-04T10:48:55.249Z",
+      "elapsedMs": 4118248,
+      "pairedRepeatabilityGate": "see audited full-suite comparison; residual noise remains"
+    },
+    {
+      "directory": "baseline-precision-2b2062b",
+      "status": "complete",
+      "scope": "full suite",
+      "sourceCommit": "2b2062b778559f2d2046d5d7de40d629d9e4d6fb",
+      "samples": 1740,
+      "expectedSamples": 1740,
+      "iterations": 12,
+      "scenarioIterations": {
+        "replace-large-disjoint": 96
+      },
+      "startedAt": "2026-11-04T11:38:47.369Z",
+      "generatedAt": "2026-11-04T12:58:19.513Z",
+      "elapsedMs": 4772144,
+      "pairedRepeatabilityGate": "see audited full-suite comparison; residual noise remains"
+    },
+    {
+      "directory": "replacement-96-a",
+      "status": "complete",
+      "scope": "measurement control subset",
+      "sourceCommit": "c9ba1bb1deab21eadee59515a4bf2c06dee53131",
+      "samples": 384,
+      "expectedSamples": 384,
+      "iterations": 96,
+      "startedAt": "2026-11-04T10:56:52.814Z",
+      "generatedAt": "2026-11-04T11:09:31.375Z",
+      "elapsedMs": 758560,
+      "pairedRepeatabilityGate": "passed for both controls; see replacement-96-comparison.json"
+    },
+    {
+      "directory": "replacement-96-b",
+      "status": "complete",
+      "scope": "measurement control subset",
+      "sourceCommit": "c9ba1bb1deab21eadee59515a4bf2c06dee53131",
+      "samples": 384,
+      "expectedSamples": 384,
+      "iterations": 96,
+      "startedAt": "2026-11-04T11:09:38.493Z",
+      "generatedAt": "2026-11-04T11:22:15.260Z",
+      "elapsedMs": 756767,
+      "pairedRepeatabilityGate": "passed for both controls; see replacement-96-comparison.json"
+    },
+    {
+      "directory": "noise-96-a",
+      "status": "complete",
+      "scope": "measurement control subset",
+      "sourceCommit": "2b2062b778559f2d2046d5d7de40d629d9e4d6fb",
+      "samples": 1056,
+      "expectedSamples": 1056,
+      "iterations": 96,
+      "startedAt": "2026-11-04T13:04:01.143Z",
+      "generatedAt": "2026-11-04T13:38:36.111Z",
+      "elapsedMs": 2074968,
+      "pairedRepeatabilityGate": "not evaluated; second control stopped"
+    },
+    {
+      "directory": "noise-96-b",
+      "status": "stopped-at-user-request; incomplete; do not use as baseline",
+      "scope": "measurement control subset",
+      "sourceCommit": "2b2062b778559f2d2046d5d7de40d629d9e4d6fb",
+      "samples": 9,
+      "expectedSamples": 1056,
+      "iterations": 96,
+      "startedAt": "2026-11-04T13:38:37.274Z",
+      "pairedRepeatabilityGate": "not evaluated; second control stopped"
+    }
+  ]
+}
