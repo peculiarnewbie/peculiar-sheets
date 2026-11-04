@@ -1,0 +1,81 @@
+--- a/packages/spreadsheets/src/core/rowRevisions.ts
++++ b/packages/spreadsheets/src/core/rowRevisions.ts
+@@ -1,55 +1,51 @@
+ import { createSignal, getObserver, type Signal } from "solid-js";
+ import type { RowId } from "./brands";
+ 
+-/** Row counters with Solid subscriptions only for rows that are being observed. */
++/** Exact row counters, with subscriptions allocated only for observed rows. */
+ export function createRowRevisions() {
+-	const values = new Map<RowId, number>();
+-	const observed = new Map<RowId, Signal<number>>();
+-
++	interface Entry { value: number; signal?: Signal<number> }
++	const entries = new Map<RowId, Entry>();
+ 	function read(id: RowId): number {
+-		const existing = observed.get(id);
+-		if (existing) return existing[0]();
+-		const value = values.get(id) ?? 0;
++		let entry = entries.get(id);
++		if (entry?.signal) return entry.signal[0]();
++		const value = entry?.value ?? 0;
+ 		if (!getObserver()) return value;
++		if (!entry) { entry = { value }; entries.set(id, entry); }
++		const owned = entry;
+ 		const signal = createSignal(value, {
+ 			unobserved: () => {
+-				if (observed.get(id) === signal) observed.delete(id);
++				if (owned.signal !== signal) return;
++				delete owned.signal;
++				if (owned.value === 0 && entries.get(id) === owned) entries.delete(id);
+ 			},
+ 		});
+-		observed.set(id, signal);
++		entry.signal = signal;
+ 		return signal[0]();
+ 	}
+-
+ 	function bumpOne(id: RowId): void {
+-		const next = (values.get(id) ?? 0) + 1;
+-		values.set(id, next);
+-		observed.get(id)?.[1](next);
++		const entry = entries.get(id);
++		if (entry) { entry.value++; entry.signal?.[1](entry.value); }
++		else entries.set(id, { value: 1 });
+ 	}
+-
+ 	function bump(ids: ReadonlySet<RowId>): void {
+ 		for (const id of ids) bumpOne(id);
+ 	}
+-
+ 	function forget(ids: Iterable<RowId>): void {
+ 		for (const id of ids) {
+-			values.delete(id);
+-			observed.get(id)?.[1](0);
++			const entry = entries.get(id);
++			if (!entry) continue;
++			entry.value = 0;
++			if (entry.signal) entry.signal[1](0);
++			else entries.delete(id);
+ 		}
+ 	}
+-
+ 	function retain(ids: readonly RowId[]): void {
+-		if (values.size <= 1) {
+-			// Avoid indexing the whole sheet when only one written row needs checking.
+-			for (const id of values.keys()) {
+-				if (!ids.includes(id)) forget([id]);
+-			}
++		if (entries.size <= 1) {
++			for (const id of entries.keys()) if (!ids.includes(id)) forget([id]);
+ 			return;
+ 		}
+ 		const retained = new Set(ids);
+-		for (const id of values.keys()) {
+-			if (!retained.has(id)) forget([id]);
+-		}
++		for (const id of entries.keys()) if (!retained.has(id)) forget([id]);
+ 	}
+-
+ 	return { read, bumpOne, bump, forget, retain };
+ }

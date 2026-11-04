@@ -855,6 +855,81 @@ describe("Solid 2 Sheet", () => {
 		expect(controller.getSelection()).toEqual(selection);
 	});
 
+	it("normalizes multi-row batches and their complete undo/redo payloads", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		render(() => (
+			<Sheet
+				data={[
+					["a", "b"],
+					["c", "d"],
+				]}
+				columns={[
+					{ id: "left", header: "Left" },
+					{ id: "right", header: "Right" },
+				]}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const sheet = controller;
+		const values = () => [
+			sheet.getRawCellValue(0, 0),
+			sheet.getRawCellValue(0, 1),
+			sheet.getRawCellValue(1, 0),
+			sheet.getRawCellValue(1, 1),
+		];
+		controller.setCellValues([
+			{ row: 1, col: 1, value: "D" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 0, col: 1, value: "B" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		const forward = operations[0];
+		if (forward?.type !== "batch-edit") throw new Error("Batch missing");
+		expect(
+			forward.mutations.map((m) => [m.address.row, m.address.col, m.oldValue, m.newValue]),
+		).toEqual([
+			[1, 1, "d", "D"],
+			[0, 0, "a", "A"],
+			[0, 1, "b", "B"],
+		]);
+		controller.undo();
+		flush();
+		expect(values()).toEqual(["a", "b", "c", "d"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse missing");
+		expect(inverse.mutations).toEqual(
+			forward.mutations.map((m) => ({ ...m, oldValue: m.newValue, newValue: m.oldValue })),
+		);
+		controller.redo();
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		controller.setCellValues([
+			{ row: 0, col: 0, value: "temporary" },
+			{ row: 1, col: 0, value: "C" },
+			{ row: 0, col: 1, value: "last" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 1, col: 0, value: "final" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "last", "final", "D"]);
+		const normalized = operations[3];
+		if (normalized?.type !== "batch-edit") throw new Error("Normalized batch missing");
+		expect(normalized.mutations.map((m) => [m.address.row, m.address.col, m.newValue])).toEqual([
+			[1, 0, "final"],
+			[0, 1, "last"],
+		]);
+	});
+
 	it("cancels a queued editor focus when unmounted in the same turn", () => {
 		let controller: SheetController | undefined;
 		const view = render(() => (

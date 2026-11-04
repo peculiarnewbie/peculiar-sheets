@@ -1,0 +1,8 @@
+
+> @ typecheck:lib C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028
+> pnpm --filter peculiar-sheets typecheck
+
+
+> peculiar-sheets@0.16.0 typecheck C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028\packages\spreadsheets
+> tsc --noEmit -p tsconfig.src.json
+
