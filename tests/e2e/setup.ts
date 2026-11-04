@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { Result, TaggedError } from "better-result";
 import { Stagehand } from "@browserbasehq/stagehand";
 import type {
 	CellMutation,
@@ -35,6 +39,8 @@ interface E2EPage {
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3141";
 
+class E2EBrowserError extends TaggedError("E2EBrowserError")<{ cause: unknown }> {}
+let _profile: string | undefined;
 let _stagehand: Stagehand | null = null;
 // Stagehand v3 Page — accessed via stagehand.context.activePage()
 let _page: E2EPage | null = null;
@@ -45,19 +51,31 @@ let _initPromise: Promise<Stagehand> | null = null;
 export async function getStagehand(): Promise<Stagehand> {
 	if (!_initPromise) {
 		_initPromise = (async () => {
-			const headless = process.env.E2E_HEADLESS === "true";
-			_stagehand = new Stagehand({
-				env: "LOCAL",
-				localBrowserLaunchOptions: {
-					headless,
-					args: headless ? ["--disable-gpu"] : ["--disable-gpu", "--disable-gpu-sandbox"],
-				},
-			});
-			await _stagehand.init();
+			const initialized = await Result.tryPromise({
+				try: async () => {
+					_profile = await mkdtemp(path.join(os.tmpdir(), "peculiar-e2e-profile-"));
+					const headless = process.env.E2E_HEADLESS === "true";
+					_stagehand = new Stagehand({
+						env: "LOCAL",
+						localBrowserLaunchOptions: {
+							userDataDir: _profile,
+							headless,
+							args: headless ? ["--disable-gpu"] : ["--disable-gpu", "--disable-gpu-sandbox"],
+						},
+					});
+					await _stagehand.init();
 
-			// Close once when the process exits — no per-file teardown needed
-			process.on("beforeExit", () => closeStagehand());
-			return _stagehand;
+					// Close once when the process exits — no per-file teardown needed
+					process.on("beforeExit", () => closeStagehand());
+					return _stagehand;
+				},
+				catch: (cause) => new E2EBrowserError({ cause }),
+			});
+			if (initialized.isErr()) {
+				await closeStagehand();
+				throw initialized.error;
+			}
+			return initialized.value;
 		})();
 	}
 	return _initPromise;
@@ -89,11 +107,30 @@ export async function closePage(): Promise<void> {
 
 /** Tear down the shared Stagehand instance. */
 export async function closeStagehand(): Promise<void> {
-	if (_stagehand) {
-		await _stagehand.close();
-		_stagehand = null;
-		_page = null;
-		_initPromise = null;
+	const browser = _stagehand;
+	const profile = _profile;
+	_stagehand = null;
+	_profile = undefined;
+	_page = null;
+	_initPromise = null;
+	try {
+		if (browser) {
+			const closed = await Result.tryPromise({
+				try: () => browser.close(),
+				catch: (cause) => new E2EBrowserError({ cause }),
+			});
+			closed.tapError((error) => console.debug("e2e.browser.close.failed", { cause: error.cause }));
+		}
+	} finally {
+		if (profile) {
+			const cleaned = await Result.tryPromise({
+				try: () => rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
+				catch: (cause) => new E2EBrowserError({ cause }),
+			});
+			cleaned.tapError((error) =>
+				console.debug("e2e.browser.profile.cleanup.failed", { profile, cause: error.cause }),
+			);
+		}
 	}
 }
 

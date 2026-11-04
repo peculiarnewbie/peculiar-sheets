@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
+import { browserProfileCleanupSummary, withBrowserProfile } from "./browser-profile";
 import { Stagehand } from "@browserbasehq/stagehand";
 import { Result, TaggedError } from "better-result";
 import { SCENARIOS as SCENARIO_CONFIG, scenarioSkip } from "../apps/benchmarks/src/scenarios";
@@ -650,116 +651,122 @@ async function runMemoryDiagnosticSample(options: {
 	implementation: ImplementationName;
 	rows: number;
 }): Promise<MemoryDiagnosticSample> {
-	const browser = new Stagehand({
-		env: "LOCAL",
-		localBrowserLaunchOptions: {
-			headless: true,
-			args: BROWSER_ARGS,
-			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
-		},
-	});
-	try {
-		await browser.init();
-		const page = (await browser.context.newPage()) as PageLike;
-		const query = new URLSearchParams({
-			implementation: options.implementation,
-			scenario: "vertical-scroll",
-			lifecycle: "1",
-			rows: String(options.rows),
-			columns: String(DIAGNOSTIC_COLUMNS),
-			durationMs: String(DIAGNOSTIC_DURATION_MS),
-		});
-		await page.goto(`${BASE_URL}?${query}`);
-		await waitForReady(page);
-		const timingEnvironment = await page.evaluate(timerMetadata);
-		if (!timingEnvironment.crossOriginIsolated)
-			throw new Error("Benchmark preview must be cross-origin isolated for high-resolution timing");
-		const browserVersion = await page.sendCDP<{
-			product: string;
-			revision: string;
-			userAgent: string;
-			jsVersion: string;
-		}>("Browser.getVersion");
-		const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-		const startedAt = new Date().toISOString();
-		const checkpoints: MemoryCheckpoint[] = [];
-		const cycles: Array<ScrollMetrics & { cycle: number }> = [];
-		const heapSnapshots: Array<{ completedCycles: number; path: string }> = [];
-		const requestedCheckpoints = new Set([0, ...DIAGNOSTIC_CYCLES]);
-		checkpoints.push(
-			await collectMemoryCheckpoint({
-				page,
-				kind: "cycle",
-				completedCycles: 0,
-				idleMs: 0,
+	const measured = await withBrowserProfile({
+		create: (userDataDir) =>
+			new Stagehand({
+				env: "LOCAL",
+				localBrowserLaunchOptions: {
+					userDataDir,
+					headless: true,
+					args: BROWSER_ARGS,
+					...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+				},
 			}),
-		);
-		if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(0)) {
-			heapSnapshots.push({
-				completedCycles: 0,
-				path: await captureHeapSnapshot({
-					page,
-					implementation: options.implementation,
-					rows: options.rows,
-					completedCycles: 0,
-				}),
+		run: async (browser) => {
+			await browser.init();
+			const page = (await browser.context.newPage()) as PageLike;
+			const query = new URLSearchParams({
+				implementation: options.implementation,
+				scenario: "vertical-scroll",
+				lifecycle: "1",
+				rows: String(options.rows),
+				columns: String(DIAGNOSTIC_COLUMNS),
+				durationMs: String(DIAGNOSTIC_DURATION_MS),
 			});
-		}
-		const maximumCycles = Math.max(...requestedCheckpoints, ...DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES);
-		for (let cycle = 1; cycle <= maximumCycles; cycle++) {
-			const metrics = await page.evaluate(async () => {
-				if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
-				return window.__BENCHMARK__.runScrollCycle();
-			});
-			cycles.push({ cycle, ...metrics });
-			if (requestedCheckpoints.has(cycle)) {
-				checkpoints.push(
-					await collectMemoryCheckpoint({
-						page,
-						kind: "cycle",
-						completedCycles: cycle,
-						idleMs: 0,
-					}),
+			await page.goto(`${BASE_URL}?${query}`);
+			await waitForReady(page);
+			const timingEnvironment = await page.evaluate(timerMetadata);
+			if (!timingEnvironment.crossOriginIsolated)
+				throw new Error(
+					"Benchmark preview must be cross-origin isolated for high-resolution timing",
 				);
-			}
-			if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(cycle)) {
+			const browserVersion = await page.sendCDP<{
+				product: string;
+				revision: string;
+				userAgent: string;
+				jsVersion: string;
+			}>("Browser.getVersion");
+			const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+			const startedAt = new Date().toISOString();
+			const checkpoints: MemoryCheckpoint[] = [];
+			const cycles: Array<ScrollMetrics & { cycle: number }> = [];
+			const heapSnapshots: Array<{ completedCycles: number; path: string }> = [];
+			const requestedCheckpoints = new Set([0, ...DIAGNOSTIC_CYCLES]);
+			checkpoints.push(
+				await collectMemoryCheckpoint({
+					page,
+					kind: "cycle",
+					completedCycles: 0,
+					idleMs: 0,
+				}),
+			);
+			if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(0)) {
 				heapSnapshots.push({
-					completedCycles: cycle,
+					completedCycles: 0,
 					path: await captureHeapSnapshot({
 						page,
 						implementation: options.implementation,
 						rows: options.rows,
-						completedCycles: cycle,
+						completedCycles: 0,
 					}),
 				});
 			}
-		}
-		for (const idleMs of DIAGNOSTIC_IDLE_MS) {
-			checkpoints.push(
-				await collectMemoryCheckpoint({
-					page,
-					kind: "idle",
-					completedCycles: maximumCycles,
-					idleMs,
-				}),
-			);
-		}
-		return {
-			implementation: options.implementation,
-			rows: options.rows,
-			columns: DIAGNOSTIC_COLUMNS,
-			durationMs: DIAGNOSTIC_DURATION_MS,
-			viewport,
-			browser: browserVersion,
-			timingEnvironment,
-			startedAt,
-			cycles,
-			checkpoints,
-			heapSnapshots,
-		};
-	} finally {
-		await browser.close();
-	}
+			const maximumCycles = Math.max(...requestedCheckpoints, ...DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES);
+			for (let cycle = 1; cycle <= maximumCycles; cycle++) {
+				const metrics = await page.evaluate(async () => {
+					if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
+					return window.__BENCHMARK__.runScrollCycle();
+				});
+				cycles.push({ cycle, ...metrics });
+				if (requestedCheckpoints.has(cycle)) {
+					checkpoints.push(
+						await collectMemoryCheckpoint({
+							page,
+							kind: "cycle",
+							completedCycles: cycle,
+							idleMs: 0,
+						}),
+					);
+				}
+				if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(cycle)) {
+					heapSnapshots.push({
+						completedCycles: cycle,
+						path: await captureHeapSnapshot({
+							page,
+							implementation: options.implementation,
+							rows: options.rows,
+							completedCycles: cycle,
+						}),
+					});
+				}
+			}
+			for (const idleMs of DIAGNOSTIC_IDLE_MS) {
+				checkpoints.push(
+					await collectMemoryCheckpoint({
+						page,
+						kind: "idle",
+						completedCycles: maximumCycles,
+						idleMs,
+					}),
+				);
+			}
+			return {
+				implementation: options.implementation,
+				rows: options.rows,
+				columns: DIAGNOSTIC_COLUMNS,
+				durationMs: DIAGNOSTIC_DURATION_MS,
+				viewport,
+				browser: browserVersion,
+				timingEnvironment,
+				startedAt,
+				cycles,
+				checkpoints,
+				heapSnapshots,
+			};
+		},
+	});
+	if (measured.isErr()) throw measured.error;
+	return measured.value;
 }
 
 function printMemoryDiagnostic(samples: readonly MemoryDiagnosticSample[]): void {
@@ -833,45 +840,52 @@ async function runSample(options: {
 	implementation: ImplementationName;
 	scenario: ScenarioName;
 }): Promise<BenchmarkResult> {
-	const browser = new Stagehand({
-		env: "LOCAL",
-		localBrowserLaunchOptions: {
-			headless: true,
-			args: BROWSER_ARGS,
-			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+	const measured = await withBrowserProfile({
+		create: (userDataDir) =>
+			new Stagehand({
+				env: "LOCAL",
+				localBrowserLaunchOptions: {
+					userDataDir,
+					headless: true,
+					args: BROWSER_ARGS,
+					...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+				},
+			}),
+		run: async (browser) => {
+			await browser.init();
+			const page = (await browser.context.newPage()) as PageLike;
+			const query = new URLSearchParams({
+				implementation: options.implementation,
+				scenario: options.scenario,
+				...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
+				...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
+			});
+			await page.goto(`${BASE_URL}?${query}`);
+			await waitForReady(page);
+			const timingEnvironment = await page.evaluate(timerMetadata);
+			if (!timingEnvironment.crossOriginIsolated)
+				throw new Error(
+					"Benchmark preview must be cross-origin isolated for high-resolution timing",
+				);
+			if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
+				const interaction = await runBrowserWorkload(page, options.scenario);
+				if (interaction.isErr()) throw interaction.error;
+			}
+			const result = await page.evaluate(async () => {
+				if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
+				return window.__BENCHMARK__.run();
+			});
+			await page.sendCDP("HeapProfiler.collectGarbage");
+			const heapBytes = await page.evaluate(() => {
+				const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } })
+					.memory;
+				return memory?.usedJSHeapSize ?? null;
+			});
+			return { ...result, heapBytes, timingEnvironment };
 		},
 	});
-	try {
-		await browser.init();
-		const page = (await browser.context.newPage()) as PageLike;
-		const query = new URLSearchParams({
-			implementation: options.implementation,
-			scenario: options.scenario,
-			...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
-			...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
-		});
-		await page.goto(`${BASE_URL}?${query}`);
-		await waitForReady(page);
-		const timingEnvironment = await page.evaluate(timerMetadata);
-		if (!timingEnvironment.crossOriginIsolated)
-			throw new Error("Benchmark preview must be cross-origin isolated for high-resolution timing");
-		if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
-			const interaction = await runBrowserWorkload(page, options.scenario);
-			if (interaction.isErr()) throw interaction.error;
-		}
-		const result = await page.evaluate(async () => {
-			if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
-			return window.__BENCHMARK__.run();
-		});
-		await page.sendCDP("HeapProfiler.collectGarbage");
-		const heapBytes = await page.evaluate(() => {
-			const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
-			return memory?.usedJSHeapSize ?? null;
-		});
-		return { ...result, heapBytes, timingEnvironment };
-	} finally {
-		await browser.close();
-	}
+	if (measured.isErr()) throw measured.error;
+	return measured.value;
 }
 
 async function runSampleWithRetry(options: {
@@ -1038,4 +1052,11 @@ try {
 	process.exitCode = 1;
 } finally {
 	preview?.kill("SIGTERM");
+	const profiles = browserProfileCleanupSummary();
+	if (profiles.leakedDirectories.length) {
+		console.error("benchmark.browser.profiles.leaked", profiles);
+		process.exitCode = 1;
+	} else {
+		console.log("Browser profile cleanup:", JSON.stringify(profiles));
+	}
 }
