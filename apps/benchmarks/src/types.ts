@@ -266,6 +266,11 @@ export interface BenchmarkPoint {
 }
 
 interface BaseBenchmarkResult {
+	timingEnvironment?: {
+		crossOriginIsolated: boolean;
+		timerGranularityMs: number | null;
+		timerPositiveTicks: number;
+	};
 	implementation: ImplementationName;
 	scenario: ScenarioName;
 	rows: number;

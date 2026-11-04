@@ -2,6 +2,7 @@ import { Result, TaggedError } from "better-result";
 import { setTimeout as delay } from "node:timers/promises";
 import type { BenchmarkPoint, BenchmarkWrite, ScenarioName } from "../apps/benchmarks/src/types";
 import type { PageLike } from "./browser-types";
+import { editorReady, editorsClosed } from "./editor-readiness";
 
 class BrowserWorkloadError extends TaggedError("BrowserWorkloadError")<{
 	scenario: ScenarioName;
@@ -92,10 +93,29 @@ async function verify(page: PageLike, writes: BenchmarkWrite[]): Promise<void> {
 async function edit(page: PageLike, row: number, column: number, value: string): Promise<void> {
 	await click(page, await pointForCell(page, row, column), true);
 	await settle(page);
+	await waitForEditor(page, false);
 	await press(page, "a", 2);
+	await waitForEditor(page, true);
 	await page.sendCDP("Input.insertText", { text: value });
 	await press(page, "Enter");
+	const deadline = Date.now() + 3_000;
+	while (!(await page.evaluate(editorsClosed))) {
+		if (Date.now() >= deadline)
+			throw new Error("Editor did not close after Enter within the readiness timeout");
+		await delay(10);
+	}
 	await verify(page, [{ row, column, value }]);
+}
+
+async function waitForEditor(page: PageLike, requireSelection: boolean): Promise<void> {
+	const deadline = Date.now() + 3_000;
+	do {
+		if (await page.evaluate(editorReady, requireSelection)) return;
+		await delay(10);
+	} while (Date.now() < deadline);
+	throw new Error(
+		`Editor did not become ${requireSelection ? "fully selected" : "focused"} within the readiness timeout`,
+	);
 }
 
 async function wheel(

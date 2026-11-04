@@ -156,6 +156,38 @@ The workloads contain values, without formulas. Handsontable uses no wrapping or
 
 ## Measurement protocol: API completion v2
 
+### Isolated timer and editor readiness (new-host harness correction)
+
+The runner builds `apps/benchmarks` and serves that build with Vite **preview**.
+Both preview and development send COOP `same-origin` and COEP `require-corp`.
+The app bundles its libraries and styles locally; it has no configured remote
+fonts or CDN dependencies. Each sample must be `crossOriginIsolated` and records
+`timingEnvironment`: isolation status, the smallest positive `performance.now()`
+step observed across up to 128 ticks / 100,000 reads, and the positive tick count.
+This probe runs outside workload timing. The observed minimum is an empirical
+granularity observation, not a guarantee of clock accuracy.
+
+Snapshots and sample journals record `timerProtocol: "cross-origin-isolated-v1"`;
+baseline comparisons reject snapshots without that protocol. API completion v2
+still defines the write metric. Higher timer resolution is a **measurement
+correction, not a library speedup**; establish a fresh baseline and do not compare
+the old coarsened-clock scores as optimization evidence.
+
+Trusted edits retain double-click, Ctrl+A, insert text, Enter, and read-back.
+After the existing two-frame settle, the driver waits for a writable editor to
+hold focus inside the benchmark root (following open shadow roots), then verifies
+that Ctrl+A selected all text before inserting. Every library uses the same
+checks, timeout, and polling interval, including the edit during streaming.
+After Enter, the driver also waits for visible editors to close before verifying
+the saved value and starting another input. RevoGrid commits its model before
+its delayed Enter navigation closes the editor; two frames can finish before
+that navigation on a fast host. Starting the next edit earlier lets the pending
+navigation cancel that editor, intercept Ctrl+A, and leave the old text in place.
+Readiness waiting remains inside the interaction window: users cannot replace
+text before an editor is ready, and moving that cost outside would hide required
+work. Polling adds uniform driver overhead; scripted duration is not throughput.
+No input is retried and failed selection stops the sample before inserting text.
+
 The three write headline observations measure time from the first submission until every returned promise resolves. Read-back immediately verifies the promised model changes. This includes asynchronous adapter work; synchronous submission time alone is not comparable across synchronous and asynchronous APIs. Throughput uses completed operations, rather than only submission cost.
 
 Synchronous submission and frame-settled wall time remain separate diagnostics. The latter includes validation and two animation frames and is not used to rank write API completion. Frame callbacks share a frame timestamp even when invoked at different wall-clock times; waiting for two callbacks can therefore reward a late start. See the [HTML animation-frame callback algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#run-the-animation-frame-callbacks). Browser probes also found large identical-code differences in this proxy. This protocol change is a measurement correction, not a library optimization.
