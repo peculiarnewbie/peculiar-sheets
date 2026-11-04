@@ -73,12 +73,12 @@ const CATEGORIES: readonly Category[] = [
 	{
 		id: "updates",
 		label: "Updating cells",
-		note: "Settled writes, plus frame smoothness while receiving live updates.",
+		note: "API completion includes returned promises; live updates use frame smoothness.",
 		unit: "ms",
 		scenarios: ["visible-writes", "offscreen-writes", "batch-writes", "streaming-updates"],
 		read: (sample) =>
 			sample.kind === "writes"
-				? sample.writes.settledDurationMs
+				? (sample.writes.completionDurationMs ?? sample.writes.settledDurationMs)
 				: sample.kind === "interaction"
 					? sample.interaction.frameP95Ms
 					: undefined,
@@ -136,6 +136,17 @@ const CATEGORIES: readonly Category[] = [
 ];
 
 export function summarizeOverview(snapshot: ReportSnapshot) {
+	if (
+		snapshot.measurementProtocol === "api-completion-v2" &&
+		snapshot.results.some(
+			(sample) =>
+				sample.kind === "writes" &&
+				(sample.writes.completionDurationMs === undefined ||
+					!Number.isFinite(sample.writes.completionDurationMs) ||
+					sample.writes.completionDurationMs <= 0),
+		)
+	)
+		throw new Error("Protocol v2 requires complete API completion measurements");
 	return CATEGORIES.map((category) => {
 		const cases = category.scenarios.flatMap((scenario) => {
 			const samples = snapshot.results.filter((sample) => sample.scenario === scenario);
@@ -143,7 +154,13 @@ export function summarizeOverview(snapshot: ReportSnapshot) {
 			const values = implementations.flatMap((implementation) => {
 				const measured = samples
 					.filter((sample) => sample.implementation === implementation)
-					.map(category.read)
+					.map((sample) =>
+						category.id === "updates" && sample.kind === "writes"
+							? snapshot.measurementProtocol === "api-completion-v2"
+								? sample.writes.completionDurationMs
+								: sample.writes.settledDurationMs
+							: category.read(sample),
+					)
 					.filter((value): value is number => value !== undefined && Number.isFinite(value));
 				return measured.length ? [{ implementation, value: median(measured) }] : [];
 			});
@@ -172,7 +189,10 @@ export function summarizeOverview(snapshot: ReportSnapshot) {
 		return {
 			id: category.id,
 			label: category.label,
-			note: category.note,
+			note:
+				category.id === "updates" && snapshot.measurementProtocol !== "api-completion-v2"
+					? "Legacy settled writes include two animation-frame waits; not comparable to protocol v2 API completion."
+					: category.note,
 			unit: category.unit,
 			cases,
 			best: cases.filter((item) => item.status === "best").length,

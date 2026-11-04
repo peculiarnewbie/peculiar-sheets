@@ -40,13 +40,13 @@ This production-browser suite compares `peculiar-sheets` with AG Grid Community,
 | `replace-wide-grow`         |                  10 x 200 → 1,000 x 200 | Growth on a wide dataset                                                                   |
 | `row-reorder`               |                             10,000 x 20 | Reverse row order, preserving IDs and an edited value                                      |
 | `row-insert-delete`         | 10,000 x 20 → 10,100 x 20 → 10,000 x 20 | Insert 100 rows in the middle, then remove them through bulk replacement                   |
-| `streaming-updates`         |                             10,000 x 20 | Five-second feed, up to 50 batches of 100 writes, while editing, navigating, and scrolling |
+| `streaming-updates`         |                             10,000 x 20 | Five-second feed, all 50 batches of 100 writes, while editing, navigating, and scrolling |
 | `mount-tall`                |                            100,000 x 20 | Initialization scaling for a tall matrix                                                   |
 | `mount-wide`                |                             1,000 x 200 | Initialization of a wide matrix                                                            |
 | `mount-mixed`               |                             10,000 x 20 | Numbers, strings, blanks, booleans, and long text                                          |
 | `mount-sparse`              |                            100,000 x 20 | Dense matrix with 95% blanks; not a sparse storage API                                     |
 
-Scroll scenarios report median, p95, and maximum frame intervals plus Long Tasks API observations. Write scenarios report synchronous submission time separately from the time to complete asynchronous writes and settle through two animation frames, and verify every final written cell before reporting throughput. Repeated writes to the same cell are checked against their last value. Mount scenarios check the first and last model cell; the four default DOM adapters also wait for the first visible cell to render before ending mount timing. Every scenario also records navigation-to-ready, mount-to-two-animation-frames, DOM element count (including open shadow roots), and JS heap before and after an explicit GC when Chromium exposes it. The pre-GC value shows allocation pressure; the post-GC value is the better retained-memory signal.
+Scroll scenarios report median, p95, and maximum frame intervals plus Long Tasks API observations. Write headlines measure API completion, including returned promises, with synchronous submission and two-frame settling reported separately. Every final written cell is verified immediately after API completion before reporting throughput. Repeated writes to the same cell are checked against their last value. Mount scenarios check the first and last model cell; the four default DOM adapters also wait for the first visible cell to render before ending mount timing. Every scenario also records navigation-to-ready, mount-to-two-animation-frames, DOM element count (including open shadow roots), and JS heap before and after an explicit GC when Chromium exposes it. The pre-GC value shows allocation pressure; the post-GC value is the better retained-memory signal.
 
 GridSheet uses its native scroll container. RevoGrid has separate containers for the two axes, so its public `scrollToCoordinate` API moves them together with its virtual viewport. Univer renders cells on canvas and uses its public `scrollToCell` API to traverse the same normalized full range. The harness awaits asynchronous scroll submissions before requesting the next frame. Univer's DOM count describes the canvas UI rather than individual cells. Both rendering approaches are included in memory and frame measurements.
 
@@ -54,7 +54,7 @@ Replacement scenarios exercise the public bulk paths listed above. Peculiar Shee
 
 The core suite has 31 scenarios. Browser workloads use CDP to generate trusted mouse, key, text-input, wheel, and native paste events. Clipboard payloads are seeded with the browser Clipboard API after granting localhost permission. Range selection is prepared through public APIs before clear/undo/redo; clear and history actions use keyboard shortcuts. Navigation verifies each step before the next input, allowing asynchronous focus changes.
 
-Interaction results separate event-handler-entry-to-two-frame response from verified completion. The former is measured inside the browser and is a rendering-response proxy, not INP or a final-paint guarantee. Verified completion includes the driver's verification roundtrip, checks resulting data/focus, and excludes the cell-scan cost. Scripted total duration includes driver overhead and pacing and is not ranked as throughput. Frame intervals and long tasks are also recorded. Streaming results retain actual batch/write counts; slow libraries are not assumed to complete all 50 batches.
+Interaction results separate event-handler-entry-to-two-frame response from verified completion. The former is measured inside the browser and is a rendering-response proxy, not INP or a final-paint guarantee. Verified completion includes the driver's verification roundtrip, checks resulting data/focus, and excludes the cell-scan cost. Scripted total duration includes driver overhead and pacing and is not ranked as throughput. Frame intervals and long tasks are also recorded. Streaming results require all 50 batches and 5,000 writes, including any backlog after five seconds. The probe remains active until they complete.
 
 Every replacement cell is verified outside the measured interval. Row reorder and middle insertion/removal also preserve an edited value and record focus/scroll state before and after. Whether focus follows a retained row is an observation, since identity contracts differ. These are host-provided bulk updates, rather than native sorting or structural-edit commands. Long-session and formula tests are excluded from the core suite; the older memory diagnostic remains opt-in.
 
@@ -62,7 +62,7 @@ AG Grid Community's rectangular clipboard and range-selection cases are unsuppor
 
 ## Running
 
-Install workspace dependencies with `pnpm install`, then run three measured iterations of the selected scenarios and implementations using Node and the workspace's `tsx` runner:
+Install workspace dependencies with `pnpm install`, then run twelve measured iterations of the selected scenarios and implementations using Node and the workspace's `tsx` runner:
 
 ```sh
 pnpm benchmark
@@ -86,7 +86,7 @@ pnpm benchmark --include=gridsheet,univer --include-handsontable-writes
 pnpm benchmark --list
 ```
 
-The default run has 117 supported scenario/library pairs (351 measured samples at three iterations). Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted.
+The default run has 117 supported scenario/library pairs (1,404 measured samples at twelve iterations). Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted.
 
 Each completed run saves timestamped raw results and generates `.benchmark/overview.html` (six expandable summary categories), `comparison-table.html`, `summary.csv`, `summary.json`, and `report.md`. Regenerate reports without launching a browser, or validate the harness:
 
@@ -104,7 +104,7 @@ Tune repetition without changing source:
 BENCHMARK_WARMUPS=1 BENCHMARK_ITERATIONS=5 pnpm benchmark
 ```
 
-Transient browser startup failures are retried once. Set `BENCHMARK_RETRIES=0` to disable retries.
+Failed samples stop the run by default, preserving partial results and the per-sample journal. Set `BENCHMARK_RETRIES=1` to opt into retrying failures for diagnostics; retries are printed. Completed timing samples are never discarded or retried for their timing values. The journal is flushed to disk between samples, after browser cleanup.
 
 Stagehand discovers a local Chrome installation by default. Set `BENCHMARK_CHROME_PATH=/absolute/path/to/chrome` to select another executable. Restricted environments that require Chromium's sandbox disabled can opt in with `BENCHMARK_NO_SANDBOX=1`. These launch options also apply to memory diagnostics.
 
@@ -151,3 +151,15 @@ Programmatic independent writes do not represent identical feature work: `peculi
 GridSheet uses one public update diff for batched writes. RevoGrid uses `setDataAt` for independent writes and in-place source edits followed by one public `refresh` for a batch. Univer uses single-cell ranges for independent writes and one sparse range `setValues` call for a batch. All adapters check data from the live library model, including offscreen writes. Conversion from the shared matrix into a library's required data representation is included in measured mount or replacement time.
 
 The workloads contain values, without formulas. Handsontable uses no wrapping or automatic row sizing, with theme padding reduced to allow an actual 28px row; AG Grid disables inferred cell data types so plain text edits are accepted consistently. GridSheet and the Univer Sheets Core preset include formula support in their standard distributions; this suite does not measure formula-engine speed or equalize every editor feature. Univer's header, toolbar, formula bar, and footer are hidden to focus the viewport on cells; GridSheet's formula bar is also hidden.
+
+## Measurement protocol: API completion v2
+
+The three write headline observations measure time from the first submission until every returned promise resolves. Read-back immediately verifies the promised model changes. This includes asynchronous adapter work; synchronous submission time alone is not comparable across synchronous and asynchronous APIs. Throughput uses completed operations, rather than only submission cost.
+
+Synchronous submission and frame-settled wall time remain separate diagnostics. The latter includes validation and two animation frames and is not used to rank write API completion. Frame callbacks share a frame timestamp even when invoked at different wall-clock times; waiting for two callbacks can therefore reward a late start. See the [HTML animation-frame callback algorithm](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#run-the-animation-frame-callbacks). Browser probes also found large identical-code differences in this proxy. This protocol change is a measurement correction, not a library optimization.
+
+The default is twelve fixed repetitions, with implementation order rotated each repetition. Twelve balances every run position exactly for the default two-, three-, and four-library comparison groups. All samples are retained; no timing outliers are discarded. Each repetition still uses a fresh browser and the same short workload. Use `BENCHMARK_ITERATIONS` to override sampling for diagnostics.
+
+Snapshots record `measurementProtocol: "api-completion-v2"`. Historical snapshots retain their legacy interpretation and are not compared as speedups against v2. A fresh baseline is required. The same 39 headline observations, 31 scenarios, library versions, capability exclusions, datasets, and workloads remain; only the three write timing definitions and sampling/order policy change. At the default coverage this produces 1,404 samples (117 pairs × 12), rather than 351.
+
+On Linux the launcher reads the process's allowed CPU list and per-core capacity. On heterogeneous CPUs it pins the entire runner and all browser descendants to the highest-capacity homogeneous cluster, using `taskset`. Homogeneous hosts retain their allowed CPUs. No system-wide governor or affinity setting changes. `BENCHMARK_CPUSET=all` opts out; an explicit list such as `BENCHMARK_CPUSET=6,7` overrides selection. Snapshots record effective CPU placement, and comparisons reject a baseline with different placement. The development machine has six cores with capacity 382 and two with capacity 1024; uncontrolled migration was a measured source of variation.

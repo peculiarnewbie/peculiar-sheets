@@ -188,13 +188,17 @@ export interface BenchmarkDiagnosticSnapshot {
 	lifecycle: GridLifecycleCounts | null;
 }
 
+export const MEASUREMENT_PROTOCOL = "api-completion-v2";
+
 export interface WriteMetrics {
 	distribution: "visible" | "offscreen";
 	mode: "independent" | "batch";
 	count: number;
 	/** Synchronous time spent submitting the mutations. */
 	durationMs: number;
-	/** Submission plus two animation frames for reactive/render work to settle. */
+	/** API calls and every returned promise; absent only in historical snapshots. */
+	completionDurationMs?: number;
+	/** Completion, integrity checking, and two animation frames (diagnostic only). */
 	settledDurationMs: number;
 	operationsPerSecond: number;
 }

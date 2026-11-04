@@ -2,17 +2,19 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Result, TaggedError } from "better-result";
-import { renderOverview } from "./overview";
 import { SCENARIOS } from "../apps/benchmarks/src/scenarios";
 import {
-	IMPLEMENTATIONS,
 	type BenchmarkResult,
 	type BenchmarkSkip,
+	IMPLEMENTATIONS,
 	type ImplementationName,
 	type ScenarioName,
 } from "../apps/benchmarks/src/types";
+import { renderOverview } from "./overview";
 
 export interface ReportSnapshot {
+	measurementProtocol?: string;
+	cpuAffinity?: string;
 	generatedAt: string;
 	startedAt?: string;
 	elapsedMs?: number;
@@ -103,6 +105,14 @@ export function summarize(snapshot: ReportSnapshot) {
 				read: (sample) => (sample.heapBytes === null ? undefined : sample.heapBytes / 1e6),
 			});
 		} else if (config.kind === "writes") {
+			if (snapshot.measurementProtocol === "api-completion-v2")
+				metrics.push({
+					scenario,
+					label: `${label} · API completion`,
+					unit: "ms",
+					read: (sample) =>
+						sample.kind === "writes" ? sample.writes.completionDurationMs : undefined,
+				});
 			metrics.push({
 				scenario,
 				label: `${label} · synchronous`,
@@ -258,7 +268,7 @@ export function renderReport(snapshot: ReportSnapshot) {
 			: ` · ${(snapshot.elapsedMs / 60_000).toFixed(1)} minutes total`;
 	const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spreadsheet core benchmarks</title><style>
 :root{font-family:var(--font-sans,system-ui,sans-serif);color:var(--foreground,CanvasText);color-scheme:light dark}*{box-sizing:border-box}body{margin:0}.meta,footer{font-size:11px;line-height:1.5;color:var(--muted-foreground,GrayText)}.meta{margin:0 0 12px}.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11px;margin-bottom:12px}.legend span{display:inline-flex;align-items:center;gap:5px}.swatch{width:8px;height:8px;border-radius:2px}${colors}table{width:100%;table-layout:fixed;border-collapse:collapse}col.metric{width:33%}th{text-align:left}thead th{font-size:11px;font-weight:500;color:var(--muted-foreground,GrayText);padding-bottom:8px}tbody tr{border-top:1px solid var(--border,GrayText)}tbody th{font-size:12px;font-weight:500;line-height:1.5;padding:8px 12px 8px 0;overflow-wrap:anywhere}.dimensions{display:block;font-size:10px;color:var(--muted-foreground,GrayText);font-weight:400}td{padding:8px 0}.line{display:grid;grid-template-columns:96px minmax(0,1fr) 76px;gap:7px;align-items:center;height:24px;font-size:11px}.name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted-foreground,GrayText)}.track{height:7px;background:var(--secondary,ButtonFace);overflow:hidden;border-radius:2px}.bar{height:7px;display:block;min-width:1px}.value{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.unit{font-size:10px;color:var(--muted-foreground,GrayText)}.best{font-weight:750}.excluded{grid-column:2/4;color:var(--muted-foreground,GrayText);font-size:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.short{display:none}footer{margin-top:12px}footer p{margin:7px 0}@media(max-width:520px){.line{grid-template-columns:26px minmax(0,1fr) 68px;gap:4px}.full{display:none}.short{display:inline}tbody th{font-size:11px;padding-right:8px}.unit{font-size:9px}}
-</style></head><body><p class="meta">${scenarios.length} scenarios · ${snapshot.results.length} measured samples · median of ${snapshot.iterations} fresh-browser runs${runtime}.<br>Lower is better. Independent bar scales per row; bold values are lowest at displayed precision. Hover for sample ranges or omission reasons.</p><div class="legend">${implementations.map((implementation) => `<span><i class="swatch color-${IMPLEMENTATIONS.indexOf(implementation)}"></i>${SHORT[implementation]} · ${LABELS[implementation]}</span>`).join("")}</div><table><colgroup><col class="metric"><col></colgroup><thead><tr><th scope="col">Measurement</th><th scope="col">${implementations.length} libraries · same order throughout</th></tr></thead><tbody>${tableRows}</tbody></table><footer><p>${escape(streamingNote)}</p><p>Trusted browser input drives editing, navigation, native clipboard paste, and wheel scrolling. Input response is measured from the browser's event handler entry through two animation frames. It is a rendering-response proxy, not INP or proof of final paint. Values and focus are verified separately. Verified completion includes the driver verification roundtrip and excludes cell-scan cost. Scripted total duration includes driver overhead and pacing and is omitted from rankings.</p><p>Mount includes initialization and two frames; navigation to ready also includes adapter loading. Settled writes await asynchronous submissions and two frames. Replacement timings exclude data-integrity scans. Retained heap is JavaScript memory after explicit GC, in decimal MB. The sparse workload uses a dense matrix with 95% blank cells.</p><p>Unsupported Community-edition features and disabled cases appear with omission reasons. GridSheet and Univer remain opt-in; their new browser interaction adapters are not implemented. Long-session and formula workloads are excluded. Measurements: ${escape(snapshot.generatedAt)}.</p></footer></body></html>`;
+</style></head><body><p class="meta">${scenarios.length} scenarios · ${snapshot.results.length} measured samples · median of ${snapshot.iterations} fresh-browser runs${runtime}.<br>Lower is better. Independent bar scales per row; bold values are lowest at displayed precision. Hover for sample ranges or omission reasons.</p><div class="legend">${implementations.map((implementation) => `<span><i class="swatch color-${IMPLEMENTATIONS.indexOf(implementation)}"></i>${SHORT[implementation]} · ${LABELS[implementation]}</span>`).join("")}</div><table><colgroup><col class="metric"><col></colgroup><thead><tr><th scope="col">Measurement</th><th scope="col">${implementations.length} libraries · same order throughout</th></tr></thead><tbody>${tableRows}</tbody></table><footer><p>${escape(streamingNote)}</p><p>Trusted browser input drives editing, navigation, native clipboard paste, and wheel scrolling. Input response is measured from the browser's event handler entry through two animation frames. It is a rendering-response proxy, not INP or proof of final paint. Values and focus are verified separately. Verified completion includes the driver verification roundtrip and excludes cell-scan cost. Scripted total duration includes driver overhead and pacing and is omitted from rankings.</p><p>Mount includes initialization and two frames; navigation to ready also includes adapter loading. Write diagnostics separate synchronous submission, awaited API completion (protocol v2), and frame settling. Historical protocols retain their original scoring. Replacement timings exclude data-integrity scans. Retained heap is JavaScript memory after explicit GC, in decimal MB. The sparse workload uses a dense matrix with 95% blank cells.</p><p>Unsupported Community-edition features and disabled cases appear with omission reasons. GridSheet and Univer remain opt-in; their new browser interaction adapters are not implemented. Long-session and formula workloads are excluded. Measurements: ${escape(snapshot.generatedAt)}. Protocol: ${escape(snapshot.measurementProtocol ?? "legacy-frame-settled")}. CPU affinity: ${escape(snapshot.cpuAffinity ?? "unrecorded")}.</p></footer></body></html>`;
 	const csv =
 		[
 			"scenario,metric,implementation,unit,samples,median,min,max,omission",

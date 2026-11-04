@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -6,9 +6,6 @@ import { parseArgs } from "node:util";
 import { Stagehand } from "@browserbasehq/stagehand";
 import { Result, TaggedError } from "better-result";
 import { SCENARIOS as SCENARIO_CONFIG, scenarioSkip } from "../apps/benchmarks/src/scenarios";
-import type { PageLike } from "./browser-types";
-import { runBrowserWorkload } from "./browser-workloads";
-import { writeBenchmarkReport } from "./report";
 import {
 	IMPLEMENTATIONS as ALL_IMPLEMENTATIONS,
 	SCENARIO_NAMES as ALL_SCENARIOS,
@@ -16,15 +13,21 @@ import {
 	type BenchmarkSkip,
 	type GridLifecycleCounts,
 	type ImplementationName,
+	MEASUREMENT_PROTOCOL,
 	type ScenarioName,
 	type ScrollMetrics,
 } from "../apps/benchmarks/src/types";
+import type { PageLike } from "./browser-types";
+import { runBrowserWorkload } from "./browser-workloads";
+import { appendSampleCheckpoint } from "./checkpoint";
+import { writeBenchmarkReport } from "./report";
+import { sampleOrder } from "./sampling";
 
 const PORT = 4178;
 const BASE_URL = `http://localhost:${PORT}`;
 const WARMUPS = Number(process.env.BENCHMARK_WARMUPS ?? 0);
-const ITERATIONS = Number(process.env.BENCHMARK_ITERATIONS ?? 3);
-const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 1);
+const ITERATIONS = Number(process.env.BENCHMARK_ITERATIONS ?? 12);
+const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 0);
 const OVERRIDE_ROWS = process.env.BENCHMARK_ROWS;
 const OVERRIDE_COLUMNS = process.env.BENCHMARK_COLUMNS;
 const UPDATE_BASELINE = process.env.BENCHMARK_UPDATE_BASELINE === "1";
@@ -33,6 +36,10 @@ const OUTPUT_DIRECTORY = path.resolve(
 	process.env.BENCHMARK_OUTPUT_DIR ?? ".benchmark",
 );
 const RUN_STARTED_AT = new Date();
+const SAMPLE_JOURNAL_PATH = path.join(
+	OUTPUT_DIRECTORY,
+	`samples-${RUN_STARTED_AT.toISOString().replaceAll(":", "-")}.ndjson`,
+);
 const BASELINE_PATH = path.join(OUTPUT_DIRECTORY, "baseline.json");
 const LATEST_PATH = path.join(OUTPUT_DIRECTORY, "latest.json");
 const MEMORY_DIAGNOSTIC = process.env.BENCHMARK_MEMORY_DIAGNOSTIC === "1";
@@ -44,6 +51,8 @@ const BROWSER_ARGS = [
 const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-latest.json");
 
 interface BenchmarkSnapshot {
+	measurementProtocol?: string;
+	cpuAffinity?: string;
 	startedAt?: string;
 	elapsedMs?: number;
 	skipped?: BenchmarkSkip[];
@@ -460,17 +469,19 @@ function printSummary(results: readonly BenchmarkResult[]): void {
 function primaryMetric(result: BenchmarkResult): number {
 	switch (result.kind) {
 		case "interaction":
-			return result.scenario.startsWith("scroll-")
+			return result.scenario === "streaming-updates" || result.scenario.startsWith("scroll-")
 				? result.interaction.frameP95Ms
-				: result.interaction.responseP95Ms;
+				: result.interaction.verifiedResponseSamples > 0
+					? result.interaction.verifiedResponseP95Ms
+					: result.interaction.responseP95Ms;
 		case "mount":
-			return result.mountMs;
+			return result.navigationToReadyMs;
 		case "scroll":
 			return result.scroll.p95FrameMs;
 		case "writes":
-			return result.writes.settledDurationMs;
+			return result.writes.completionDurationMs ?? result.writes.settledDurationMs;
 		case "replace":
-			return result.replacement.steps[0]?.settledMs ?? 0;
+			return result.replacement.steps.reduce((sum, step) => sum + step.settledMs, 0);
 	}
 }
 
@@ -478,6 +489,15 @@ function printBaselineComparison(
 	results: readonly BenchmarkResult[],
 	baseline: BenchmarkSnapshot,
 ): void {
+	if (
+		baseline.measurementProtocol !== MEASUREMENT_PROTOCOL ||
+		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled")
+	) {
+		console.log(
+			"Measurement protocol or CPU placement changed; historical timings are not a speed comparison. Establish a fresh baseline.",
+		);
+		return;
+	}
 	console.log(`\nChange from ${path.relative(process.cwd(), BASELINE_PATH)} (negative is faster):`);
 	for (const scenario of SCENARIOS) {
 		for (const implementation of implementationsForScenario(scenario)) {
@@ -512,6 +532,8 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 		startedAt: RUN_STARTED_AT.toISOString(),
 		elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
 		skipped: SKIPPED,
+		measurementProtocol: MEASUREMENT_PROTOCOL,
+		cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 		generatedAt: new Date().toISOString(),
 		iterations: ITERATIONS,
 		warmups: WARMUPS,
@@ -909,12 +931,20 @@ try {
 					`[skip] ${scenario} / ${skipped.implementation} (${skipped.category}: ${skipped.reason})`,
 				);
 			for (let iteration = -WARMUPS; iteration < ITERATIONS; iteration++) {
-				for (const implementation of implementationsForScenario(scenario)) {
+				for (const implementation of sampleOrder(implementationsForScenario(scenario), iteration)) {
 					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${ITERATIONS}]`;
 					console.log(`${prefix} starting ${scenario} / ${implementation}…`);
 					const result = await runSampleWithRetry({ implementation, scenario });
 					if (iteration >= 0) {
 						results.push(result);
+						const checkpoint = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
+							measurementProtocol: MEASUREMENT_PROTOCOL,
+							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
+							startedAt: RUN_STARTED_AT.toISOString(),
+							iteration,
+							result,
+						});
+						if (Result.isError(checkpoint)) throw checkpoint.error;
 						console.log(`${prefix} ${scenario} / ${implementation}: ${formatResult(result)}`);
 					}
 				}
