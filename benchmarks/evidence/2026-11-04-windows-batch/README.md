@@ -192,7 +192,7 @@ multi-row/history regression test are retained.
 The target remains unmet: the baseline ratio is 3.567567502259338, requiring
 completion <=0.22200000286102295 ms against its same-run RevoGrid median. That
 requires saving about 0.438 ms, or 66.36% of API time. The observed batch medians
-for the non-regressing experiments cluster around 0.6425�0.680 ms; this is an
+for the non-regressing experiments cluster around 0.6425�0.680 ms; this is an
 observed plateau, **not a proven algorithmic lower bound**. Revision bookkeeping
 alone is only about 0.075 ms in the intrusive baseline, so eliminating all of it
 would still leave a substantial gap. A larger reduction would need a measured
@@ -210,7 +210,7 @@ was removed, and no benchmark workload or timing boundary was changed.
 
 ### Diagnostic profile after the dense rewrite (rejected)
 
-Three further cold samples used the same temporary probes and requested 50 �s
+Three further cold samples used the same temporary probes and requested 50 �s
 CDP CPU sampling. Their median phase durations were:
 
 | Phase | Baseline median ms | Dense candidate median ms |
@@ -241,3 +241,136 @@ experimental production code were removed before final verification.
 
 Final check logs are in [round2/checks](round2/checks). No full-suite goal claim
 is made; no PR was opened and nothing was pushed.
+
+
+## Round 3: stacked cold batch path (2026-11-04/05)
+
+**Target remains unmet.** Implementation commit: `b5e06fde99e178afd38cf82fb268dd92dcd558f9`.
+Merged starting point: `356d6a7`, after the requested merge from
+`t3/optimize-cold-batch-writes`. Branch: `t3/stack-batch-writes-optimizations`.
+Nothing was pushed. The final source reduces batch API completion by
+30.970150772395012% in the 36-sample comparison. Final default-count confirmation
+is 0.4649999886751175 ms versus RevoGrid 0.22999998927116394 ms,
+ratio **2.0217391755044596**, above 1.2. Its target is 0.2759999871253967 ms.
+
+### Implementation and regression coverage
+
+- Stack preparation simplification, exact numeric normalization keys, mutation-native
+  commits, and consolidated exact counter/optional signal entries from round 2.
+  Dense counters were not retained.
+- Unsorted formula-free public batches use an internal store capability. A numeric
+  uniqueness/bounds preflight runs before any write, preserving atomic fallback on
+  duplicates and unusual addresses. One subsequent fused indexed loop resolves
+  identities, reads originals, removes no-ops, creates the existing notification
+  records, writes ordinary owned rows directly, and collects distinct changed rows.
+  Packed rows and compact blank tails retain the existing owned writer fallback.
+  This is a preflight plus one fused commit pass, not literally one total traversal.
+- Sorted views, formula-enabled sheets, observer-dependent calls and duplicate
+  batches retain preparation before commit. Formula synchronization still precedes
+  all store changes. These paths benefit from the stacked changes as well.
+- Internal cell history stores forward records only; undo derives inverse records.
+  Redo replays the forward records. No required commit work is delayed past the
+  API boundary. Public component APIs and notification payload/order are unchanged.
+- Regression tests cover fallback with no partial writes, ordered mutations,
+  no-op suppression, packed rows and blank tails, exact row/global revisions,
+  unaffected reactive rows, undo/redo and repeated formula-history coordination,
+  200-entry mixed history limits, identity/selection payloads, and proof that inverse
+  values are not read eagerly. Existing sorted/duplicate public tests still pass.
+
+An initial getter-based lazy inverse experiment created a getter closure for each
+history entry. It reduced batch time but increased independent-write medians.
+It was replaced with the simpler forward-only internal representation; the final
+36-sample visible and offscreen medians both improve over baseline.
+
+### Measurement
+
+All runs use the same precise-timer harness, API-completion boundary, workload,
+adapters, fresh browser per sample, zero warm-ups, and unrestricted CPU affinity.
+The 36-iteration decision runs select Peculiar Sheets and RevoGrid; visible writes
+were added to the requested batch/offscreen selection to check regressions.
+The final confirmation uses default 12 iterations and all three supported default
+libraries for these scenarios: Peculiar Sheets, AG Grid, and RevoGrid.
+Handsontable write scenarios remain omitted by the unchanged harness default.
+This is not a full 31-scenario suite or an all-39-headlines completion claim.
+
+Raw results: [before](round3/before.json), [initial stack](round3/after.json),
+[final focused](round3/final-focused.json), [confirmation](round3/final.json).
+Ratios below divide unrounded medians by the best library in that same run.
+
+| Run | Scenario | Samples/library | Peculiar ms | Best ms | Unrounded ratio |
+| --- | --- | ---: | ---: | ---: | ---: |
+| before | batch-writes | 36 | 0.6700000017881393 | 0.1875 | 3.5733333428700766 |
+| before | offscreen-writes | 36 | 0.6825000047683716 | 0.6825000047683716 | 1 |
+| before | visible-writes | 36 | 0.6525000035762787 | 0.6525000035762787 | 1 |
+| after | batch-writes | 36 | 0.510000005364418 | 0.25 | 2.040000021457672 |
+| after | offscreen-writes | 36 | 0.7350000143051147 | 0.7350000143051147 | 1 |
+| after | visible-writes | 36 | 0.7250000089406967 | 0.7250000089406967 | 1 |
+| final-focused | batch-writes | 36 | 0.4624999910593033 | 0.19249999523162842 | 2.4025974156663925 |
+| final-focused | offscreen-writes | 36 | 0.6450000107288361 | 0.6450000107288361 | 1 |
+| final-focused | visible-writes | 36 | 0.6325000077486038 | 0.6325000077486038 | 1 |
+| final | batch-writes | 12 | 0.4649999886751175 | 0.22999998927116394 | 2.0217391755044596 |
+| final | offscreen-writes | 12 | 0.6525000035762787 | 0.6525000035762787 | 1 |
+| final | visible-writes | 12 | 0.6199999898672104 | 0.6199999898672104 | 1 |
+
+Final focused batch saves 0.20750001072883606 ms. Offscreen saves
+0.03749999403953552 ms and visible saves 0.019999995827674866 ms.
+Same-run denominator drift matters: the initial stack's 2.04 ratio used a slower
+0.25 ms RevoGrid median; final focused's 2.4025974156663925 uses 0.19249999523162842 ms.
+
+Baseline ran 23:49:21–23:52:26 local; final focused ran 00:13:14–00:16:22,
+then confirmation 00:16:24–00:18:02. **The baseline and final candidate were not
+back to back:** other workers acquired the shared lock between runs. This limits
+causal precision; all samples and the first candidate are retained, not selected
+away. No repeatability claim is made.
+
+Every timed run and diagnostic held the shared directory lock and released only
+its own lock on exit/failure. The archived [wrapper](round3/run-locked.cjs) uses
+atomic mkdir with a two-second retry and a batch-r3 owner marker, with cleanup in
+finally. Native Node filesystem operations were used after shell acquisition/
+cleanup commands were rejected by automatic approval review. No source editing
+occurred while this task held the lock. Longest hold was about five minutes.
+One candidate build failed before any samples because C: filled. Cleanup removed
+only inactive Stagehand profile directories created during this task's completed
+baseline interval (147 directories, 1.93 GB), with name/time/resolved-path checks.
+The failing attempt contributed no timing samples.
+
+### Diagnostic phase breakdown and remaining gap
+
+Three fresh-browser candidate samples used temporary precise performance measures.
+The exact probe installation is [probes.cjs](round3/probes.cjs); raw phase records
+are round3/profile-*.json. Empty records correspond to independent-write scenarios.
+All probes and runner edits were removed before final ranking and validation.
+The before column reuses the earlier round-2 three-sample diagnostic baseline;
+it is not a newly paired phase trace. These intrusive measures are diagnostics,
+not ranking samples or proof of interpreter/compiler attribution.
+
+| Phase | Before median ms (round 2) | Final candidate median ms |
+| --- | ---: | ---: |
+| Normalization / uniqueness preflight | 0.13499999046325684 | 0.07500001788139343 |
+| Preparation plus owned writes / row collection | 0.2500000298023224 | 0.14000001549720764 |
+| Row revisions (candidate includes global bump) | 0.07499998807907104 | 0.0949999988079071 |
+| History and history revision | 0.08500000834465027 | 0.02000001072883606 |
+
+The fused mutation/write loop remains the largest measured phase, followed by
+exact row revision bookkeeping and uniqueness preflight. Their combined diagnostic
+cost alone exceeds the final confirmation target. Phase medians total about
+0.330 ms versus about 0.465 ms ranked completion; these are different samples
+with intrusive instrumentation, so the difference cannot be assigned exactly.
+Adapter input mapping, entry/coordination/notification overhead and cold execution
+are included in API completion but not all in these store phases. No sub-100 µs
+CPU attribution was established. Reaching 1.2 would require another approximately
+0.189 ms against the confirmation denominator (0.2315 ms against focused best).
+
+### Final checks
+
+- Frozen-lockfile install passed.
+- pnpm test: 251 passed; pnpm test:solid2: 19 passed.
+- pnpm benchmark:test: 25 passed.
+- pnpm benchmark:typecheck: both checks passed.
+- pnpm typecheck:lib and pnpm typecheck:solid2 passed.
+- pnpm lint and pnpm format:check passed; direct Biome checks additionally cover
+  committed changed production/test files because the repository scripts inspect
+  only uncommitted paths.
+
+Logs are in [round3/checks](round3/checks). No benchmark workload, adapter, timing
+boundary, feature default, warm-up behavior or formula synchronization was changed.
