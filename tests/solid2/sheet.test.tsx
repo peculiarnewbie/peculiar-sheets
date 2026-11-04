@@ -873,6 +873,54 @@ describe("Solid 2 Sheet", () => {
 		expect(controller.getSelection()).toEqual(selection);
 	});
 
+	it("keeps undo and redo independent of mutated operation payloads", () => {
+		let controller: SheetController | undefined;
+		const delivered: CellValue[] = [];
+		render(() => (
+			<Sheet
+				data={[["old", "other"]]}
+				columns={[
+					{ id: "a", header: "A" },
+					{ id: "b", header: "B" },
+				]}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					// A host drains and rewrites the delivered records.
+					const mutations =
+						operation.type === "batch-edit"
+							? operation.mutations.splice(0)
+							: operation.type === "cell-edit"
+								? [operation.mutation]
+								: [];
+					for (const mutation of mutations) {
+						delivered.push(mutation.newValue);
+						mutation.oldValue = "corrupted";
+						mutation.newValue = "corrupted";
+					}
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		controller.setCellValues([{ row: 0, col: 0, value: "new" }]);
+		controller.setCellValue(0, 1, "edited");
+		expect(delivered).toEqual(["new", "edited"]);
+		controller.undo();
+		controller.undo();
+		expect([controller.getRawCellValue(0, 0), controller.getRawCellValue(0, 1)]).toEqual([
+			"old",
+			"other",
+		]);
+		controller.redo();
+		controller.redo();
+		expect([controller.getRawCellValue(0, 0), controller.getRawCellValue(0, 1)]).toEqual([
+			"new",
+			"edited",
+		]);
+	});
+
 	it("uses the current batch listener and permits synchronous reentrant writes", () => {
 		let controller: SheetController | undefined;
 		const operations: SheetOperation[] = [];

@@ -9,6 +9,7 @@ import {
 	buildCellsAfterMutations,
 	coordinateBatchMutations,
 	coordinateHistoryCommand,
+	detachOperation,
 	type FormulaSyncPort,
 	type MutationCoordinationResult,
 } from "./mutationCoordination";
@@ -103,6 +104,31 @@ function createFakeFormula(options?: {
 }
 
 const columns: ColumnDef[] = [{ id: "A", header: "A", width: 100 }];
+
+describe("detachOperation", () => {
+	it("copies cell mutation records and arrays for host delivery", () => {
+		const mutation: CellMutation = {
+			address: { row: physicalRow(0), col: columnIdx(0) },
+			columnId: "A",
+			oldValue: "old",
+			newValue: "new",
+			source: "external",
+		};
+		const batch = detachOperation({ type: "batch-edit", mutations: [mutation] });
+		const edit = detachOperation({ type: "cell-edit", mutation });
+		if (batch.type !== "batch-edit" || edit.type !== "cell-edit") throw new Error("Wrong type");
+		expect(batch.mutations).toEqual([mutation]);
+		expect(batch.mutations[0]).not.toBe(mutation);
+		expect(edit.mutation).toEqual(mutation);
+		expect(edit.mutation).not.toBe(mutation);
+		expect("viewAddress" in edit.mutation).toBe(false);
+	});
+
+	it("passes row operations through unchanged", () => {
+		const operation: SheetOperation = { type: "row-insert", atIndex: 1, count: 2 };
+		expect(detachOperation(operation)).toBe(operation);
+	});
+});
 
 describe("buildCellsAfterMutations", () => {
 	it("overlays proposed values without mutating the source grid", () => {

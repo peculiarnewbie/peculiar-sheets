@@ -73,6 +73,7 @@ import type {
 	RowReorderMutation,
 	Selection,
 	SheetController,
+	SheetOperation,
 	SheetProps,
 	SortBehavior,
 	SortDirection,
@@ -90,6 +91,7 @@ import GridHeader from "./GridHeader";
 import {
 	coordinateBatchMutations,
 	coordinateHistoryCommand,
+	detachOperation,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
 import { createRowMetricsCache } from "./rowMetrics";
@@ -600,6 +602,12 @@ export default function Grid(props: GridProps) {
 			...rowSizingRecord(),
 			[id]: height,
 		});
+	}
+
+	// Read the callback at emission time so reactive host subscriptions stay current.
+	function emitOperation(operation: SheetOperation) {
+		const onOperation = props.onOperation;
+		if (onOperation) onOperation(detachOperation(operation));
 	}
 
 	function commitColumnResize(columnId: string, width: number) {
@@ -1180,9 +1188,7 @@ export default function Grid(props: GridProps) {
 			beginTransition: () =>
 				direction === "undo" ? props.store.beginUndo() : props.store.beginRedo(),
 			getCells: () => props.store.cells,
-			emitOperation: (operation) => {
-				props.onOperation?.(operation);
-			},
+			emitOperation,
 			formula: getFormulaSyncPort(),
 			...(props.columnSizing === undefined
 				? {
@@ -1242,9 +1248,7 @@ export default function Grid(props: GridProps) {
 				applyMutations: (batch) => {
 					applyMutations(props.store, batch);
 				},
-				emitOperation: (operation) => {
-					props.onOperation?.(operation);
-				},
+				emitOperation,
 				formula: getFormulaSyncPort(),
 			},
 			mutations,
@@ -1490,7 +1494,7 @@ export default function Grid(props: GridProps) {
 
 		if (mutation) {
 			applyMutations(props.store, [mutation]);
-			props.onOperation?.({ type: "cell-edit", mutation });
+			emitOperation({ type: "cell-edit", mutation });
 		}
 
 		if (options?.refocus !== false) {
@@ -1998,7 +2002,7 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.insertRows(sheetKey, physicalRow(atIndex), count);
 			if (didApplyResult(change)) {
-				props.onOperation?.({ type: "row-insert", atIndex, count });
+				emitOperation({ type: "row-insert", atIndex, count });
 			}
 			focusGrid();
 			return;
@@ -2016,7 +2020,7 @@ export default function Grid(props: GridProps) {
 			selBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-insert", atIndex, count });
+		emitOperation({ type: "row-insert", atIndex, count });
 		focusGrid();
 	}
 
@@ -2031,7 +2035,7 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.deleteRows(sheetKey, physicalAtIndex, count);
 			if (didApplyResult(change)) {
-				props.onOperation?.({ type: "row-delete", atIndex: physicalAtIndex, count });
+				emitOperation({ type: "row-delete", atIndex: physicalAtIndex, count });
 			}
 			focusGrid();
 			return;
@@ -2059,7 +2063,7 @@ export default function Grid(props: GridProps) {
 			selBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-delete", atIndex: physicalAtIndex, count });
+		emitOperation({ type: "row-delete", atIndex: physicalAtIndex, count });
 		focusGrid();
 	}
 
@@ -2178,7 +2182,7 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.setRowOrder(sheetKey, reorderEvent.indexOrder);
 			if (!didApplyResult(change)) return;
-			props.onOperation?.({ type: "row-reorder", mutation: reorderEvent });
+			emitOperation({ type: "row-reorder", mutation: reorderEvent });
 			return;
 		}
 
@@ -2209,7 +2213,7 @@ export default function Grid(props: GridProps) {
 			selectionBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-reorder", mutation: reorderEvent });
+		emitOperation({ type: "row-reorder", mutation: reorderEvent });
 	}
 
 	function applyMutationSort(sort: SortState | null, options?: { baseOrder?: RowId[] | null }) {
@@ -2767,7 +2771,7 @@ export default function Grid(props: GridProps) {
 					if (!mutation) return;
 					if (!syncMutationToFormulaEngine(mutation)) return;
 					applyMutations(props.store, [mutation]);
-					props.onOperation?.({ type: "cell-edit", mutation });
+					emitOperation({ type: "cell-edit", mutation });
 				},
 				setCellValues: (writes) => {
 					// Formula batches retain their prepare → sync → commit barrier.
@@ -2777,9 +2781,7 @@ export default function Grid(props: GridProps) {
 							: undefined;
 					if (committed !== undefined) {
 						// The store already committed history and revisions, with no formula engine.
-						// Read the callback at emission time so reactive host subscriptions stay current.
-						if (committed.length > 0)
-							props.onOperation?.({ type: "batch-edit", mutations: committed });
+						if (committed.length > 0) emitOperation({ type: "batch-edit", mutations: committed });
 					} else applyBatchMutations(buildExternalBatchMutations(writes));
 				},
 				getColumnMeta: (columnId) => props.columns.find((column) => column.id === columnId)?.meta,
