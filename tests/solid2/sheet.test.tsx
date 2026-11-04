@@ -448,6 +448,24 @@ describe("Solid 2 Sheet", () => {
 		expect(runs).toEqual([2, 1, 2]);
 		expect(ids.map(store.rowRevision)).toEqual([1, 0, 1]);
 		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.trySetDistinctCells?.(
+			[
+				{ row: 0, col: 0, value: 12 },
+				{ row: 2, col: 0, value: 31 },
+			],
+			[{ id: "value", header: "Value" }],
+		);
+		flush();
+		expect(runs).toEqual([3, 1, 3]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
+		store.undo();
+		flush();
+		expect(runs).toEqual([4, 1, 4]);
+		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.redo();
+		flush();
+		expect(runs).toEqual([5, 1, 5]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
 	});
 
 	it("lets Solid settle asynchronous host data and discards an older response", async () => {

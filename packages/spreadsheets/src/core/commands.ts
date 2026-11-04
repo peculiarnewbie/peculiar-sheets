@@ -52,6 +52,8 @@ export function applyMutations(
 	const first = mutations[0];
 	if (mutations.length === 1 && first) {
 		store.setCell(first.address.row, first.address.col, first.newValue);
+	} else if (store.setCellMutations) {
+		store.setCellMutations(mutations);
 	} else {
 		store.setCells(
 			mutations.map((m) => ({

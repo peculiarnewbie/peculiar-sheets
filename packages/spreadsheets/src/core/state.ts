@@ -8,6 +8,7 @@ import { createCommandSignal, createRevisionCounter } from "../internal/commandS
 import type {
 	CellMutation,
 	CellValue,
+	CellWrite,
 	ColumnDef,
 	EditModeState,
 	RowReorderMutation,
@@ -23,6 +24,7 @@ import {
 	rowId,
 	toNumber,
 	visualRow,
+	type VisualRowIndex,
 } from "./brands";
 import { type CellRowValues, createCellRows } from "./cellRows";
 import {
@@ -112,6 +114,12 @@ export interface SheetStore {
 
 	// Mutations
 	setCell(row: PhysicalRowIndex, col: number, value: CellValue): void;
+	/** Internal capability: commits only distinct bounded addresses, otherwise leaves state untouched. */
+	trySetDistinctCells?(
+		writes: readonly CellWrite[],
+		columns: ColumnDef[],
+	): CellMutation[] | undefined;
+	setCellMutations?(mutations: CellMutation[]): void;
 	setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>): void;
 	reorderRows(nextRowIds: RowId[]): void;
 	setSelection(selection: Selection): void;
@@ -781,6 +789,78 @@ export function createSheetStore(
 			for (const m of mutations) {
 				ownedCells.write(toNumber(m.row), m.col, m.value, colCount);
 				const id = ids[m.row];
+				if (id !== undefined) changedIds.add(id);
+			}
+			if (changedIds.size === 0) return;
+			rowRevisions.bump(changedIds);
+			bumpDataRevision();
+		},
+
+		trySetDistinctCells(writes, columns) {
+			const width = columns.length;
+			const ids = rowIds();
+			const seen = new Set<number>();
+			// Preflight before writing: duplicate fallback must read the original model.
+			for (let i = 0; i < writes.length; i++) {
+				const w = writes[i];
+				if (
+					!w ||
+					!Number.isInteger(w.row) ||
+					w.row < 0 ||
+					w.row >= ids.length ||
+					!Number.isInteger(w.col) ||
+					w.col < 0 ||
+					w.col >= width ||
+					!columns[w.col]
+				)
+					return;
+				const key = w.row * width + w.col;
+				if (!Number.isSafeInteger(key) || seen.has(key)) return;
+				seen.add(key);
+			}
+			const mutations: CellMutation[] = [];
+			const changedIds = new Set<RowId>();
+			for (let i = 0; i < writes.length; i++) {
+				const w = writes[i];
+				if (!w) throw new Error("Missing checked write");
+				const column = columns[w.col],
+					id = ids[w.row];
+				if (!column || id === undefined) throw new Error("Missing checked identity");
+				const target = ownedCells.values[w.row];
+				const oldValue = (target ? target[w.col] : ownedCells.readCell(w.row, w.col)) ?? null;
+				if (oldValue === w.value) continue;
+				mutations.push({
+					address: { row: w.row as PhysicalRowIndex, col: w.col as ColumnIndex },
+					viewAddress: { row: w.row as VisualRowIndex, col: w.col as ColumnIndex },
+					rowId: id,
+					columnId: column.id,
+					oldValue,
+					newValue: w.value,
+					source: "external",
+				});
+				if (target && w.col < target.length) target[w.col] = w.value;
+				else ownedCells.write(w.row, w.col, w.value, dimensions().colCount);
+				changedIds.add(id);
+			}
+			if (mutations.length) {
+				rowRevisions.bump(changedIds);
+				bumpDataRevision();
+				appendMutationHistory(ownedHistory, mutations, selection(), selection());
+				historyChanged();
+			}
+			return mutations;
+		},
+
+		setCellMutations(mutations: CellMutation[]) {
+			if (mutations.length === 0) return;
+			const colCount = dimensions().colCount;
+			const ids = rowIds();
+			const changedIds = new Set<RowId>();
+			for (let i = 0; i < mutations.length; i++) {
+				const m = mutations[i];
+				if (!m) throw new Error("Missing cell mutation");
+				ownedCells.write(m.address.row, m.address.col, m.newValue, colCount);
+				const id = ids[m.address.row];
 				if (id !== undefined) changedIds.add(id);
 			}
 			if (changedIds.size === 0) return;
