@@ -788,6 +788,9 @@ export default function Grid(props: GridProps) {
 
 		if (nextTop !== scrollTop || nextLeft !== scrollLeft) {
 			viewport.scrollTo({ top: nextTop, left: nextLeft });
+			// Programmatic focus scrolling already knows the new viewport. Project
+			// its rows in this flush instead of waiting for the native scroll event.
+			updateRowWindow(viewport.scrollTop);
 		}
 	}
 
