@@ -289,7 +289,7 @@ export function renderReport(snapshot: ReportSnapshot) {
 
 	const maxReached = maxReachedScenarios(snapshot);
 	const samplingNote = snapshot.adaptiveSampling
-		? `Adaptive sampling (${snapshot.adaptiveSampling.protocol}): every case took at least ${snapshot.adaptiveSampling.minIterations} interleaved runs per library and stopped once each headline's Peculiar Sheets ÷ best ratio had a ${Math.round(snapshot.adaptiveSampling.confidence * 100)}% bootstrap interval entirely at or below, or above, ${snapshot.adaptiveSampling.threshold}x. ${maxReached.length ? `Reached the maximum without deciding every headline (informational, not a verdict; undecided headlines count as within ${snapshot.adaptiveSampling.threshold}x): ${maxReached.join(", ")}.` : "Every case decided before its maximum."}`
+		? `Adaptive sampling (${snapshot.adaptiveSampling.protocol}): every case took at least ${snapshot.adaptiveSampling.minIterations} interleaved runs per library and stopped once each headline's Peculiar Sheets ÷ best ratio had a ${Math.round(snapshot.adaptiveSampling.confidence * 100)}% bootstrap interval entirely at or below, or above, ${snapshot.adaptiveSampling.threshold}x. ${maxReached.length ? `Reached the maximum without deciding every headline (informational, not a verdict; undecided headlines count as a pass: best or within ${snapshot.adaptiveSampling.threshold}x): ${maxReached.join(", ")}.` : "Every case decided before its maximum."}`
 		: "";
 	const runtime =
 		snapshot.elapsedMs === undefined
