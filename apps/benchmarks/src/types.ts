@@ -190,6 +190,13 @@ export interface BenchmarkDiagnosticSnapshot {
 
 export const MEASUREMENT_PROTOCOL = "api-completion-v2-frame-aligned-v1";
 
+/**
+ * Reference-library loading configuration. Snapshots without it registered AG Grid's
+ * `AllCommunityModule` and the full Handsontable package. A change is a measurement change.
+ */
+export const COMPETITOR_CONFIG = "scenario-modules-v1";
+export const LEGACY_COMPETITOR_CONFIG = "legacy-full-bundles";
+
 export interface WriteMetrics {
 	distribution: "visible" | "offscreen";
 	mode: "independent" | "batch";

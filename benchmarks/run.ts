@@ -13,6 +13,7 @@ import {
 	SCENARIO_NAMES as ALL_SCENARIOS,
 	type BenchmarkResult,
 	type BenchmarkSkip,
+	COMPETITOR_CONFIG,
 	type GridLifecycleCounts,
 	type ImplementationName,
 	MEASUREMENT_PROTOCOL,
@@ -64,6 +65,7 @@ const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-late
 interface BenchmarkSnapshot extends SamplingMetadata {
 	timerProtocol?: string;
 	measurementProtocol?: string;
+	competitorConfig?: string;
 	cpuAffinity?: string;
 	startedAt?: string;
 	elapsedMs?: number;
@@ -516,11 +518,12 @@ function printBaselineComparison(
 	if (
 		baseline.measurementProtocol !== MEASUREMENT_PROTOCOL ||
 		baseline.timerProtocol !== "cross-origin-isolated-v1" ||
+		baseline.competitorConfig !== COMPETITOR_CONFIG ||
 		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled") ||
 		!sameSamplingCounts(baseline, SAMPLING, SCENARIOS)
 	) {
 		console.log(
-			"Measurement protocol, CPU placement, or sample counts changed; historical timings are not a speed comparison. Establish a fresh baseline.",
+			"Measurement protocol, competitor configuration, CPU placement, or sample counts changed; historical timings are not a speed comparison. Establish a fresh baseline.",
 		);
 		return;
 	}
@@ -560,6 +563,7 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 		skipped: SKIPPED,
 		measurementProtocol: MEASUREMENT_PROTOCOL,
 		timerProtocol: "cross-origin-isolated-v1",
+		competitorConfig: COMPETITOR_CONFIG,
 		cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 		generatedAt: new Date().toISOString(),
 		...SAMPLING,
@@ -989,6 +993,7 @@ try {
 						const checkpoint = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
 							measurementProtocol: MEASUREMENT_PROTOCOL,
 							timerProtocol: "cross-origin-isolated-v1",
+							competitorConfig: COMPETITOR_CONFIG,
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 							startedAt: RUN_STARTED_AT.toISOString(),
 							iteration,
@@ -1023,6 +1028,7 @@ try {
 							elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
 							measurementProtocol: MEASUREMENT_PROTOCOL,
 							timerProtocol: "cross-origin-isolated-v1",
+							competitorConfig: COMPETITOR_CONFIG,
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 							...SAMPLING,
 							warmups: WARMUPS,
