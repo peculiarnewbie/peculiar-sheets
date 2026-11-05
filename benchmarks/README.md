@@ -62,7 +62,7 @@ AG Grid Community's rectangular clipboard and range-selection cases are unsuppor
 
 ## Running
 
-Install workspace dependencies with `pnpm install`, then run the default sampling plan using Node and the workspace's `tsx` runner: twelve measured repetitions per case and library, with 96 for `replace-large-disjoint`:
+Install workspace dependencies with `pnpm install`, then run the default adaptive sampling plan using Node and the workspace's `tsx` runner: four to twelve measured repetitions per case and library (up to 96 for `replace-large-disjoint`), stopping each case once its headline ratios are decided. See [Adaptive sampling](#adaptive-sampling):
 
 ```sh
 pnpm benchmark
@@ -86,7 +86,7 @@ pnpm benchmark --include=gridsheet,univer --include-handsontable-writes
 pnpm benchmark --list
 ```
 
-The default run has 117 supported scenario/library pairs and 1,740 measured samples: twelve repetitions per pair, with 96 for the four `replace-large-disjoint` pairs. Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted. `--list` includes each pair's effective repetition count.
+The default run has 117 supported scenario/library pairs. The fixed plan (`BENCHMARK_SAMPLING=fixed`) takes 1,740 measured samples: twelve repetitions per pair, with 96 for the four `replace-large-disjoint` pairs. The adaptive default takes between 468 and that maximum. Explicit skips are printed and saved in the snapshot. `--include=gridsheet,univer` adds their supported cases; `--include-handsontable-writes` restores the three older write scenarios. Unsupported edition features remain omitted. `--list` includes each pair's effective repetition count, or its adaptive minimum and maximum.
 
 Each completed run saves timestamped raw results and generates `.benchmark/overview.html` (six expandable summary categories), `comparison-table.html`, `summary.csv`, `summary.json`, and `report.md`. Regenerate reports without launching a browser, or validate the harness:
 
@@ -102,9 +102,11 @@ Tune repetition without changing source:
 
 ```sh
 BENCHMARK_WARMUPS=1 BENCHMARK_ITERATIONS=5 pnpm benchmark
+BENCHMARK_SAMPLING=fixed pnpm benchmark
+BENCHMARK_MIN_ITERATIONS=6 BENCHMARK_MAX_ITERATIONS=20 pnpm benchmark
 ```
 
-An explicit `BENCHMARK_ITERATIONS` overrides every selected case, including the 96-repetition precision allowance. Snapshots store the base `iterations` and any `scenarioIterations` overrides. Reports validate each pair against its own count and display the effective counts; CSV and JSON exports retain the actual sample count for every bar. Historical snapshots without overrides retain their original uniform counts. Baseline speed comparisons require matching counts for every selected case.
+An explicit `BENCHMARK_ITERATIONS` selects fixed sampling and overrides every selected case, including the 96-repetition precision allowance. Snapshots store the base `iterations` and any `scenarioIterations` overrides. Reports validate each pair against its own count and display the effective counts; CSV and JSON exports retain the actual sample count for every bar. Historical snapshots without overrides retain their original uniform counts. Baseline speed comparisons require matching counts for every selected case.
 
 Failed samples stop the run by default, preserving partial results and the per-sample journal. Set `BENCHMARK_RETRIES=1` to opt into retrying failures for diagnostics; retries are printed. Completed timing samples are never discarded or retried for their timing values. The journal is flushed to disk between samples, after browser cleanup.
 
@@ -314,3 +316,56 @@ removed and leaked profiles; remaining owned directories make the run exit
 unsuccessfully. The shared E2E launcher also owns and retries profile cleanup.
 This prevents Stagehand 3.7.3's immediate, silently failing Windows cleanup from
 accumulating a profile for every sample.
+
+## Adaptive sampling
+
+Adaptive sampling is the default (`BENCHMARK_SAMPLING=adaptive`). Most cases are
+clear after a few samples: Peculiar Sheets is best, or another library is two
+to three times faster. Only headlines near the 1.2x line need more.
+
+Each case takes rounds. A round measures every library in the case once, in the
+same rotating order as fixed sampling, so drift affects every library equally.
+From the minimum round on, the runner computes each overview headline of that
+case. It uses the same categories, metric readers and best-of-all-libraries
+rule as `overview.html`. For each headline it computes the ratio of the Peculiar
+Sheets median to the best median, with a percentile bootstrap interval. Each
+library's samples are resampled independently and the best library is chosen
+again in every resample. The bootstrap is seeded per case and headline, so the
+same samples always give the same interval.
+
+A headline is decided when its whole interval is at or below the threshold
+(pass) or above it (fail). A case stops when every headline is decided, or at
+its maximum. A headline still undecided at the maximum is within noise of the
+line and counts as a pass. It is reported as within 1.2x, or best if the best
+rule applies. The overview keeps exactly three buckets: best, within 1.2x and
+outside. Cases that reached the maximum are listed as an informational note in
+`overview.html`, `comparison-table.html` and `report.md`. They are not a verdict.
+
+| Variable                    |  Default | Meaning                                                      |
+| --------------------------- | -------: | ------------------------------------------------------------ |
+| `BENCHMARK_SAMPLING`        | adaptive | `fixed` keeps the historical plan                            |
+| `BENCHMARK_MIN_ITERATIONS`  |        4 | Rounds before the first stopping check (at least 2)          |
+| `BENCHMARK_MAX_ITERATIONS`  |       12 | Most rounds; 96 for `replace-large-disjoint` unless set      |
+| `BENCHMARK_CONFIDENCE`      |     0.95 | Two-sided bootstrap interval level                           |
+| `BENCHMARK_RATIO_THRESHOLD` |      1.2 | Ratio line the interval must clear                           |
+
+An explicit `BENCHMARK_ITERATIONS` keeps fixed sampling at that count, as
+before; combining it with `BENCHMARK_SAMPLING=adaptive` is rejected. Adaptive
+options are rejected in fixed mode. The threshold only moves the stopping line;
+overview buckets stay at 1.2x. The interval is rechecked after each round
+without a multiple-comparison correction, so its nominal confidence is
+optimistic. The stopping rule only buys samples where they are needed; it is
+not a significance test.
+
+Snapshots record `samplingMode` and, for adaptive runs, `adaptiveSampling`:
+the `sequential-bootstrap-median-ratio-v1` protocol, minimum, confidence,
+threshold, resample count and seed. They also record every pair's sample count
+and stop reason (`decided` or `max-reached`), and each headline's final ratio,
+interval and verdict. `iterations` and `scenarioIterations` hold the maxima.
+Reports check every pair against its recorded count; `summary.json` and
+`summary.csv` export `samplingMode` and `stopReason`. Sample journals tag each
+sample with its mode and append one `samplingDecision` record when a case stops.
+Partial checkpoints keep the decisions of completed cases. Snapshots without
+`samplingMode` are fixed. Baseline comparison rejects a different mode, and
+adaptive runs compare only under the same stopping rule. Per-pair counts may
+differ and are printed. This is a sampling change, never a speedup.

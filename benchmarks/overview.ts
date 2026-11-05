@@ -9,7 +9,7 @@ import type {
 	ScenarioName,
 } from "../apps/benchmarks/src/types";
 import type { ReportSnapshot } from "./report";
-import { describeSampling, validateSampling } from "./sampling";
+import { describeSampling, maxReachedScenarios, validateSampling } from "./sampling";
 
 type Status = "best" | "near" | "behind";
 interface Category {
@@ -141,6 +141,65 @@ const CATEGORIES: readonly Category[] = [
 	},
 ];
 
+/** Within this ratio of the best median, a case counts as close to the best. */
+export const HEADLINE_RATIO_LIMIT = 1.2;
+
+export interface HeadlineGroup {
+	implementation: ImplementationName;
+	values: number[];
+}
+
+function headlineGroups(
+	category: Category,
+	samples: readonly BenchmarkResult[],
+	measurementProtocol: string | undefined,
+): HeadlineGroup[] {
+	const implementations = [...new Set(samples.map((sample) => sample.implementation))];
+	return implementations.flatMap((implementation) => {
+		const values = samples
+			.filter((sample) => sample.implementation === implementation)
+			.map((sample) =>
+				category.id === "updates" && sample.kind === "writes"
+					? usesApiCompletion(measurementProtocol)
+						? sample.writes.completionDurationMs
+						: sample.writes.settledDurationMs
+					: category.read(sample),
+			)
+			.filter((value): value is number => value !== undefined && Number.isFinite(value));
+		return values.length ? [{ implementation, values }] : [];
+	});
+}
+
+/** Overview headlines for one case: Peculiar Sheets and at least one other measured library. */
+export function scenarioHeadlines(
+	scenario: ScenarioName,
+	results: readonly BenchmarkResult[],
+	measurementProtocol: string | undefined,
+): Array<{ category: string; groups: HeadlineGroup[] }> {
+	const samples = results.filter((sample) => sample.scenario === scenario);
+	return CATEGORIES.filter((category) => category.scenarios.includes(scenario)).flatMap(
+		(category) => {
+			const groups = headlineGroups(category, samples, measurementProtocol);
+			return groups.length >= 2 &&
+				groups.some((group) => group.implementation === "peculiar-sheets")
+				? [{ category: category.id, groups }]
+				: [];
+		},
+	);
+}
+
+/**
+ * Adaptive snapshots count a headline whose interval still straddled the threshold at the
+ * maximum as close to the best: noise, not a measured loss.
+ */
+function headlineStatus(own: number, best: number, undecided: boolean): Status {
+	return Number(own.toFixed(1)) === Number(best.toFixed(1))
+		? "best"
+		: own <= best * HEADLINE_RATIO_LIMIT || undecided
+			? "near"
+			: "behind";
+}
+
 export function summarizeOverview(snapshot: ReportSnapshot) {
 	validateSampling(snapshot);
 	validateReplacementTiming(snapshot);
@@ -155,38 +214,31 @@ export function summarizeOverview(snapshot: ReportSnapshot) {
 		)
 	)
 		throw new Error("Protocol v2 requires complete API completion measurements");
+	const maxReached = maxReachedScenarios(snapshot);
 	return CATEGORIES.map((category) => {
 		const cases = category.scenarios.flatMap((scenario) => {
 			const samples = snapshot.results.filter((sample) => sample.scenario === scenario);
-			const implementations = [...new Set(samples.map((sample) => sample.implementation))];
-			const values = implementations.flatMap((implementation) => {
-				const measured = samples
-					.filter((sample) => sample.implementation === implementation)
-					.map((sample) =>
-						category.id === "updates" && sample.kind === "writes"
-							? usesApiCompletion(snapshot.measurementProtocol)
-								? sample.writes.completionDurationMs
-								: sample.writes.settledDurationMs
-							: category.read(sample),
-					)
-					.filter((value): value is number => value !== undefined && Number.isFinite(value));
-				return measured.length ? [{ implementation, value: median(measured) }] : [];
-			});
+			const values = headlineGroups(category, samples, snapshot.measurementProtocol).map(
+				(group) => ({ implementation: group.implementation, value: median(group.values) }),
+			);
 			const own = values.find((value) => value.implementation === "peculiar-sheets");
 			if (!own || values.length < 2) return [];
 			const best = Math.min(...values.map((value) => value.value));
-			const status: Status =
-				Number(own.value.toFixed(1)) === Number(best.toFixed(1))
-					? "best"
-					: own.value <= best * 1.2
-						? "near"
-						: "behind";
+			const undecided =
+				snapshot.adaptiveSampling?.headlines.some(
+					(headline) =>
+						headline.scenario === scenario &&
+						headline.category === category.id &&
+						headline.verdict === "undecided",
+				) ?? false;
 			return [
 				{
 					scenario,
 					own: own.value,
 					best,
-					status,
+					status: headlineStatus(own.value, best, undecided),
+					maxReached: maxReached.includes(scenario),
+					undecided,
 					winners: values
 						.filter((value) => Number(value.value.toFixed(1)) === Number(best.toFixed(1)))
 						.map((value) => LABELS[value.implementation]),
@@ -228,10 +280,14 @@ export function renderOverview(snapshot: ReportSnapshot): string {
 			? "Quick to open, strong at editing and paste.<br>Scrolling is the clearest area to improve."
 			: "Where Peculiar Sheets leads, stays close, and trails the best.";
 	const libraryCount = new Set(snapshot.results.map((sample) => sample.implementation)).size;
+	const maxReached = maxReachedScenarios(snapshot);
+	const samplingNote = maxReached.length
+		? ` Reached the adaptive sampling maximum (informational; undecided headlines count as a pass: best or within 20%): ${maxReached.join(", ")}.`
+		: "";
 	const groups = categories
 		.map(
 			(category) =>
-				`<details><summary><span class="name">${escape(category.label)}</span><span class="count"><b>${category.best}</b> / ${category.cases.length} best</span><span class="strip" aria-label="${category.best} best, ${category.near} within 20% of best, ${category.behind} more than 20% behind">${category.cases.map((item) => `<i class="${item.status}" title="${escape(item.scenario)}: ${item.own.toFixed(1)} ${category.unit}; best ${item.best.toFixed(1)} ${category.unit}"></i>`).join("")}</span><span class="note">${escape(category.note)}</span><span class="toggle" aria-hidden="true">+</span></summary><div class="expanded"><p>${category.id === "replacement" ? "Roundtrip cases count once, using the total time of both steps. " : ""}${category.id === "editing" ? "Verified completion includes the driver's verification roundtrip. " : ""}Lower is better. Missing or disabled libraries are omitted.</p><table><thead><tr><th scope="col">Case</th><th scope="col">Ours</th><th scope="col">Best</th></tr></thead><tbody>${category.cases.map((item) => `<tr><th scope="row">${escape(item.scenario.replaceAll("-", " "))}<small>${item.competitors + 1} libraries compared</small></th><td>${item.own.toFixed(1)} ${category.unit}</td><td>${item.best.toFixed(1)} ${category.unit}<small>${escape(item.winners.join(", "))}</small></td></tr>`).join("")}</tbody></table></div></details>`,
+				`<details><summary><span class="name">${escape(category.label)}</span><span class="count"><b>${category.best}</b> / ${category.cases.length} best</span><span class="strip" aria-label="${category.best} best, ${category.near} within 20% of best, ${category.behind} more than 20% behind">${category.cases.map((item) => `<i class="${item.status}" title="${escape(item.scenario)}: ${item.own.toFixed(1)} ${category.unit}; best ${item.best.toFixed(1)} ${category.unit}"></i>`).join("")}</span><span class="note">${escape(category.note)}</span><span class="toggle" aria-hidden="true">+</span></summary><div class="expanded"><p>${category.id === "replacement" ? "Roundtrip cases count once, using the total time of both steps. " : ""}${category.id === "editing" ? "Verified completion includes the driver's verification roundtrip. " : ""}Lower is better. Missing or disabled libraries are omitted.</p><table><thead><tr><th scope="col">Case</th><th scope="col">Ours</th><th scope="col">Best</th></tr></thead><tbody>${category.cases.map((item) => `<tr><th scope="row">${escape(item.scenario.replaceAll("-", " "))}<small>${item.competitors + 1} libraries compared${item.maxReached ? ` · sampling maximum reached${item.undecided ? "; undecided against 1.2x, counted as a pass" : ""}` : ""}</small></th><td>${item.own.toFixed(1)} ${category.unit}</td><td>${item.best.toFixed(1)} ${category.unit}<small>${escape(item.winners.join(", "))}</small></td></tr>`).join("")}</tbody></table></div></details>`,
 		)
 		.join("");
 	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Spreadsheet benchmark overview</title><style>
@@ -241,5 +297,5 @@ export function renderOverview(snapshot: ReportSnapshot): string {
 			snapshot,
 			snapshot.results.map((sample) => sample.scenario),
 		),
-	)} on this machine. ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision. Competitor configuration: ${escape(competitorConfigLabel(snapshot))}; configuration changes are measurement changes, not speedups.</p></footer></body></html>`;
+	)} on this machine.${escape(samplingNote)} ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision. Competitor configuration: ${escape(competitorConfigLabel(snapshot))}; configuration changes are measurement changes, not speedups.</p></footer></body></html>`;
 }
