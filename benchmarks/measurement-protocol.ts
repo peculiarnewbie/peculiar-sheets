@@ -1,5 +1,10 @@
-import { MEASUREMENT_PROTOCOL } from "../apps/benchmarks/src/types";
+import { LEGACY_COMPETITOR_CONFIG, MEASUREMENT_PROTOCOL } from "../apps/benchmarks/src/types";
 import type { ReportSnapshot } from "./report";
+
+/** Snapshots without a marker loaded the full AG Grid and Handsontable bundles. */
+export function competitorConfigLabel(snapshot: Pick<ReportSnapshot, "competitorConfig">): string {
+	return snapshot.competitorConfig ?? LEGACY_COMPETITOR_CONFIG;
+}
 
 export function usesApiCompletion(protocol: string | undefined): boolean {
 	return protocol === "api-completion-v2" || protocol === MEASUREMENT_PROTOCOL;

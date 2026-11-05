@@ -1,6 +1,10 @@
 import {
-	AllCommunityModule,
+	ClientSideRowModelApiModule,
+	ClientSideRowModelModule,
 	ModuleRegistry,
+	RowApiModule,
+	ScrollApiModule,
+	TextEditorModule,
 	createGrid,
 	themeQuartz,
 	type ColDef,
@@ -13,7 +17,14 @@ import type {
 	BenchmarkDataset,
 } from "../types";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+// Only what the scenarios exercise; see "Competitor configuration" in benchmarks/README.md.
+ModuleRegistry.registerModules([
+	ClientSideRowModelModule,
+	ClientSideRowModelApiModule,
+	RowApiModule,
+	ScrollApiModule,
+	TextEditorModule,
+]);
 
 export const adapter: BenchmarkAdapter = {
 	mount(container, dataset) {

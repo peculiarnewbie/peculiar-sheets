@@ -1,4 +1,8 @@
-import { usesApiCompletion, validateReplacementTiming } from "./measurement-protocol";
+import {
+	competitorConfigLabel,
+	usesApiCompletion,
+	validateReplacementTiming,
+} from "./measurement-protocol";
 import type {
 	BenchmarkResult,
 	ImplementationName,
@@ -237,5 +241,5 @@ export function renderOverview(snapshot: ReportSnapshot): string {
 			snapshot,
 			snapshot.results.map((sample) => sample.scenario),
 		),
-	)} on this machine. ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision.</p></footer></body></html>`;
+	)} on this machine. ${libraryCount} libraries; unavailable or disabled cases omitted. Memory reuses mount/scroll samples and measures retained JavaScript heap. Best values tie at one-decimal precision. Competitor configuration: ${escape(competitorConfigLabel(snapshot))}; configuration changes are measurement changes, not speedups.</p></footer></body></html>`;
 }

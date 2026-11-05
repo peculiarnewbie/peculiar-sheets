@@ -233,6 +233,77 @@ The [Windows validation report](FRAME_ALIGNED_FINDINGS.md) records two complete
 per-step frame diagnostics. Ratios met 1.2 in both passes; absolute timing
 repeatability remains limited.
 
+## Competitor configuration: scenario modules v1
+
+New snapshots, sample journals and partial checkpoints record
+`competitorConfig: "scenario-modules-v1"`. Report footers, `report.md`, the
+overview and a `summary.csv` column label it. Snapshots without the field are
+labeled `legacy-full-bundles`. Those snapshots registered AG Grid's
+`AllCommunityModule` and imported the full `handsontable` package, which
+registers every plugin, cell type, editor, renderer and validator. Reference
+libraries now load only what the scenarios exercise. Opening time
+(navigation-to-ready includes adapter loading), retained heap and other timings
+can change for AG Grid and Handsontable. Baseline comparison rejects a different
+configuration. This is a **measurement change, never a Peculiar Sheets speedup
+or regression**; do not compare ratios across configurations. Peculiar Sheets
+is unchanged: it keeps its full feature set and still loads no formula engine.
+
+AG Grid Community 36.2.0 registers only these modules:
+
+| Module                        | Used by                                                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `ClientSideRowModelModule`    | `rowData`, `getRowId`, `rowNode.updateData`, replacement (also a `CommunityCoreModule` dependency)                                |
+| `ClientSideRowModelApiModule` | `api.applyTransaction` for batch writes                                                                                           |
+| `RowApiModule`                | `api.getDisplayedRowAtIndex` for reads and writes                                                                                 |
+| `ScrollApiModule`             | `api.ensureIndexVisible` for focus and `scrollToRow`                                                                              |
+| `TextEditorModule`            | Default editor for `editable: true` (edits, including during streaming); adds `EditCoreModule`, `PopupModule` and `TooltipModule` |
+
+AG Grid always registers `CommunityCoreModule`. Its dependencies include keyboard
+navigation (`setFocusedCell` / `getFocusedCell`, arrows and Tab), sorting, column
+resize and move, headers, overlays, ARIA and data types; they cannot be removed.
+The other `AllCommunityModule` modules are no longer loaded. These include filters,
+other editors, undo/redo, CSV export, pagination, row selection and drag,
+pinned rows, cell and row styles, grid state, locale, aligned grids and the
+infinite row model. During development, `ValidationModule` was registered and
+every default AG Grid scenario ran without error #200 / #272 or any other console
+message. As a negative control, removing `ScrollApiModule` and `TextEditorModule`
+produced error #200 naming both. `ValidationModule` is not part of the timed
+configuration. The production adapter chunk shrank from 1,123 kB to 759 kB
+(312 kB to 213 kB gzip).
+
+Handsontable 18.1.2 imports `handsontable/base` and registers only:
+
+| Registration   | Used by                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `TextCellType` | Default text editor and renderer; the base package already registers it (re-registering is idempotent) |
+| `CopyPaste`    | Native clipboard paste in `paste-small` and `paste-large`                                              |
+| `UndoRedo`     | Ctrl+Z / Ctrl+Y in `clear-undo-redo`                                                                   |
+
+Core selection, keyboard navigation, Delete clearing, `setDataAtCell`,
+`updateData`, headers and viewport scrolling need no registration. Without either
+plugin, its scenario fails verification. Handsontable constructs every registered
+plugin for each instance. With these settings, the full package also enabled
+Autofill (fill handle), DragToScroll and ExportFile, which no scenario uses.
+AutoColumnSize and AutoRowSize were already disabled by `colWidths` and
+`autoRowSize: false`. All other cell types, editors, renderers, validators and
+plugins are no longer loaded. The production adapter chunk shrank from 1,476 kB
+to 793 kB (347 kB to 176 kB gzip). Stylesheets are unchanged.
+
+RevoGrid 4.30.0 is unchanged. `defineCustomElements()` registers lazy Stencil
+proxies only; component chunks load when rendered, and the filter-panel chunk is
+never fetched. Optional plugins (filter, export, column auto-size, column move)
+are instantiated only when enabled. Its internal sorting, grouping, row-resize,
+RTL and accessibility plugins have no public opt-out. `range = true` loads no
+additional code: disabling it loaded identical chunks and retained identical heap.
+It provides range selection, which Handsontable and Peculiar Sheets include in
+core. `useClipboard = true` is RevoGrid's default and is used by paste. RevoGrid
+has no bundle-wide registration to trim.
+
+Every scenario/library pair that ran before still runs with the same capability
+skips and passes the same data, focus and interaction checks. No reference library
+logs a console warning or error in any default scenario. The only browser message
+is the preview server's `favicon.ico` 404, which occurs for every library.
+
 ## Temporary browser profiles
 
 Normal samples and memory diagnostics explicitly own a fresh profile under

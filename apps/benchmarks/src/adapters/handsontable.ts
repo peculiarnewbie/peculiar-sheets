@@ -1,7 +1,18 @@
-import Handsontable from "handsontable";
+import Handsontable from "handsontable/base";
+import { registerCellType } from "handsontable/cellTypes/registry";
+import { TextCellType } from "handsontable/cellTypes/textType";
+import { CopyPaste } from "handsontable/plugins/copyPaste";
+import { registerPlugin } from "handsontable/plugins/registry";
+import { UndoRedo } from "handsontable/plugins/undoRedo";
 import "handsontable/styles/handsontable.css";
 import "handsontable/styles/ht-theme-main.css";
 import type { BenchmarkAdapter, BenchmarkCellValue, BenchmarkController } from "../types";
+
+// Only what the scenarios exercise; see "Competitor configuration" in benchmarks/README.md.
+// The base package already registers the text cell type; registering it again is idempotent.
+registerCellType(TextCellType);
+registerPlugin(CopyPaste);
+registerPlugin(UndoRedo);
 
 export const adapter: BenchmarkAdapter = {
 	mount(container, dataset) {
