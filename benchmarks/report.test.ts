@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { COMPETITOR_CONFIG } from "../apps/benchmarks/src/types";
+import { renderOverview } from "./overview";
 import { type ReportSnapshot, renderReport } from "./report";
 
 const sample = {
@@ -101,4 +103,20 @@ test("invalid or unknown count overrides cannot bypass report completeness check
 		JSON.stringify({ ...snapshot, scenarioIterations: { "unknown-case": 2 } }),
 	);
 	assert.throws(() => renderReport(unknown), /Unknown sampling scenario/);
+});
+
+test("reports label the competitor configuration and treat unmarked snapshots as full bundles", () => {
+	const current = renderReport({ ...snapshot, competitorConfig: COMPETITOR_CONFIG });
+	assert.equal(current.rows[0]?.competitorConfig, COMPETITOR_CONFIG);
+	assert.match(current.csv, /,competitorConfig\n/);
+	assert.match(current.csv, /"scenario-modules-v1"\n/);
+	assert.match(current.markdown, /Competitor configuration: scenario-modules-v1/);
+	assert.match(current.html, /Competitor configuration: scenario-modules-v1/);
+	assert.match(
+		renderOverview({ ...snapshot, competitorConfig: COMPETITOR_CONFIG }),
+		/Competitor configuration: scenario-modules-v1/,
+	);
+	const legacy = renderReport(snapshot);
+	assert.equal(legacy.rows[0]?.competitorConfig, "legacy-full-bundles");
+	assert.match(legacy.markdown, /Competitor configuration: legacy-full-bundles/);
 });
