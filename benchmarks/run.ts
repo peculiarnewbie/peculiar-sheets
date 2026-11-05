@@ -1,11 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { parseArgs } from "node:util";
 import { Stagehand } from "@browserbasehq/stagehand";
+import { Result, TaggedError } from "better-result";
+import { SCENARIOS as SCENARIO_CONFIG, scenarioSkip } from "../apps/benchmarks/src/scenarios";
+import type { PageLike } from "./browser-types";
+import { runBrowserWorkload } from "./browser-workloads";
+import { writeBenchmarkReport } from "./report";
 import {
 	IMPLEMENTATIONS as ALL_IMPLEMENTATIONS,
 	SCENARIO_NAMES as ALL_SCENARIOS,
 	type BenchmarkResult,
+	type BenchmarkSkip,
 	type GridLifecycleCounts,
 	type ImplementationName,
 	type ScenarioName,
@@ -20,13 +28,25 @@ const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 1);
 const OVERRIDE_ROWS = process.env.BENCHMARK_ROWS;
 const OVERRIDE_COLUMNS = process.env.BENCHMARK_COLUMNS;
 const UPDATE_BASELINE = process.env.BENCHMARK_UPDATE_BASELINE === "1";
-const OUTPUT_DIRECTORY = path.resolve(process.cwd(), ".benchmark");
+const OUTPUT_DIRECTORY = path.resolve(
+	process.cwd(),
+	process.env.BENCHMARK_OUTPUT_DIR ?? ".benchmark",
+);
+const RUN_STARTED_AT = new Date();
 const BASELINE_PATH = path.join(OUTPUT_DIRECTORY, "baseline.json");
 const LATEST_PATH = path.join(OUTPUT_DIRECTORY, "latest.json");
 const MEMORY_DIAGNOSTIC = process.env.BENCHMARK_MEMORY_DIAGNOSTIC === "1";
+const CHROME_PATH = process.env.BENCHMARK_CHROME_PATH;
+const BROWSER_ARGS = [
+	"--enable-precise-memory-info",
+	...(process.env.BENCHMARK_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
+];
 const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-latest.json");
 
 interface BenchmarkSnapshot {
+	startedAt?: string;
+	elapsedMs?: number;
+	skipped?: BenchmarkSkip[];
 	generatedAt: string;
 	iterations: number;
 	warmups: number;
@@ -71,13 +91,16 @@ function parseIntegerList(options: {
 	minimum: number;
 }): number[] {
 	const raw = process.env[options.environmentName];
-	const values = raw === undefined
-		? [...options.defaultValue]
-		: raw.trim() === ""
-			? []
-			: raw.split(",").map((value) => Number(value.trim()));
+	const values =
+		raw === undefined
+			? [...options.defaultValue]
+			: raw.trim() === ""
+				? []
+				: raw.split(",").map((value) => Number(value.trim()));
 	if (values.some((value) => !Number.isInteger(value) || value < options.minimum)) {
-		throw new Error(`${options.environmentName} must be a comma-separated list of integers >= ${options.minimum}`);
+		throw new Error(
+			`${options.environmentName} must be a comma-separated list of integers >= ${options.minimum}`,
+		);
 	}
 	return [...new Set(values)].sort((left, right) => left - right);
 }
@@ -109,16 +132,21 @@ function parseSelection<T extends string>(options: {
 	environmentName: string;
 	available: readonly T[];
 }): T[] {
-	const requested = process.env[options.environmentName]?.split(",").map((value) => value.trim()).filter(Boolean);
-	return requested?.map((value) => {
-		if (!options.available.includes(value as T)) {
-			throw new Error(`Unknown ${options.environmentName} entry: ${value}`);
-		}
-		return value as T;
-	}) ?? [...options.available];
+	const requested = process.env[options.environmentName]
+		?.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean);
+	return (
+		requested?.map((value) => {
+			if (!options.available.includes(value as T)) {
+				throw new Error(`Unknown ${options.environmentName} entry: ${value}`);
+			}
+			return value as T;
+		}) ?? [...options.available]
+	);
 }
 
-const IMPLEMENTATIONS = parseSelection<ImplementationName>({
+const configuredImplementations = parseSelection<ImplementationName>({
 	environmentName: "BENCHMARK_IMPLEMENTATIONS",
 	available: ALL_IMPLEMENTATIONS,
 });
@@ -127,25 +155,85 @@ const SCENARIOS = parseSelection<ScenarioName>({
 	available: ALL_SCENARIOS,
 });
 
-interface PageLike {
-	goto(url: string): Promise<void>;
-	evaluate<T>(fn: () => T | Promise<T>): Promise<T>;
-	sendCDP<T = unknown>(method: string, params?: object): Promise<T>;
-	waitForTimeout(ms: number): Promise<void>;
-	mainFrameId(): string;
-	getSessionForFrame(frameId: string): {
-		send<T = unknown>(method: string, params?: object): Promise<T>;
-		on<T = unknown>(event: string, handler: (params: T) => void): void;
-		off<T = unknown>(event: string, handler: (params: T) => void): void;
-	};
+const { values: options } = parseArgs({
+	options: {
+		include: { type: "string" },
+		"include-handsontable-writes": { type: "boolean", default: false },
+		list: { type: "boolean", default: false },
+	},
+});
+const OPTIONAL_IMPLEMENTATIONS: readonly ImplementationName[] = ["gridsheet", "univer"];
+const includedImplementations = options.include?.split(",").map((name) => name.trim()) ?? [];
+for (const name of includedImplementations) {
+	if (!ALL_IMPLEMENTATIONS.includes(name as ImplementationName)) {
+		throw new Error(`Unknown --include entry: ${name}`);
+	}
+}
+const IMPLEMENTATIONS = [
+	...new Set([
+		...configuredImplementations.filter(
+			(name) =>
+				process.env.BENCHMARK_IMPLEMENTATIONS !== undefined ||
+				!OPTIONAL_IMPLEMENTATIONS.includes(name),
+		),
+		...(includedImplementations as ImplementationName[]),
+	]),
+];
+
+function skipForScenario(
+	implementation: ImplementationName,
+	scenario: ScenarioName,
+): BenchmarkSkip | undefined {
+	if (
+		implementation === "handsontable" &&
+		SCENARIO_CONFIG[scenario].kind === "writes" &&
+		!options["include-handsontable-writes"]
+	) {
+		return {
+			implementation,
+			scenario,
+			category: "disabled",
+			reason: "Enable with --include-handsontable-writes",
+		};
+	}
+	return scenarioSkip(implementation, scenario);
+}
+
+function implementationsForScenario(scenario: ScenarioName): ImplementationName[] {
+	return IMPLEMENTATIONS.filter((implementation) => !skipForScenario(implementation, scenario));
+}
+const SKIPPED = SCENARIOS.flatMap((scenario) =>
+	IMPLEMENTATIONS.flatMap((implementation) => {
+		const skip = skipForScenario(implementation, scenario);
+		return skip ? [skip] : [];
+	}),
+);
+
+if (options.list) {
+	console.log(
+		JSON.stringify(
+			SCENARIOS.flatMap((scenario) =>
+				implementationsForScenario(scenario).map((implementation) => ({
+					scenario,
+					implementation,
+				})),
+			),
+			null,
+			2,
+		),
+	);
+	process.exit(0);
 }
 
 function command(commandName: string, args: string[]): Promise<void> {
-	const executable = process.platform === "win32" && commandName === "pnpm" ? "pnpm.cmd" : commandName;
+	const executable =
+		process.platform === "win32" && commandName === "pnpm" ? "pnpm.cmd" : commandName;
 	const child = spawn(executable, args, { cwd: process.cwd(), stdio: "inherit" });
 	return new Promise((resolve, reject) => {
 		child.on("error", reject);
-		child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`${commandName} failed with exit code ${code}`)));
+		child.on("close", (code) =>
+			code === 0 ? resolve() : reject(new Error(`${commandName} failed with exit code ${code}`)),
+		);
 	});
 }
 
@@ -155,7 +243,7 @@ async function waitForServer(): Promise<void> {
 		try {
 			if ((await fetch(BASE_URL)).ok) return;
 		} catch {}
-		await Bun.sleep(200);
+		await delay(200);
 	}
 	throw new Error(`Benchmark preview did not start at ${BASE_URL}`);
 }
@@ -179,14 +267,17 @@ function median(values: readonly number[]): number {
 	const middle = Math.floor(sorted.length / 2);
 	return sorted.length % 2 === 0
 		? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
-		: sorted[middle] ?? 0;
+		: (sorted[middle] ?? 0);
 }
 
 function metric<T>(samples: readonly T[], read: (sample: T) => number): number {
 	return median(samples.map(read));
 }
 
-function memoryMetric(samples: readonly BenchmarkResult[], key: "heapBytesBeforeGc" | "heapBytes"): string {
+function memoryMetric(
+	samples: readonly BenchmarkResult[],
+	key: "heapBytesBeforeGc" | "heapBytes",
+): string {
 	return samples.every((sample) => sample[key] === null)
 		? "n/a"
 		: (metric(samples, (sample) => sample[key] ?? 0) / 1e6).toFixed(1);
@@ -198,76 +289,166 @@ function printSummary(results: readonly BenchmarkResult[]): void {
 		const scenarioResults = results.filter((result) => result.scenario === scenario);
 		const first = scenarioResults[0];
 		if (!first) continue;
-		console.log(`\n${scenario} (${first.rows.toLocaleString()} x ${first.columns.toLocaleString()})`);
+		console.log(
+			`\n${scenario} (${first.rows.toLocaleString()} x ${first.columns.toLocaleString()})`,
+		);
 		switch (first.kind) {
+			case "interaction": {
+				console.log("implementation       response p95  frame p95  verified cells  total ms");
+				for (const implementation of implementationsForScenario(scenario)) {
+					const samples = scenarioResults.filter(
+						(result): result is Extract<BenchmarkResult, { kind: "interaction" }> =>
+							result.kind === "interaction" && result.implementation === implementation,
+					);
+					console.log(
+						`${implementation.padEnd(20)} ${metric(
+							samples,
+							(sample) => sample.interaction.responseP95Ms,
+						)
+							.toFixed(1)
+							.padStart(12)} ${metric(samples, (sample) => sample.interaction.frameP95Ms)
+							.toFixed(1)
+							.padStart(10)} ${metric(samples, (sample) => sample.interaction.verifiedCells)
+							.toFixed(0)
+							.padStart(15)} ${metric(samples, (sample) => sample.interaction.durationMs)
+							.toFixed(1)
+							.padStart(9)}`,
+					);
+				}
+				break;
+			}
 			case "mount": {
 				console.log("implementation       ready ms  mount ms  DOM nodes  raw MB  retained MB");
-				for (const implementation of IMPLEMENTATIONS) {
-					const samples = scenarioResults.filter((result) => result.kind === "mount" && result.implementation === implementation);
-					console.log([
-						implementation.padEnd(20),
-						metric(samples, (sample) => sample.navigationToReadyMs).toFixed(1).padStart(8),
-						metric(samples, (sample) => sample.mountMs).toFixed(1).padStart(9),
-						metric(samples, (sample) => sample.domNodes).toFixed(0).padStart(10),
-						memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
-						memoryMetric(samples, "heapBytes").padStart(12),
-					].join(" "));
+				for (const implementation of implementationsForScenario(scenario)) {
+					const samples = scenarioResults.filter(
+						(result): result is Extract<BenchmarkResult, { kind: "mount" }> =>
+							result.kind === "mount" && result.implementation === implementation,
+					);
+					console.log(
+						[
+							implementation.padEnd(20),
+							metric(samples, (sample) => sample.navigationToReadyMs)
+								.toFixed(1)
+								.padStart(8),
+							metric(samples, (sample) => sample.mountMs)
+								.toFixed(1)
+								.padStart(9),
+							metric(samples, (sample) => sample.domNodes)
+								.toFixed(0)
+								.padStart(10),
+							memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
+							memoryMetric(samples, "heapBytes").padStart(12),
+						].join(" "),
+					);
 				}
 				break;
 			}
 			case "scroll": {
-				console.log("implementation       mount ms  frame p50  frame p95  max frame  long tasks  DOM nodes  raw MB  retained MB");
-				for (const implementation of IMPLEMENTATIONS) {
-					const samples = scenarioResults.filter((result) => result.kind === "scroll" && result.implementation === implementation);
-					console.log([
-						implementation.padEnd(20),
-						metric(samples, (sample) => sample.mountMs).toFixed(1).padStart(9),
-						metric(samples, (sample) => sample.scroll.medianFrameMs).toFixed(1).padStart(10),
-						metric(samples, (sample) => sample.scroll.p95FrameMs).toFixed(1).padStart(10),
-						metric(samples, (sample) => sample.scroll.maxFrameMs).toFixed(1).padStart(10),
-						metric(samples, (sample) => sample.scroll.longTaskCount).toFixed(0).padStart(11),
-						metric(samples, (sample) => sample.domNodes).toFixed(0).padStart(10),
-						memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
-						memoryMetric(samples, "heapBytes").padStart(12),
-					].join(" "));
+				console.log(
+					"implementation       mount ms  frame p50  frame p95  max frame  long tasks  DOM nodes  raw MB  retained MB",
+				);
+				for (const implementation of implementationsForScenario(scenario)) {
+					const samples = scenarioResults.filter(
+						(result): result is Extract<BenchmarkResult, { kind: "scroll" }> =>
+							result.kind === "scroll" && result.implementation === implementation,
+					);
+					console.log(
+						[
+							implementation.padEnd(20),
+							metric(samples, (sample) => sample.mountMs)
+								.toFixed(1)
+								.padStart(9),
+							metric(samples, (sample) => sample.scroll.medianFrameMs)
+								.toFixed(1)
+								.padStart(10),
+							metric(samples, (sample) => sample.scroll.p95FrameMs)
+								.toFixed(1)
+								.padStart(10),
+							metric(samples, (sample) => sample.scroll.maxFrameMs)
+								.toFixed(1)
+								.padStart(10),
+							metric(samples, (sample) => sample.scroll.longTaskCount)
+								.toFixed(0)
+								.padStart(11),
+							metric(samples, (sample) => sample.domNodes)
+								.toFixed(0)
+								.padStart(10),
+							memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
+							memoryMetric(samples, "heapBytes").padStart(12),
+						].join(" "),
+					);
 				}
 				break;
 			}
 			case "writes": {
-				console.log("implementation       mount ms  mutate ms  settle ms   writes/s  DOM nodes  raw MB  retained MB");
-				for (const implementation of IMPLEMENTATIONS) {
-					const samples = scenarioResults.filter((result) => result.kind === "writes" && result.implementation === implementation);
-					console.log([
-						implementation.padEnd(20),
-						metric(samples, (sample) => sample.mountMs).toFixed(1).padStart(9),
-						metric(samples, (sample) => sample.writes.durationMs).toFixed(1).padStart(10),
-						metric(samples, (sample) => sample.writes.settledDurationMs).toFixed(1).padStart(10),
-						metric(samples, (sample) => sample.writes.operationsPerSecond).toFixed(0).padStart(10),
-						metric(samples, (sample) => sample.domNodes).toFixed(0).padStart(10),
-						memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
-						memoryMetric(samples, "heapBytes").padStart(12),
-					].join(" "));
+				console.log(
+					"implementation       mount ms  mutate ms  settle ms   writes/s  DOM nodes  raw MB  retained MB",
+				);
+				for (const implementation of implementationsForScenario(scenario)) {
+					const samples = scenarioResults.filter(
+						(result): result is Extract<BenchmarkResult, { kind: "writes" }> =>
+							result.kind === "writes" && result.implementation === implementation,
+					);
+					console.log(
+						[
+							implementation.padEnd(20),
+							metric(samples, (sample) => sample.mountMs)
+								.toFixed(1)
+								.padStart(9),
+							metric(samples, (sample) => sample.writes.durationMs)
+								.toFixed(1)
+								.padStart(10),
+							metric(samples, (sample) => sample.writes.settledDurationMs)
+								.toFixed(1)
+								.padStart(10),
+							metric(samples, (sample) => sample.writes.operationsPerSecond)
+								.toFixed(0)
+								.padStart(10),
+							metric(samples, (sample) => sample.domNodes)
+								.toFixed(0)
+								.padStart(10),
+							memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
+							memoryMetric(samples, "heapBytes").padStart(12),
+						].join(" "),
+					);
 				}
 				break;
 			}
 			case "replace": {
-				console.log("implementation       mount ms  sync ms  settled ms  steps  DOM nodes  raw MB  retained MB");
-				for (const implementation of IMPLEMENTATIONS) {
-					const samples = scenarioResults.filter((result) => result.kind === "replace" && result.implementation === implementation);
+				console.log(
+					"implementation       mount ms  sync ms  settled ms  steps  DOM nodes  raw MB  retained MB",
+				);
+				for (const implementation of implementationsForScenario(scenario)) {
+					const samples = scenarioResults.filter(
+						(result): result is Extract<BenchmarkResult, { kind: "replace" }> =>
+							result.kind === "replace" && result.implementation === implementation,
+					);
 					const firstStep = samples[0]?.replacement.steps[0];
 					if (!firstStep) continue;
-					console.log([
-						implementation.padEnd(20),
-						metric(samples, (sample) => sample.mountMs).toFixed(1).padStart(9),
-						metric(samples, (sample) => sample.replacement.steps[0]?.synchronousMs ?? 0).toFixed(1).padStart(8),
-						metric(samples, (sample) => sample.replacement.steps[0]?.settledMs ?? 0).toFixed(1).padStart(11),
-						String(firstStep.name).padStart(6),
-						metric(samples, (sample) => sample.domNodes).toFixed(0).padStart(10),
-						memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
-						memoryMetric(samples, "heapBytes").padStart(12),
-					].join(" "));
+					console.log(
+						[
+							implementation.padEnd(20),
+							metric(samples, (sample) => sample.mountMs)
+								.toFixed(1)
+								.padStart(9),
+							metric(samples, (sample) => sample.replacement.steps[0]?.synchronousMs ?? 0)
+								.toFixed(1)
+								.padStart(8),
+							metric(samples, (sample) => sample.replacement.steps[0]?.settledMs ?? 0)
+								.toFixed(1)
+								.padStart(11),
+							String(firstStep.name).padStart(6),
+							metric(samples, (sample) => sample.domNodes)
+								.toFixed(0)
+								.padStart(10),
+							memoryMetric(samples, "heapBytesBeforeGc").padStart(7),
+							memoryMetric(samples, "heapBytes").padStart(12),
+						].join(" "),
+					);
 					if (firstStep && samples[0]?.replacement.steps.length === 2) {
-						console.log(`  restore: sync ${metric(samples, (sample) => sample.replacement.steps[1]?.synchronousMs ?? 0).toFixed(1)}ms, settled ${metric(samples, (sample) => sample.replacement.steps[1]?.settledMs ?? 0).toFixed(1)}ms`);
+						console.log(
+							`  restore: sync ${metric(samples, (sample) => sample.replacement.steps[1]?.synchronousMs ?? 0).toFixed(1)}ms, settled ${metric(samples, (sample) => sample.replacement.steps[1]?.settledMs ?? 0).toFixed(1)}ms`,
+						);
 					}
 				}
 				break;
@@ -278,24 +459,41 @@ function printSummary(results: readonly BenchmarkResult[]): void {
 
 function primaryMetric(result: BenchmarkResult): number {
 	switch (result.kind) {
-		case "mount": return result.mountMs;
-		case "scroll": return result.scroll.p95FrameMs;
-		case "writes": return result.writes.settledDurationMs;
-		case "replace": return result.replacement.steps[0]?.settledMs ?? 0;
+		case "interaction":
+			return result.scenario.startsWith("scroll-")
+				? result.interaction.frameP95Ms
+				: result.interaction.responseP95Ms;
+		case "mount":
+			return result.mountMs;
+		case "scroll":
+			return result.scroll.p95FrameMs;
+		case "writes":
+			return result.writes.settledDurationMs;
+		case "replace":
+			return result.replacement.steps[0]?.settledMs ?? 0;
 	}
 }
 
-function printBaselineComparison(results: readonly BenchmarkResult[], baseline: BenchmarkSnapshot): void {
-	console.log("\nChange from .benchmark/baseline.json (negative is faster):");
+function printBaselineComparison(
+	results: readonly BenchmarkResult[],
+	baseline: BenchmarkSnapshot,
+): void {
+	console.log(`\nChange from ${path.relative(process.cwd(), BASELINE_PATH)} (negative is faster):`);
 	for (const scenario of SCENARIOS) {
-		for (const implementation of IMPLEMENTATIONS) {
-			const currentSamples = results.filter((result) => result.scenario === scenario && result.implementation === implementation);
-			const baselineSamples = baseline.results.filter((result) => result.scenario === scenario && result.implementation === implementation);
+		for (const implementation of implementationsForScenario(scenario)) {
+			const currentSamples = results.filter(
+				(result) => result.scenario === scenario && result.implementation === implementation,
+			);
+			const baselineSamples = baseline.results.filter(
+				(result) => result.scenario === scenario && result.implementation === implementation,
+			);
 			if (currentSamples.length === 0 || baselineSamples.length === 0) continue;
 			const current = median(currentSamples.map(primaryMetric));
 			const previous = median(baselineSamples.map(primaryMetric));
-			const change = previous === 0 ? 0 : (current - previous) / previous * 100;
-			console.log(`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%`);
+			const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+			console.log(
+				`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+			);
 		}
 	}
 }
@@ -311,6 +509,9 @@ async function readBaseline(): Promise<BenchmarkSnapshot | null> {
 
 async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 	const snapshot: BenchmarkSnapshot = {
+		startedAt: RUN_STARTED_AT.toISOString(),
+		elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
+		skipped: SKIPPED,
 		generatedAt: new Date().toISOString(),
 		iterations: ITERATIONS,
 		warmups: WARMUPS,
@@ -318,7 +519,15 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 	};
 	await mkdir(OUTPUT_DIRECTORY, { recursive: true });
 	const baseline = await readBaseline();
-	await writeFile(LATEST_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+	const serialized = `${JSON.stringify(snapshot, null, 2)}\n`;
+	await writeFile(LATEST_PATH, serialized, "utf8");
+	await writeFile(
+		path.join(OUTPUT_DIRECTORY, `results-${snapshot.generatedAt.replaceAll(":", "-")}.json`),
+		serialized,
+		"utf8",
+	);
+	const report = await writeBenchmarkReport(snapshot, OUTPUT_DIRECTORY);
+	if (report.isErr()) throw report.error;
 	if (!baseline || UPDATE_BASELINE) {
 		await writeFile(BASELINE_PATH, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
 		console.log(`\nSaved ${baseline ? "updated" : "initial"} baseline to ${BASELINE_PATH}`);
@@ -369,17 +578,21 @@ async function captureHeapSnapshot(options: {
 	try {
 		await session.send("HeapProfiler.enable");
 		await session.send("HeapProfiler.collectGarbage");
-		await session.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false, captureNumericValue: true });
+		await session.send("HeapProfiler.takeHeapSnapshot", {
+			reportProgress: false,
+			captureNumericValue: true,
+		});
 	} finally {
 		session.off("HeapProfiler.addHeapSnapshotChunk", handleChunk);
 	}
-	const filename = [
-		"heap",
-		options.implementation,
-		`${options.rows}x${DIAGNOSTIC_COLUMNS}`,
-		`cycle-${options.completedCycles}`,
-		new Date().toISOString().replaceAll(":", "-"),
-	].join("-") + ".heapsnapshot";
+	const filename =
+		[
+			"heap",
+			options.implementation,
+			`${options.rows}x${DIAGNOSTIC_COLUMNS}`,
+			`cycle-${options.completedCycles}`,
+			new Date().toISOString().replaceAll(":", "-"),
+		].join("-") + ".heapsnapshot";
 	const snapshotPath = path.join(OUTPUT_DIRECTORY, filename);
 	await writeFile(snapshotPath, chunks.join(""), "utf8");
 	return path.relative(process.cwd(), snapshotPath);
@@ -391,11 +604,15 @@ async function runMemoryDiagnosticSample(options: {
 }): Promise<MemoryDiagnosticSample> {
 	const browser = new Stagehand({
 		env: "LOCAL",
-		localBrowserLaunchOptions: { headless: true, args: ["--enable-precise-memory-info"] },
+		localBrowserLaunchOptions: {
+			headless: true,
+			args: BROWSER_ARGS,
+			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+		},
 	});
 	try {
 		await browser.init();
-		const page = await browser.context.newPage() as PageLike;
+		const page = (await browser.context.newPage()) as PageLike;
 		const query = new URLSearchParams({
 			implementation: options.implementation,
 			scenario: "vertical-scroll",
@@ -418,12 +635,14 @@ async function runMemoryDiagnosticSample(options: {
 		const cycles: Array<ScrollMetrics & { cycle: number }> = [];
 		const heapSnapshots: Array<{ completedCycles: number; path: string }> = [];
 		const requestedCheckpoints = new Set([0, ...DIAGNOSTIC_CYCLES]);
-		checkpoints.push(await collectMemoryCheckpoint({
-			page,
-			kind: "cycle",
-			completedCycles: 0,
-			idleMs: 0,
-		}));
+		checkpoints.push(
+			await collectMemoryCheckpoint({
+				page,
+				kind: "cycle",
+				completedCycles: 0,
+				idleMs: 0,
+			}),
+		);
 		if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(0)) {
 			heapSnapshots.push({
 				completedCycles: 0,
@@ -443,12 +662,14 @@ async function runMemoryDiagnosticSample(options: {
 			});
 			cycles.push({ cycle, ...metrics });
 			if (requestedCheckpoints.has(cycle)) {
-				checkpoints.push(await collectMemoryCheckpoint({
-					page,
-					kind: "cycle",
-					completedCycles: cycle,
-					idleMs: 0,
-				}));
+				checkpoints.push(
+					await collectMemoryCheckpoint({
+						page,
+						kind: "cycle",
+						completedCycles: cycle,
+						idleMs: 0,
+					}),
+				);
 			}
 			if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(cycle)) {
 				heapSnapshots.push({
@@ -463,12 +684,14 @@ async function runMemoryDiagnosticSample(options: {
 			}
 		}
 		for (const idleMs of DIAGNOSTIC_IDLE_MS) {
-			checkpoints.push(await collectMemoryCheckpoint({
-				page,
-				kind: "idle",
-				completedCycles: maximumCycles,
-				idleMs,
-			}));
+			checkpoints.push(
+				await collectMemoryCheckpoint({
+					page,
+					kind: "idle",
+					completedCycles: maximumCycles,
+					idleMs,
+				}),
+			);
 		}
 		return {
 			implementation: options.implementation,
@@ -489,22 +712,33 @@ async function runMemoryDiagnosticSample(options: {
 
 function printMemoryDiagnostic(samples: readonly MemoryDiagnosticSample[]): void {
 	console.log("\nVertical memory diagnostic (MB after explicit GC):");
-	console.log("implementation         rows cycles  raw MB retained MB DOM nodes row live cell live");
+	console.log(
+		"implementation         rows cycles  raw MB retained MB DOM nodes row live cell live",
+	);
 	for (const sample of samples) {
 		for (const checkpoint of sample.checkpoints) {
-			const label = checkpoint.kind === "cycle"
-				? String(checkpoint.completedCycles)
-				: `${checkpoint.completedCycles}+${checkpoint.idleMs}ms`;
-			console.log([
-				sample.implementation.padEnd(20),
-				String(sample.rows).padStart(8),
-				label.padStart(6),
-				(checkpoint.heapBytesBeforeGc === null ? "n/a" : (checkpoint.heapBytesBeforeGc / 1e6).toFixed(1)).padStart(7),
-				(checkpoint.heapBytes === null ? "n/a" : (checkpoint.heapBytes / 1e6).toFixed(1)).padStart(11),
-				String(checkpoint.domNodes).padStart(9),
-				String(checkpoint.lifecycle?.rowLive ?? "n/a").padStart(8),
-				String(checkpoint.lifecycle?.cellLive ?? "n/a").padStart(9),
-			].join(" "));
+			const label =
+				checkpoint.kind === "cycle"
+					? String(checkpoint.completedCycles)
+					: `${checkpoint.completedCycles}+${checkpoint.idleMs}ms`;
+			console.log(
+				[
+					sample.implementation.padEnd(20),
+					String(sample.rows).padStart(8),
+					label.padStart(6),
+					(checkpoint.heapBytesBeforeGc === null
+						? "n/a"
+						: (checkpoint.heapBytesBeforeGc / 1e6).toFixed(1)
+					).padStart(7),
+					(checkpoint.heapBytes === null
+						? "n/a"
+						: (checkpoint.heapBytes / 1e6).toFixed(1)
+					).padStart(11),
+					String(checkpoint.domNodes).padStart(9),
+					String(checkpoint.lifecycle?.rowLive ?? "n/a").padStart(8),
+					String(checkpoint.lifecycle?.cellLive ?? "n/a").padStart(9),
+				].join(" "),
+			);
 		}
 	}
 }
@@ -514,7 +748,9 @@ async function runMemoryDiagnostic(): Promise<void> {
 	for (let iteration = 0; iteration < ITERATIONS; iteration++) {
 		for (const rows of DIAGNOSTIC_ROWS) {
 			for (const implementation of IMPLEMENTATIONS) {
-				console.log(`[${iteration + 1}/${ITERATIONS}] memory diagnostic ${implementation}, ${rows.toLocaleString()} rows…`);
+				console.log(
+					`[${iteration + 1}/${ITERATIONS}] memory diagnostic ${implementation}, ${rows.toLocaleString()} rows…`,
+				);
 				samples.push(await runMemoryDiagnosticSample({ implementation, rows }));
 			}
 		}
@@ -522,7 +758,9 @@ async function runMemoryDiagnostic(): Promise<void> {
 	const snapshot: MemoryDiagnosticSnapshot = {
 		generatedAt: new Date().toISOString(),
 		iterations: ITERATIONS,
-		cycleCheckpoints: [0, ...DIAGNOSTIC_CYCLES].filter((value, index, all) => all.indexOf(value) === index).sort((a, b) => a - b),
+		cycleCheckpoints: [0, ...DIAGNOSTIC_CYCLES]
+			.filter((value, index, all) => all.indexOf(value) === index)
+			.sort((a, b) => a - b),
 		idleCheckpointsMs: DIAGNOSTIC_IDLE_MS,
 		samples,
 	};
@@ -545,11 +783,15 @@ async function runSample(options: {
 }): Promise<BenchmarkResult> {
 	const browser = new Stagehand({
 		env: "LOCAL",
-		localBrowserLaunchOptions: { headless: true, args: ["--enable-precise-memory-info"] },
+		localBrowserLaunchOptions: {
+			headless: true,
+			args: BROWSER_ARGS,
+			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+		},
 	});
 	try {
 		await browser.init();
-		const page = await browser.context.newPage() as PageLike;
+		const page = (await browser.context.newPage()) as PageLike;
 		const query = new URLSearchParams({
 			implementation: options.implementation,
 			scenario: options.scenario,
@@ -558,6 +800,10 @@ async function runSample(options: {
 		});
 		await page.goto(`${BASE_URL}?${query}`);
 		await waitForReady(page);
+		if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
+			const interaction = await runBrowserWorkload(page, options.scenario);
+			if (interaction.isErr()) throw interaction.error;
+		}
 		const result = await page.evaluate(async () => {
 			if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
 			return window.__BENCHMARK__.run();
@@ -593,50 +839,132 @@ async function runSampleWithRetry(options: {
 
 function formatResult(result: BenchmarkResult): string {
 	switch (result.kind) {
-		case "mount": return `mount ${result.mountMs.toFixed(1)}ms`;
-		case "scroll": return `mount ${result.mountMs.toFixed(1)}ms, ${result.scroll.axis} p95 ${result.scroll.p95FrameMs.toFixed(1)}ms`;
-		case "writes": return `mount ${result.mountMs.toFixed(1)}ms, ${result.writes.mode} ${result.writes.distribution} writes ${result.writes.operationsPerSecond.toFixed(0)}/s`;
-		case "replace": return `mount ${result.mountMs.toFixed(1)}ms, replace sync ${result.replacement.steps[0]?.synchronousMs.toFixed(1) ?? "n/a"}ms, settled ${result.replacement.steps[0]?.settledMs.toFixed(1) ?? "n/a"}ms`;
+		case "interaction":
+			return `response p95 ${result.interaction.responseP95Ms.toFixed(1)}ms, frame p95 ${result.interaction.frameP95Ms.toFixed(1)}ms, ${result.interaction.verifiedCells} cells verified`;
+		case "mount":
+			return `mount ${result.mountMs.toFixed(1)}ms`;
+		case "scroll":
+			return `mount ${result.mountMs.toFixed(1)}ms, ${result.scroll.axis} p95 ${result.scroll.p95FrameMs.toFixed(1)}ms`;
+		case "writes":
+			return `mount ${result.mountMs.toFixed(1)}ms, ${result.writes.mode} ${result.writes.distribution} writes ${result.writes.operationsPerSecond.toFixed(0)}/s`;
+		case "replace":
+			return `mount ${result.mountMs.toFixed(1)}ms, replace sync ${result.replacement.steps[0]?.synchronousMs.toFixed(1) ?? "n/a"}ms, settled ${result.replacement.steps[0]?.settledMs.toFixed(1) ?? "n/a"}ms`;
 	}
 }
 
+class BenchmarkCheckpointError extends TaggedError("BenchmarkCheckpointError")<{
+	message: string;
+	cause: unknown;
+}> {}
+
+const measuredResults: BenchmarkResult[] = [];
 let preview: ChildProcess | null = null;
 try {
-	if (!Number.isInteger(WARMUPS) || WARMUPS < 0 || !Number.isInteger(ITERATIONS) || ITERATIONS < 1 || !Number.isInteger(RETRIES) || RETRIES < 0) {
-		throw new Error("BENCHMARK_WARMUPS and BENCHMARK_RETRIES must be >= 0; BENCHMARK_ITERATIONS must be >= 1");
+	if (
+		!Number.isInteger(WARMUPS) ||
+		WARMUPS < 0 ||
+		!Number.isInteger(ITERATIONS) ||
+		ITERATIONS < 1 ||
+		!Number.isInteger(RETRIES) ||
+		RETRIES < 0
+	) {
+		throw new Error(
+			"BENCHMARK_WARMUPS and BENCHMARK_RETRIES must be >= 0; BENCHMARK_ITERATIONS must be >= 1",
+		);
 	}
-	if (!Number.isInteger(DIAGNOSTIC_COLUMNS) || DIAGNOSTIC_COLUMNS < 1 || !Number.isInteger(DIAGNOSTIC_DURATION_MS) || DIAGNOSTIC_DURATION_MS < 1) {
-		throw new Error("BENCHMARK_DIAGNOSTIC_COLUMNS and BENCHMARK_DIAGNOSTIC_DURATION_MS must be positive integers");
+	if (
+		!Number.isInteger(DIAGNOSTIC_COLUMNS) ||
+		DIAGNOSTIC_COLUMNS < 1 ||
+		!Number.isInteger(DIAGNOSTIC_DURATION_MS) ||
+		DIAGNOSTIC_DURATION_MS < 1
+	) {
+		throw new Error(
+			"BENCHMARK_DIAGNOSTIC_COLUMNS and BENCHMARK_DIAGNOSTIC_DURATION_MS must be positive integers",
+		);
 	}
 	await command("pnpm", ["build:lib"]);
 	await command("pnpm", ["--filter", "@peculiarnewbie/benchmarks", "build"]);
-	preview = spawn("node", ["apps/benchmarks/node_modules/vite/bin/vite.js", "preview", "apps/benchmarks", "--port", String(PORT)], {
-		cwd: process.cwd(),
-		stdio: ["ignore", "ignore", "inherit"],
-	});
+	preview = spawn(
+		"node",
+		[
+			"apps/benchmarks/node_modules/vite/bin/vite.js",
+			"preview",
+			"apps/benchmarks",
+			"--port",
+			String(PORT),
+		],
+		{
+			cwd: process.cwd(),
+			stdio: ["ignore", "ignore", "inherit"],
+		},
+	);
 	await waitForServer();
 	if (MEMORY_DIAGNOSTIC) {
 		await runMemoryDiagnostic();
 	} else {
-	const results: BenchmarkResult[] = [];
-	for (const scenario of SCENARIOS) {
-		for (let iteration = -WARMUPS; iteration < ITERATIONS; iteration++) {
-			for (const implementation of IMPLEMENTATIONS) {
-				const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${ITERATIONS}]`;
-				console.log(`${prefix} starting ${scenario} / ${implementation}…`);
-				const result = await runSampleWithRetry({ implementation, scenario });
-				if (iteration >= 0) {
-					results.push(result);
-					console.log(`${prefix} ${scenario} / ${implementation}: ${formatResult(result)}`);
+		const results = measuredResults;
+		for (const scenario of SCENARIOS) {
+			for (const skipped of SKIPPED.filter((skip) => skip.scenario === scenario))
+				console.log(
+					`[skip] ${scenario} / ${skipped.implementation} (${skipped.category}: ${skipped.reason})`,
+				);
+			for (let iteration = -WARMUPS; iteration < ITERATIONS; iteration++) {
+				for (const implementation of implementationsForScenario(scenario)) {
+					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${ITERATIONS}]`;
+					console.log(`${prefix} starting ${scenario} / ${implementation}…`);
+					const result = await runSampleWithRetry({ implementation, scenario });
+					if (iteration >= 0) {
+						results.push(result);
+						console.log(`${prefix} ${scenario} / ${implementation}: ${formatResult(result)}`);
+					}
 				}
 			}
 		}
-	}
-	printSummary(results);
-	await saveResults(results);
+		printSummary(results);
+		await saveResults(results);
 	}
 } catch (error) {
 	console.error("Benchmark failed:", error);
+	if (measuredResults.length) {
+		const checkpoint = await Result.tryPromise({
+			try: async () => {
+				await mkdir(OUTPUT_DIRECTORY, { recursive: true });
+				const checkpointPath = path.join(
+					OUTPUT_DIRECTORY,
+					`partial-${new Date().toISOString().replaceAll(":", "-")}.json`,
+				);
+				await writeFile(
+					checkpointPath,
+					JSON.stringify(
+						{
+							generatedAt: new Date().toISOString(),
+							startedAt: RUN_STARTED_AT.toISOString(),
+							elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
+							iterations: ITERATIONS,
+							warmups: WARMUPS,
+							skipped: SKIPPED,
+							incomplete: true,
+							failure: error instanceof Error ? error.message : String(error),
+							results: measuredResults,
+						},
+						null,
+						2,
+					) + "\n",
+				);
+				return checkpointPath;
+			},
+			catch: (cause) =>
+				new BenchmarkCheckpointError({
+					message: "Could not save partial benchmark results",
+					cause,
+				}),
+		});
+		checkpoint
+			.tap((file) => console.log(`Saved ${measuredResults.length} completed samples to ${file}`))
+			.tapError((failure) =>
+				console.error("benchmark.checkpoint.failed", { cause: failure.cause }),
+			);
+	}
 	process.exitCode = 1;
 } finally {
 	preview?.kill("SIGTERM");

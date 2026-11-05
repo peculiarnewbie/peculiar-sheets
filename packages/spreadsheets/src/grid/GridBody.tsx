@@ -1,45 +1,20 @@
-import { createMemo, For, Show } from "solid-js";
-import type {
-	CellValue,
-	ColumnDef,
-	PhysicalCellAddress,
-	RowClassContext,
-	Selection,
-	VisualCellAddress,
-} from "../types";
-import {
-	type ColumnIndex,
-	type RowId,
-	type VisualRowIndex,
-	columnIdx,
-	toNumber,
-	visualRow,
-} from "../core/brands";
+import { createMemo, createProjection, For, Repeat, Show } from "solid-js";
+import { columnIdx, type RowId, type VisualRowIndex, visualRow } from "../core/brands";
+import { normalizeRange } from "../core/selection";
 import { useSheetCustomization } from "../customization";
-import { defaultFormatCellValue } from "../core/formatting";
-import { normalizeRange, selectionContains } from "../core/selection";
-import GridCell from "./GridCell";
-import type { RowMetrics } from "./rowMetrics";
+import type { CellStyle, CellValue, ColumnDef, RowClassContext } from "../types";
+import GridCell, { type GridCellContext, type GridCellLayout, type GridCellRow } from "./GridCell";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
+import type { RowMetrics } from "./rowMetrics";
 
-function addressMatchesCurrent(
-	addr: VisualCellAddress,
-	current: PhysicalCellAddress | null,
-): boolean {
-	if (!current) return false;
-	return (
-		toNumber(current.row) === toNumber(addr.row) && toNumber(current.col) === toNumber(addr.col)
-	);
-}
-
-interface GridBodyProps {
+interface GridBodyProps extends GridCellContext {
 	columns: ColumnDef[];
 	rowMetrics: RowMetrics;
-	rowGutterWidth: number;
 	showReferenceHeaders: boolean;
 	getRowHeaderIndex: (visualRow: VisualRowIndex) => number;
 	getRowId: (visualRow: VisualRowIndex) => RowId;
-	getCellId: (address: VisualCellAddress) => string;
+	/** Share row dependencies while preserving per-cell formula dependencies. */
+	getRowDisplayValues?: (row: VisualRowIndex, columns: readonly { index: number }[]) => CellValue[];
 	getRowHeaderTooltip?: (visualRow: VisualRowIndex, backingRow: number) => string | null;
 	onRowResizeStart?: (row: VisualRowIndex, event: MouseEvent) => void;
 	activeResizeRow?: number | null;
@@ -49,25 +24,204 @@ interface GridBodyProps {
 	virtualColumns: Array<{ index: number; start: number; size: number; column: ColumnDef }>;
 	/** Total rendered height for sizing. */
 	totalHeight: number;
-	getDisplayValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
-	/** Raw cell value (pre-formula-eval, pre-formatValue). Used for renderCell + title hooks. */
-	getRawValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
-	/** Visual address of the currently-editing cell (if any). Used to set `isEditing` on custom renderers. */
-	editingAddress: VisualCellAddress | null;
-	selection: Selection;
-	onCellMouseDown: (addr: VisualCellAddress, event: MouseEvent) => void;
-	onCellMouseEnter?: (addr: VisualCellAddress, event: MouseEvent) => void;
 	onRowHeaderMouseDown?: (row: VisualRowIndex, event: MouseEvent) => void;
-	onCellDblClick: (addr: VisualCellAddress) => void;
-	pinnedLeftOffsets: number[];
-	lastPinnedIndex: number;
-	readOnly?: boolean;
-	searchMatchSet: Set<string>;
-	searchCurrentAddress: PhysicalCellAddress | null;
+}
+
+interface ColumnLayout extends GridCellLayout {
+	prefix: string;
 }
 
 export default function GridBody(props: GridBodyProps) {
 	const customization = useSheetCustomization();
+	const hasFormatters = createMemo(() => props.columns.some((column) => column.formatValue));
+	const hasCustomRenderers = createMemo(() => props.columns.some((column) => column.renderCell));
+	const hasCustomStyles = createMemo(() => Boolean(customization?.getCellStyle));
+	const columnCount = createMemo(() => props.virtualColumns.length);
+	// Slots retain their CSS references while the body publishes new geometry.
+	// Plain cells bind these references once, including when rows are recycled.
+	const layouts = createMemo(() => {
+		return Array.from({ length: columnCount() }, (_, slot): ColumnLayout => {
+			const prefix = `--se-column-${slot}`;
+			const width = `var(${prefix}-width)`;
+			const left = `var(${prefix}-left)`;
+			// CSS accepts variables here; csstype's Position union omits them.
+			const position = `var(${prefix}-position)` as NonNullable<CellStyle["position"]>;
+			const height = "var(--se-rendered-row-height)";
+			return {
+				prefix,
+				style: { width, "min-width": width, height, position, left },
+				cssText: `width:${width};min-width:${width};height:${height};position:${position};left:${left}`,
+			};
+		});
+	});
+	const getLayout = (columnIndex: number): ColumnLayout => {
+		const layout = layouts()[columnIndex];
+		if (!layout) throw new Error(`Column layout ${columnIndex} is outside the rendered range`);
+		return layout;
+	};
+	const layoutVariables = createMemo(() => {
+		const gutter = props.rowGutterWidth;
+		const pinned = props.pinnedLeftOffsets;
+		const variables: Record<string, string> = {};
+		props.virtualColumns.forEach((column, slot) => {
+			const { prefix } = getLayout(slot);
+			const pinnedLeft = pinned[column.index] ?? -1;
+			variables[`${prefix}-width`] = `${column.size}px`;
+			variables[`${prefix}-left`] = `${pinnedLeft >= 0 ? pinnedLeft : gutter + column.start}px`;
+			variables[`${prefix}-position`] = pinnedLeft >= 0 ? "sticky" : "absolute";
+		});
+		return variables;
+	});
+
+	// Contiguous virtual rows share a viewport-sized set of owners. Overlapping
+	// indices retain their owners; long jumps reuse the slots that left view.
+	const renderRows = (renderCustom: boolean, plainLayout: boolean) => (
+		<For keyed={(row) => row.index % props.virtualRows.length} each={props.virtualRows}>
+			{(virtualRow) => {
+				trackGridLifecycle("row");
+				const vRow = () => visualRow(virtualRow().index);
+				const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
+				const rowHeaderTooltip = () =>
+					props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
+				const containsFocus = () => props.selection.focus.row === vRow();
+				const intersectsSelection = () =>
+					props.selection.ranges.some((range) => {
+						const normalized = normalizeRange(range);
+						return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
+					});
+				const containsActiveEditor = () => props.editingAddress?.row === vRow();
+				const rowSelection = createMemo(() =>
+					containsFocus() || intersectsSelection() ? props.selection : null,
+				);
+				const rowEditingAddress = createMemo(() =>
+					containsActiveEditor() ? props.editingAddress : null,
+				);
+				const rowClassContext = (): RowClassContext => ({
+					rowId: props.getRowId(vRow()),
+					visualRowIndex: virtualRow().index,
+					dataRowIndex: rowHeaderIndex(),
+					containsFocus: containsFocus(),
+					intersectsSelection: intersectsSelection(),
+					containsActiveEditor: containsActiveEditor(),
+				});
+				const customRowClass = createMemo(
+					() => customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
+				);
+				// Share display dependencies across a row. The plain memo avoids
+				// per-cell store nodes; custom formatters also filter unchanged values.
+				const readDisplayValues = () => {
+					const row = vRow();
+					const columns = props.virtualColumns;
+					const readRow = props.getRowDisplayValues;
+					return readRow
+						? readRow(row, columns)
+						: columns.map((column) => props.getDisplayValue(row, columnIdx(column.index)));
+				};
+				const displayValues = createMemo(() => {
+					if (!hasFormatters()) return readDisplayValues();
+					return createProjection<CellValue[]>(readDisplayValues, [], {
+						key: null,
+						shallow: true,
+					});
+				});
+				const cellRow: GridCellRow = {
+					grid: props,
+					customization,
+					getLayout,
+					get selection() {
+						return rowSelection();
+					},
+					get editingAddress() {
+						return rowEditingAddress();
+					},
+					get displayValues() {
+						return displayValues();
+					},
+					get item() {
+						return virtualRow();
+					},
+					get className() {
+						return customRowClass();
+					},
+				};
+				const rowHeaderClass = () => customization?.getRowHeaderClass?.(rowHeaderIndex()) ?? "";
+				return (
+					<div
+						class={[
+							`se-row${customRowClass() ? ` ${customRowClass()}` : ""}`,
+							{
+								"se-row--active": containsFocus(),
+								"se-row--selected": intersectsSelection(),
+								"se-row--editing": containsActiveEditor(),
+							},
+						]}
+						role="row"
+						aria-rowindex={virtualRow().index + 1}
+						style={{
+							position: "absolute",
+							top: `${virtualRow().start}px`,
+							display: "flex",
+							width: "100%",
+							height: `${virtualRow().size}px`,
+							"--se-rendered-row-height": `${virtualRow().size}px`,
+						}}
+					>
+						<Show when={props.showReferenceHeaders}>
+							<div
+								class={[
+									`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`,
+									{
+										"se-row-header-cell--resizing": props.activeResizeRow === virtualRow().index,
+										"se-row-header-cell--active": containsFocus(),
+										"se-row-header-cell--selected": intersectsSelection(),
+										"se-row-header-cell--editing": containsActiveEditor(),
+									},
+								]}
+								role="rowheader"
+								style={{
+									width: `${props.rowGutterWidth}px`,
+									"min-width": `${props.rowGutterWidth}px`,
+									height: `${virtualRow().size}px`,
+								}}
+								title={rowHeaderTooltip() ?? undefined}
+								onMouseDown={(e) => props.onRowHeaderMouseDown?.(vRow(), e)}
+							>
+								<Show when={customization?.getRowHeaderSublabel?.(rowHeaderIndex())}>
+									{(sub) => <span class="se-row-header-sublabel">{sub()}</span>}
+								</Show>
+								{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ??
+									String(rowHeaderIndex() + 1)}
+								<Show when={props.onRowResizeStart}>
+									<div
+										class="se-row-resize-handle"
+										onMouseDown={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											props.onRowResizeStart?.(vRow(), e);
+										}}
+									/>
+								</Show>
+							</div>
+						</Show>
+						<Repeat count={props.virtualColumns.length}>
+							{(columnIndex) => (
+								<GridCell
+									row={cellRow}
+									columnIndex={columnIndex}
+									renderCustom={renderCustom}
+									plainLayout={plainLayout}
+								/>
+							)}
+						</Repeat>
+					</div>
+				);
+			}}
+		</For>
+	);
+	const renderedRows = createMemo(() => {
+		const renderCustom = hasCustomRenderers();
+		return renderRows(renderCustom, !renderCustom && !hasCustomStyles());
+	});
 
 	return (
 		<div
@@ -76,159 +230,10 @@ export default function GridBody(props: GridBodyProps) {
 			style={{
 				position: "relative",
 				height: `${props.totalHeight}px`,
+				...layoutVariables(),
 			}}
 		>
-			<For keyed={(row) => row.index} each={props.virtualRows}>
-				{(virtualRow) => {
-					trackGridLifecycle("row");
-					const rowIdx = () => virtualRow().index;
-					const rowHeight = () => virtualRow().size;
-					const rowTop = () => virtualRow().start;
-					const vRow = () => visualRow(rowIdx());
-					const rowHeaderIndex = () => props.getRowHeaderIndex(vRow());
-					const rowHeaderTooltip = () =>
-						props.getRowHeaderTooltip?.(vRow(), rowHeaderIndex()) ?? null;
-					const containsFocus = () => props.selection.focus.row === vRow();
-					const intersectsSelection = () =>
-						props.selection.ranges.some((range) => {
-							const normalized = normalizeRange(range);
-							return vRow() >= normalized.start.row && vRow() <= normalized.end.row;
-						});
-					const containsActiveEditor = () => props.editingAddress?.row === vRow();
-					const rowClassContext = createMemo<RowClassContext>(() => ({
-						rowId: props.getRowId(vRow()),
-						visualRowIndex: rowIdx(),
-						dataRowIndex: rowHeaderIndex(),
-						containsFocus: containsFocus(),
-						intersectsSelection: intersectsSelection(),
-						containsActiveEditor: containsActiveEditor(),
-					}));
-					const customRowClass = createMemo(
-						() => customization?.getRowClass?.(rowHeaderIndex(), rowClassContext()) ?? "",
-					);
-					const rowHeaderClass = () => customization?.getRowHeaderClass?.(rowHeaderIndex()) ?? "";
-					return (
-						<div
-							class={[
-								`se-row${customRowClass() ? ` ${customRowClass()}` : ""}`,
-								{
-									"se-row--active": containsFocus(),
-									"se-row--selected": intersectsSelection(),
-									"se-row--editing": containsActiveEditor(),
-								},
-							]}
-							role="row"
-							aria-rowindex={rowIdx() + 1}
-							style={{
-								position: "absolute",
-								top: `${rowTop()}px`,
-								display: "flex",
-								height: `${rowHeight()}px`,
-							}}
-						>
-							<Show when={props.showReferenceHeaders}>
-								<div
-									class={[
-										`se-row-header-cell${customRowClass() ? ` ${customRowClass()}` : ""}${rowHeaderClass() ? ` ${rowHeaderClass()}` : ""}`,
-										{
-											"se-row-header-cell--resizing": props.activeResizeRow === rowIdx(),
-											"se-row-header-cell--active": containsFocus(),
-											"se-row-header-cell--selected": intersectsSelection(),
-											"se-row-header-cell--editing": containsActiveEditor(),
-										},
-									]}
-									role="rowheader"
-									style={{
-										width: `${props.rowGutterWidth}px`,
-										"min-width": `${props.rowGutterWidth}px`,
-										height: `${rowHeight()}px`,
-									}}
-									title={rowHeaderTooltip() ?? undefined}
-									onMouseDown={(e) => props.onRowHeaderMouseDown?.(vRow(), e)}
-								>
-									<Show when={customization?.getRowHeaderSublabel?.(rowHeaderIndex())}>
-										{(sub) => <span class="se-row-header-sublabel">{sub()}</span>}
-									</Show>
-									{customization?.getRowHeaderLabel?.(rowHeaderIndex()) ??
-										String(rowHeaderIndex() + 1)}
-									<Show when={props.onRowResizeStart}>
-										<div
-											class="se-row-resize-handle"
-											onMouseDown={(e) => {
-												e.preventDefault();
-												e.stopPropagation();
-												props.onRowResizeStart?.(vRow(), e);
-											}}
-										/>
-									</Show>
-								</div>
-							</Show>
-							<For keyed={false} each={props.virtualColumns}>
-								{(virtualColumn) => {
-									const col = () => virtualColumn().column;
-									const cidx = () => columnIdx(virtualColumn().index);
-									const addr = (): VisualCellAddress => ({ row: vRow(), col: cidx() });
-									const rawValue = () => props.getRawValue(vRow(), cidx());
-									const displayValue = () => props.getDisplayValue(vRow(), cidx());
-									const formattedText = () => {
-										const formatValue = col().formatValue;
-										return formatValue
-											? formatValue(displayValue(), { row: rowIdx(), col: toNumber(cidx()) })
-											: defaultFormatCellValue(displayValue());
-									};
-									const titleOverride = () =>
-										col().getCellTitle?.(rawValue(), { row: rowIdx(), col: toNumber(cidx()) });
-									const isEditing = () =>
-										props.editingAddress?.row === vRow() && props.editingAddress?.col === cidx();
-									const isFocused = () =>
-										props.selection.focus.row === vRow() && props.selection.focus.col === cidx();
-									const isSelected = () => selectionContains(props.selection, addr());
-									const cellClass = () =>
-										customization?.getCellClass?.(rowIdx(), toNumber(cidx())) ?? "";
-									const combinedClass = () =>
-										[customRowClass(), cellClass()].filter(Boolean).join(" ");
-
-									return (
-										<GridCell
-											id={props.getCellId(addr())}
-											rawValue={rawValue()}
-											formattedText={formattedText()}
-											row={vRow()}
-											width={virtualColumn().size}
-											height={rowHeight()}
-											layoutLeft={props.rowGutterWidth + virtualColumn().start}
-											colIndex={cidx()}
-											readOnly={(props.readOnly ?? false) || col().editable === false}
-											pinnedLeft={props.pinnedLeftOffsets?.[virtualColumn().index] ?? -1}
-											isLastPinned={virtualColumn().index === props.lastPinnedIndex}
-											searchMatch={props.searchMatchSet.has(`${rowIdx()},${toNumber(cidx())}`)}
-											searchCurrent={addressMatchesCurrent(addr(), props.searchCurrentAddress)}
-											isEditing={isEditing()}
-											isFocused={isFocused()}
-											isSelected={isSelected()}
-											isActiveRow={containsFocus()}
-											{...(titleOverride() !== undefined
-												? { title: titleOverride() as string }
-												: {})}
-											{...(col().renderCell ? { renderCell: col().renderCell } : {})}
-											{...(combinedClass() ? { customClass: combinedClass() } : {})}
-											{...(customization?.getCellStyle
-												? (() => {
-														const style = customization.getCellStyle(rowIdx(), toNumber(cidx()));
-														return style ? { inlineStyle: style } : {};
-													})()
-												: {})}
-											onMouseDown={(e) => props.onCellMouseDown(addr(), e)}
-											onMouseEnter={(e) => props.onCellMouseEnter?.(addr(), e)}
-											onDblClick={() => props.onCellDblClick(addr())}
-										/>
-									);
-								}}
-							</For>
-						</div>
-					);
-				}}
-			</For>
+			{renderedRows()}
 		</div>
 	);
 }

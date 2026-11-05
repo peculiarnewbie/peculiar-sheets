@@ -1,12 +1,13 @@
 import { createMemo, For, Show } from "solid-js";
-import type { ColumnDef, SortState } from "../types";
-import { GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
+import { type ColumnIndex, columnIdx } from "../core/brands";
 import { getEffectiveColumnWidth } from "../core/sizing";
 import { columnIndexToLetters } from "../formula/references";
-import { type ColumnIndex, columnIdx } from "../core/brands";
+import type { ColumnDef, SortState } from "../types";
+import { GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
 
 interface GridHeaderProps {
 	columns: ColumnDef[];
+	virtualColumns: Array<{ index: number; start: number; size: number; column: ColumnDef }>;
 	columnWidths: Map<string, number>;
 	totalWidth: number;
 	sortState: SortState | null;
@@ -59,7 +60,7 @@ function buildColumnGroups(columns: ColumnDef[]): ColumnGroup[] {
 }
 
 export default function GridHeader(props: GridHeaderProps) {
-	const groups = () => buildColumnGroups(props.columns);
+	const groups = createMemo(() => buildColumnGroups(props.columns));
 	const hasGroups = () => groups().length > 0;
 
 	function getColWidth(col: ColumnDef): number {
@@ -122,7 +123,7 @@ export default function GridHeader(props: GridHeaderProps) {
 				<div
 					class="se-header-row se-header-row--references"
 					role="row"
-					style={{ height: `${HEADER_HEIGHT}px`, display: "flex" }}
+					style={{ height: `${HEADER_HEIGHT}px`, display: "flex", position: "relative" }}
 				>
 					<div
 						class="se-header-corner"
@@ -133,8 +134,9 @@ export default function GridHeader(props: GridHeaderProps) {
 							height: `${HEADER_HEIGHT}px`,
 						}}
 					/>
-					<For each={props.columns}>
-						{(col, index) => {
+					<For keyed={(item) => item.index} each={props.virtualColumns}>
+						{(item) => {
+							const index = () => item().index;
 							const isPinned = () => (props.pinnedLeftOffsets?.[index()] ?? -1) >= 0;
 							return (
 								<div
@@ -148,10 +150,11 @@ export default function GridHeader(props: GridHeaderProps) {
 									role="columnheader"
 									aria-colindex={index() + 1}
 									style={{
-										width: `${getColWidth(col)}px`,
-										"min-width": `${getColWidth(col)}px`,
+										width: `${item().size}px`,
+										"min-width": `${item().size}px`,
 										height: `${HEADER_HEIGHT}px`,
-										left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
+										position: isPinned() ? undefined : "absolute",
+										left: `${isPinned() ? (props.pinnedLeftOffsets[index()] ?? 0) : props.rowGutterWidth + item().start}px`,
 									}}
 									data-col-index={index()}
 									onMouseDown={(e) => props.onColumnHeaderMouseDown?.(columnIdx(index()), e)}
@@ -201,7 +204,7 @@ export default function GridHeader(props: GridHeaderProps) {
 			<div
 				class="se-header-row se-header-row--columns"
 				role="row"
-				style={{ height: `${HEADER_HEIGHT}px`, display: "flex" }}
+				style={{ height: `${HEADER_HEIGHT}px`, display: "flex", position: "relative" }}
 			>
 				<Show when={props.showReferenceHeaders}>
 					<div
@@ -214,17 +217,19 @@ export default function GridHeader(props: GridHeaderProps) {
 						}}
 					/>
 				</Show>
-				<For each={props.columns}>
-					{(col, index) => {
+				<For keyed={(item) => item.index} each={props.virtualColumns}>
+					{(item) => {
+						const index = () => item().index;
+						const col = () => item().column;
 						const isPinned = () => (props.pinnedLeftOffsets?.[index()] ?? -1) >= 0;
-						const isSortable = col.sortable !== false;
-						const isResizing = () => props.activeResizeColumnId === col.id;
+						const isSortable = () => col().sortable !== false;
+						const isResizing = () => props.activeResizeColumnId === col().id;
 						return (
 							<div
 								class={[
 									"se-header-cell",
 									{
-										"se-header-cell--sortable": isSortable,
+										"se-header-cell--sortable": isSortable(),
 										"se-header-cell--pinned": isPinned(),
 										"se-header-cell--pinned-last": index() === props.lastPinnedIndex,
 										"se-header-cell--resizing": isResizing(),
@@ -233,30 +238,31 @@ export default function GridHeader(props: GridHeaderProps) {
 								role="columnheader"
 								aria-colindex={index() + 1}
 								aria-sort={
-									props.sortState?.columnId === col.id
+									props.sortState?.columnId === col().id
 										? props.sortState.direction === "asc"
 											? "ascending"
 											: "descending"
 										: undefined
 								}
 								style={{
-									width: `${getColWidth(col)}px`,
-									"min-width": `${getColWidth(col)}px`,
+									width: `${item().size}px`,
+									"min-width": `${item().size}px`,
 									height: `${HEADER_HEIGHT}px`,
-									left: isPinned() ? `${props.pinnedLeftOffsets?.[index()] ?? 0}px` : undefined,
-									cursor: isSortable ? "pointer" : undefined,
+									position: isPinned() ? undefined : "absolute",
+									left: `${isPinned() ? (props.pinnedLeftOffsets[index()] ?? 0) : props.rowGutterWidth + item().start}px`,
+									cursor: isSortable() ? "pointer" : undefined,
 								}}
 								data-col-index={index()}
 								onMouseDown={(e) => props.onColumnHeaderMouseDown?.(columnIdx(index()), e)}
 							>
 								<span class="se-header-cell__label">
-									{col.header}
-									{getSortIndicator(col)}
+									{col().header}
+									{getSortIndicator(col())}
 								</span>
-								<Show when={col.resizable !== false}>
+								<Show when={col().resizable !== false}>
 									<div
 										class={["se-resize-handle", { "se-resize-handle--active": isResizing() }]}
-										onMouseDown={(e) => props.onColumnResizeStart(col.id, e)}
+										onMouseDown={(e) => props.onColumnResizeStart(col().id, e)}
 									/>
 								</Show>
 							</div>

@@ -1,21 +1,70 @@
+import type { JSX } from "@solidjs/web";
+import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
+import {
+	elementScroll,
+	observeElementOffset,
+	observeElementRect,
+	Virtualizer,
+} from "@tanstack/virtual-core";
 import {
 	createEffect,
 	createMemo,
+	createRenderEffect,
 	createSignal,
 	createUniqueId,
+	getObserver,
 	onCleanup,
 	onSettled,
 	Show,
 	untrack,
 } from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { computeFillPreview, getAutoFillSourceRange, resolveAutoFillMode } from "../core/autofill";
 import {
-	Virtualizer,
-	elementScroll,
-	observeElementOffset,
-	observeElementRect,
-} from "@tanstack/virtual-core";
-import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
+	type ColumnIndex,
+	columnIdx,
+	type PhysicalRowIndex,
+	physicalRow,
+	type RowId,
+	rowId,
+	toNumber,
+	type VisualRowIndex,
+	visualRow,
+} from "../core/brands";
+import { parseTSV } from "../core/clipboard";
+import { applyMutations } from "../core/commands";
+import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
+import { createActiveSearchScanSource, createMatchSet, findMatchesChunked } from "../core/search";
+import {
+	emptySelection,
+	extendSelection,
+	moveSelection,
+	normalizeRange,
+	primaryRange,
+	selectAll,
+	selectCell,
+	selectionContains,
+} from "../core/selection";
+import {
+	clampColumnWidth,
+	getColumnWidth,
+	getEffectiveColumnWidth,
+	mapToRecord,
+	recordToMap,
+} from "../core/sizing";
+import type { SheetStore } from "../core/state";
+import { useSheetCustomization } from "../customization";
+import type { FormulaBridge } from "../formula/bridge";
+import {
+	addressToA1,
+	isFormulaText,
+	isFormulaValue,
+	rangeToA1,
+	shiftFormulaByDelta,
+} from "../formula/references";
+import { createCommandSignal } from "../internal/commandSignal";
+import { ClipboardAccessError } from "../internal/errors";
+import { isApplied, type OperationOutcome, Result, type ResultLike } from "../internal/result";
+import { errorTraceContext, withTraceContext } from "../internal/trace";
 import type {
 	CellMutation,
 	CellRange,
@@ -35,69 +84,22 @@ import type {
 	VisualCellAddress,
 } from "../types";
 import { DEFAULT_COL_WIDTH, GROUP_HEADER_HEIGHT, HEADER_HEIGHT } from "../types";
-import { useSheetCustomization } from "../customization";
-import type { SheetStore } from "../core/state";
-import {
-	clampColumnWidth,
-	getColumnWidth,
-	getEffectiveColumnWidth,
-	mapToRecord,
-	recordToMap,
-} from "../core/sizing";
-import {
-	emptySelection,
-	extendSelection,
-	moveSelection,
-	normalizeRange,
-	primaryRange,
-	selectAll,
-	selectCell,
-	selectionContains,
-} from "../core/selection";
-import { computeFillPreview, getAutoFillSourceRange, resolveAutoFillMode } from "../core/autofill";
-import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
-import { parseTSV } from "../core/clipboard";
-import { ClipboardAccessError } from "../internal/errors";
-import { createCommandSignal } from "../internal/commandSignal";
-import { errorTraceContext, withTraceContext } from "../internal/trace";
-import { applyMutations } from "../core/commands";
-import type { FormulaBridge } from "../formula/bridge";
-import {
-	addressToA1,
-	isFormulaText,
-	isFormulaValue,
-	rangeToA1,
-	shiftFormulaByDelta,
-} from "../formula/references";
-import { Result, isApplied, type OperationOutcome, type ResultLike } from "../internal/result";
+import { getWorkbookCoordinatorInternals } from "../workbook/coordinator";
+import type { WorkbookSheetBinding } from "../workbook/types";
+import CellEditor from "./CellEditor";
+import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
+import FormulaBar from "./FormulaBar";
+import GridBody from "./GridBody";
+import GridHeader from "./GridHeader";
 import {
 	coordinateBatchMutations,
 	coordinateHistoryCommand,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
-import { getWorkbookCoordinatorInternals } from "../workbook/coordinator";
-import GridHeader from "./GridHeader";
-import GridBody from "./GridBody";
-import CellEditor from "./CellEditor";
-import FormulaBar from "./FormulaBar";
-import SelectionOverlay from "./SelectionOverlay";
-import ContextMenu, { type ContextMenuEntry } from "./ContextMenu";
-import SearchBar from "./SearchBar";
-import { createActiveSearchScanSource, createMatchSet, findMatchesChunked } from "../core/search";
 import { buildRowMetrics } from "./rowMetrics";
+import SearchBar from "./SearchBar";
+import SelectionOverlay from "./SelectionOverlay";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
-import type { WorkbookSheetBinding } from "../workbook/types";
-import {
-	type ColumnIndex,
-	type PhysicalRowIndex,
-	type RowId,
-	type VisualRowIndex,
-	columnIdx,
-	physicalRow,
-	rowId,
-	toNumber,
-	visualRow,
-} from "../core/brands";
 
 const ROW_GUTTER_WIDTH = 48;
 
@@ -232,12 +234,22 @@ type GridVirtualizer = Virtualizer<HTMLDivElement, HTMLElement>;
 
 function snapshotVirtualItems<TScrollElement extends Element, TItemElement extends Element>(
 	virtualizer: Virtualizer<TScrollElement, TItemElement>,
+	previous: VirtualItemSnapshot[],
 ): VirtualItemSnapshot[] {
-	return virtualizer.getVirtualItems().map((item) => ({
-		index: item.index,
-		start: item.start,
-		size: item.size,
-	}));
+	const items = virtualizer.getVirtualItems();
+	const firstIndex = previous[0]?.index ?? 0;
+	// Keep unchanged slots referentially stable so Solid's keyed list can skip them.
+	const next = items.map((item) => {
+		const existing = previous[item.index - firstIndex];
+		return existing?.index === item.index &&
+			existing.start === item.start &&
+			existing.size === item.size
+			? existing
+			: { index: item.index, start: item.start, size: item.size };
+	});
+	return next.length === previous.length && next.every((item, index) => item === previous[index])
+		? previous
+		: next;
 }
 
 function hasUsableRect(rect: { width: number; height: number } | null): boolean {
@@ -408,7 +420,7 @@ export default function Grid(props: GridProps) {
 			scrollToFn: elementScroll,
 			overscan: 3,
 			onChange: (instance) => {
-				setVirtualRows(snapshotVirtualItems(instance));
+				setVirtualRows((previous) => snapshotVirtualItems(instance, previous));
 			},
 		};
 	}
@@ -424,7 +436,7 @@ export default function Grid(props: GridProps) {
 			horizontal: true,
 			overscan: 2,
 			onChange: (instance) => {
-				setVirtualColumnItems(snapshotVirtualItems(instance));
+				setVirtualColumnItems((previous) => snapshotVirtualItems(instance, previous));
 			},
 		};
 	}
@@ -444,12 +456,12 @@ export default function Grid(props: GridProps) {
 	createEffect(rowVirtualizerOptions, (options) => {
 		rowVirtualizer.setOptions(options);
 		rowVirtualizer._willUpdate();
-		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
+		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
 	});
 	createEffect(columnVirtualizerOptions, (options) => {
 		columnVirtualizer.setOptions(options);
 		columnVirtualizer._willUpdate();
-		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	});
 
 	function attachVirtualizer(virtualizer: GridVirtualizer, viewport: HTMLDivElement): void {
@@ -476,8 +488,8 @@ export default function Grid(props: GridProps) {
 		attachVirtualizer(columnVirtualizer, viewportRef);
 		rowVirtualizer.measure();
 		columnVirtualizer.measure();
-		setVirtualRows(snapshotVirtualItems(rowVirtualizer));
-		setVirtualColumnItems(snapshotVirtualItems(columnVirtualizer));
+		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
+		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	}
 
 	onSettled(() => {
@@ -788,11 +800,10 @@ export default function Grid(props: GridProps) {
 	}
 
 	// Keep the focused cell in view when selection moves (arrows, tab, shift+arrow, etc.).
-	createEffect(
-		() => props.store.selection().focus,
-		(addr) => untrack(() => scrollCellIntoView(addr)),
-		{ defer: true },
-	);
+	const focusedAddress = createMemo(() => props.store.selection().focus, {
+		equals: (previous, next) => previous.row === next.row && previous.col === next.col,
+	});
+	createEffect(focusedAddress, (addr) => untrack(() => scrollCellIntoView(addr)), { defer: true });
 
 	const editCellRect = createMemo(() => {
 		const editMode = props.store.editMode();
@@ -987,8 +998,11 @@ export default function Grid(props: GridProps) {
 
 	let previousRenderedRowOrder: readonly RowId[] | null = null;
 
-	createEffect(
-		() => [...(visualRowIds() ?? props.store.rowIds())],
+	// Reconcile view identity alongside rendering, before post-render callbacks.
+	createRenderEffect(
+		// Row-order signal values are replaced on structural changes. Retain the
+		// previous value instead of copying every row ID for this observer.
+		() => visualRowIds() ?? props.store.rowIds(),
 		(nextRenderedOrder) => {
 			if (
 				previousRenderedRowOrder &&
@@ -1028,19 +1042,20 @@ export default function Grid(props: GridProps) {
 		},
 	);
 
-	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
+	function getRawRowForPhysicalRow(row: PhysicalRowIndex): readonly CellValue[] | undefined {
 		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
 		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
 		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
-		props.store.structuralRevision();
-		const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
-		if (id !== null) {
-			props.store.rowRevision(id);
+		if (getObserver()) {
+			props.store.structuralRevision();
+			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
+			if (id !== null) props.store.rowRevision(id);
 		}
-		return untrack(() => {
-			const rawCells = props.store.cells;
-			return rawCells[toNumber(row)]?.[toNumber(col)] ?? null;
-		});
+		return props.store.cells[toNumber(row)];
+	}
+
+	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
+		return getRawRowForPhysicalRow(row)?.[toNumber(col)] ?? null;
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -1057,6 +1072,22 @@ export default function Grid(props: GridProps) {
 
 	function getDisplayCellValue(row: VisualRowIndex, col: ColumnIndex): CellValue {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
+	}
+
+	function getRowDisplayValues(
+		row: VisualRowIndex,
+		columns: readonly { index: number }[],
+	): CellValue[] {
+		const physical = getPhysicalRowForVisualRow(row);
+		// One row subscription covers all raw cells. Formula reads still track
+		// their own dependencies, and the bridge revision covers engine updates.
+		const values = getRawRowForPhysicalRow(physical);
+		const bridge = props.formulaBridge;
+		if (bridge && typeof bridge.revision === "function") bridge.revision();
+		return columns.map((column) => {
+			const raw = values?.[column.index] ?? null;
+			return bridge?.getDisplayValue(physical, columnIdx(column.index), raw) ?? raw;
+		});
 	}
 
 	function markWorkbookEngineUnconfirmed() {
@@ -2776,6 +2807,7 @@ export default function Grid(props: GridProps) {
 			>
 				<GridHeader
 					columns={props.columns}
+					virtualColumns={virtualColumns()}
 					columnWidths={committedColumnWidths()}
 					totalWidth={totalWidth()}
 					sortState={currentSortState()}
@@ -2820,6 +2852,7 @@ export default function Grid(props: GridProps) {
 							virtualColumns={virtualColumns()}
 							totalHeight={rowMetrics().getTotalHeight()}
 							getDisplayValue={getDisplayCellValue}
+							getRowDisplayValues={getRowDisplayValues}
 							getRawValue={getRawCellValue}
 							editingAddress={props.store.editMode()?.address ?? null}
 							selection={props.store.selection()}

@@ -1,6 +1,10 @@
 import { createEffect, untrack } from "solid-js";
-import { createStore } from "solid-js";
-import { createCommandSignal } from "../internal/commandSignal";
+import {
+	isFormulaValue,
+	shiftFormulaReferencesForRowDelete,
+	shiftFormulaReferencesForRowInsert,
+} from "../formula/references";
+import { createCommandSignal, createRevisionCounter } from "../internal/commandSignal";
 import type {
 	CellMutation,
 	CellValue,
@@ -10,44 +14,40 @@ import type {
 	Selection,
 } from "../types";
 import {
-	type PhysicalRowIndex,
-	type RowId,
 	autoRowId,
 	columnIdx,
+	type PhysicalRowIndex,
 	physicalRow,
+	type RowId,
 	rowId,
 	toNumber,
 	visualRow,
 } from "./brands";
+import {
+	appendMutationHistory,
+	createHistory,
+	type HistoryStack,
+	canRedo as histCanRedo,
+	canUndo as histCanUndo,
+	redo as histRedo,
+	undo as histUndo,
+	pushColumnResizeHistory,
+	pushRowOperationHistory,
+	pushRowReorderHistory,
+	pushRowResizeHistory,
+	type RowOperation,
+	type UndoRedoRowChange,
+	type UndoResult,
+} from "./history";
+import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
 import {
 	allocateProvisionalRowIds,
 	isProvisionalRowId,
 	rowIdsEqual,
 	validateRowIds,
 } from "./row-identity";
+import { createRowRevisions } from "./rowRevisions";
 import { emptySelection, selectCell } from "./selection";
-import { incrementReconciliationCount, measureReconciliation } from "./reconciliationDiagnostics";
-import {
-	isFormulaValue,
-	shiftFormulaReferencesForRowInsert,
-	shiftFormulaReferencesForRowDelete,
-} from "../formula/references";
-import {
-	type HistoryStack,
-	type RowOperation,
-	type UndoRedoRowChange,
-	type UndoResult,
-	canRedo as histCanRedo,
-	canUndo as histCanUndo,
-	createHistory,
-	pushColumnResizeHistory,
-	pushMutationHistory,
-	pushRowOperationHistory,
-	pushRowReorderHistory,
-	pushRowResizeHistory,
-	redo as histRedo,
-	undo as histUndo,
-} from "./history";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,6 +100,7 @@ export interface SheetStore {
 	editMode(): EditModeState | null;
 	columnWidths(): Map<string, number>;
 	rowHeights(): Map<RowId, number>;
+	/** Snapshot whose stacks remain unchanged by later commands. */
 	history(): HistoryStack;
 
 	// Mutations
@@ -212,44 +213,59 @@ export function createSheetStore(
 		columns.map((column) => column.id),
 	);
 	const [rowHeights, setRowHeights] = createCommandSignal<Map<RowId, number>>(new Map());
-	const [historyState, setHistory] = createCommandSignal<HistoryStack>(createHistory());
+	let ownedHistory = createHistory();
+	let historySnapshot: HistoryStack | undefined;
+	const [historyRevision, bumpHistoryRevision] = createRevisionCounter();
 	const [hasPendingRowOp, setHasPendingRowOp] = createCommandSignal(false);
-	const [dataRevision, setDataRevision] = createCommandSignal(0);
-	const [structuralRevision, setStructuralRevision] = createCommandSignal(0);
-	const [rowRevisions, setRowRevisions] = createStore<Record<string, number>>({});
+	const [dataRevision, bumpDataRevision] = createRevisionCounter();
+	const [structuralRevision, advanceStructuralRevision] = createRevisionCounter();
+	const rowRevisions = createRowRevisions();
 
-	function bumpDataRevision() {
-		setDataRevision((value) => value + 1);
+	function historyChanged(): void {
+		historySnapshot = undefined;
+		bumpHistoryRevision();
+	}
+
+	function historyState(): HistoryStack {
+		historyRevision();
+		return ownedHistory;
+	}
+
+	function setHistory(update: HistoryStack | ((previous: HistoryStack) => HistoryStack)): void {
+		const next = typeof update === "function" ? update(ownedHistory) : update;
+		if (next === ownedHistory) return;
+		ownedHistory = next;
+		historyChanged();
+	}
+
+	function readHistorySnapshot(): HistoryStack {
+		historyRevision();
+		return (historySnapshot ??= {
+			undoStack: ownedHistory.undoStack.slice(),
+			redoStack: ownedHistory.redoStack.slice(),
+		});
 	}
 
 	function bumpStructuralRevision() {
 		incrementReconciliationCount("revision.structuralBumps");
-		setStructuralRevision((value) => value + 1);
+		advanceStructuralRevision();
 		bumpDataRevision();
 	}
 
 	function bumpRowRevisionsForPhysicalRows(rows: Iterable<number>) {
 		const ids = rowIds();
-		const unique = new Set<string>();
+		const unique = new Set<RowId>();
 		for (const row of rows) {
 			const id = ids[row];
 			if (id !== undefined) unique.add(id);
 		}
 		if (unique.size === 0) return;
-		for (const id of unique) {
-			setRowRevisions((draft) => {
-				draft[id] = (draft[id] ?? 0) + 1;
-			});
-		}
+		rowRevisions.bump(unique);
 		bumpDataRevision();
 	}
 
 	function forgetRowRevisions(ids: Iterable<RowId>) {
-		setRowRevisions((draft) => {
-			for (const id of ids) {
-				delete draft[id];
-			}
-		});
+		rowRevisions.forget(ids);
 	}
 
 	function allocateNewRowIds(count: number, explicitIds?: RowId[]): RowId[] {
@@ -468,6 +484,7 @@ export function createSheetStore(
 
 	function pruneRowHeights(nextRowIds: readonly RowId[]): void {
 		const current = rowHeights();
+		if (current.size === 0) return;
 		const nextRowIdSet = new Set(nextRowIds);
 		const next = new Map<RowId, number>();
 		for (const [id, height] of current) {
@@ -479,25 +496,51 @@ export function createSheetStore(
 	}
 
 	function pruneRowRevisions(nextRowIds: readonly RowId[]): void {
-		const nextRowIdSet = new Set(nextRowIds);
-		setRowRevisions((draft) => {
-			for (const id of Object.keys(draft)) {
-				if (!nextRowIdSet.has(id as RowId)) delete draft[id];
-			}
-		});
+		rowRevisions.retain(nextRowIds);
 	}
 
-	function materializeHostCells(data: readonly CellValue[][], colCount: number): CellValue[][] {
-		return measureReconciliation("identity.bulkMaterializeCells", () =>
-			data.map((sourceRow) => {
+	function materializeHostCells(
+		data: readonly CellValue[][],
+		colCount: number,
+		nextRowIds: readonly RowId[],
+	): CellValue[][] {
+		return measureReconciliation("identity.bulkMaterializeCells", () => {
+			const previousRows = new Map<RowId, CellValue[]>();
+			// Full reorders can reuse owned rows. A shrinking replacement copies
+			// only its retained data rather than indexing the larger old sheet.
+			if (data.length >= cells.length) {
+				const ids = rowIds();
+				for (let index = 0; index < cells.length; index++) {
+					const row = cells[index];
+					const id = ids[index];
+					if (row && id !== undefined) previousRows.set(id, row);
+				}
+			}
+			return data.map((sourceRow, index) => {
 				const rowLength = Math.max(sourceRow.length, colCount);
+				const id = nextRowIds[index];
+				const previous = id === undefined ? undefined : previousRows.get(id);
+				if (previous && previous.length === rowLength) {
+					let unchanged = true;
+					for (let column = 0; column < rowLength; column++) {
+						if (previous[column] !== (sourceRow[column] ?? null)) {
+							unchanged = false;
+							break;
+						}
+					}
+					if (unchanged) return previous;
+				}
+				const values: readonly (CellValue | undefined)[] = sourceRow;
+				if (sourceRow.length >= colCount && !values.includes(undefined)) {
+					return sourceRow.slice();
+				}
 				const row = new Array<CellValue>(rowLength);
 				for (let column = 0; column < rowLength; column++) {
 					row[column] = sourceRow[column] ?? null;
 				}
 				return row;
-			}),
-		);
+			});
+		});
 	}
 
 	function preservesPendingRowAcknowledgement(
@@ -525,7 +568,7 @@ export function createSheetStore(
 			incrementReconciliationCount("structure.deleteCalls", 0);
 			incrementReconciliationCount("structure.insertCalls", 0);
 			incrementReconciliationCount("formula.authoritativeHostSkips");
-			const nextCells = materializeHostCells(options.data, options.columns.length);
+			const nextCells = materializeHostCells(options.data, options.columns.length, options.rowIds);
 
 			measureReconciliation("solid.bulkStoreTransaction", () =>
 				(() => {
@@ -721,7 +764,7 @@ export function createSheetStore(
 		rowIds,
 		dataRevision,
 		rowRevision(id: RowId) {
-			return rowRevisions[id] ?? 0;
+			return rowRevisions.read(id);
 		},
 		structuralRevision,
 
@@ -729,7 +772,7 @@ export function createSheetStore(
 		editMode,
 		columnWidths: colWidths,
 		rowHeights,
-		history: historyState,
+		history: readHistorySnapshot,
 
 		setCell(row: PhysicalRowIndex, col: number, value: CellValue) {
 			setCells((draft) => {
@@ -748,7 +791,11 @@ export function createSheetStore(
 				}
 				draftRow[col] = value;
 			});
-			bumpRowRevisionsForPhysicalRows([toNumber(row)]);
+			const id = rowIds()[row];
+			if (id !== undefined) {
+				rowRevisions.bumpOne(id);
+				bumpDataRevision();
+			}
 		},
 
 		setCells(mutations: Array<{ row: PhysicalRowIndex; col: number; value: CellValue }>) {
@@ -1041,7 +1088,9 @@ export function createSheetStore(
 			selectionBefore: Selection,
 			selectionAfter: Selection,
 		) {
-			setHistory((prev) => pushMutationHistory(prev, mutations, selectionBefore, selectionAfter));
+			if (mutations.length === 0) return;
+			appendMutationHistory(ownedHistory, mutations, selectionBefore, selectionAfter);
+			historyChanged();
 		},
 
 		pushRowOperation(rowOp: RowOperation, selectionBefore: Selection, selectionAfter: Selection) {

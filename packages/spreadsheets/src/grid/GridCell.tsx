@@ -1,50 +1,66 @@
-import { createMemo, Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { CellRenderContext, CellStyle, CellValue } from "../types";
-import { type ColumnIndex, type VisualRowIndex } from "../core/brands";
+import {
+	type ColumnIndex,
+	columnIdx,
+	toNumber,
+	type VisualRowIndex,
+	visualRow,
+} from "../core/brands";
+import { defaultFormatCellValue } from "../core/formatting";
+import { selectionContains } from "../core/selection";
+import type {
+	CellRenderContext,
+	CellStyle,
+	CellValue,
+	ColumnDef,
+	PhysicalCellAddress,
+	Selection,
+	SheetCustomization,
+	VisualCellAddress,
+} from "../types";
 import { trackGridLifecycle } from "./lifecycleDiagnostics";
 
-interface GridCellProps {
-	id: string;
-	/** Raw cell value (pre-format). Passed to renderCell / title hooks. */
-	rawValue: CellValue;
-	/** Text to render in the default inner span (already passed through formatValue or the default). */
-	formattedText: string;
-	/** Visual row index. */
-	row: VisualRowIndex;
-	width: number;
-	height: number;
-	/** Absolute horizontal position for a virtualized, non-pinned cell. */
-	layoutLeft?: number;
-	colIndex: ColumnIndex;
+export interface GridCellLayout {
+	style: CellStyle;
+	cssText: string;
+}
+
+export interface GridCellRow {
+	readonly grid: GridCellContext;
+	readonly customization: SheetCustomization | undefined;
+	readonly item: { index: number; start: number; size: number };
+	readonly className: string;
+	readonly selection: Selection | null;
+	readonly editingAddress: VisualCellAddress | null;
+	readonly displayValues: readonly CellValue[] | undefined;
+	getLayout(columnIndex: number): GridCellLayout;
+}
+
+export interface GridCellContext {
+	virtualColumns: Array<{ index: number; start: number; size: number; column: ColumnDef }>;
+	rowGutterWidth: number;
+	getCellId: (address: VisualCellAddress) => string;
+	getDisplayValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
+	getRawValue: (row: VisualRowIndex, col: ColumnIndex) => CellValue;
+	editingAddress: VisualCellAddress | null;
+	selection: Selection;
+	onCellMouseDown: (addr: VisualCellAddress, event: MouseEvent) => void;
+	onCellMouseEnter?: (addr: VisualCellAddress, event: MouseEvent) => void;
+	onCellDblClick: (addr: VisualCellAddress) => void;
+	pinnedLeftOffsets: number[];
+	lastPinnedIndex: number;
 	readOnly?: boolean;
-	pinnedLeft?: number;
-	isLastPinned?: boolean;
-	searchMatch?: boolean;
-	searchCurrent?: boolean;
-	customClass?: string;
-	/**
-	 * Optional inline style for the cell container. Merged with the grid's own
-	 * layout style — width/height/min-width/left always win to preserve layout.
-	 */
-	inlineStyle?: CellStyle;
-	/**
-	 * Optional title override.
-	 * - `undefined` → default to `formattedText || undefined`
-	 * - `""` → suppress title
-	 * - any other string → use verbatim
-	 */
-	title?: string;
-	/** Optional custom cell-content renderer. Replaces only the inner span. */
-	renderCell?: (ctx: CellRenderContext) => JSX.Element;
-	/** True while the CellEditor overlays this cell. */
-	isEditing?: boolean;
-	isFocused?: boolean;
-	isSelected?: boolean;
-	isActiveRow?: boolean;
-	onMouseDown: (event: MouseEvent) => void;
-	onMouseEnter?: (event: MouseEvent) => void;
-	onDblClick: () => void;
+	searchMatchSet: Set<string>;
+	searchCurrentAddress: PhysicalCellAddress | null;
+}
+
+interface GridCellProps {
+	/** Stable contexts and a fixed Repeat slot; updates flow through their getters. */
+	row: GridCellRow;
+	columnIndex: number;
+	/** The parent recreates the row owner when custom rendering is enabled or disabled. */
+	renderCustom?: boolean;
+	/** The parent recreates rows when custom style hooks are added or removed. */
+	plainLayout?: boolean;
 }
 
 function resolveTitle(title: string | undefined, formattedText: string): string | undefined {
@@ -53,70 +69,194 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
 	return title;
 }
 
+/** Shared getters avoid allocating a separate closure for each derived cell field.
+ * Reading them in JSX still subscribes Solid to the underlying reactive props. */
+class CellView {
+	constructor(
+		readonly rowModel: GridCellRow,
+		readonly columnIndex: number,
+	) {}
+	get grid() {
+		return this.rowModel.grid;
+	}
+	get customization() {
+		return this.rowModel.customization;
+	}
+	get virtualColumn() {
+		const column = this.grid.virtualColumns[this.columnIndex];
+		if (!column)
+			throw new Error(`Virtual column ${this.columnIndex} is outside the rendered range`);
+		return column;
+	}
+	get row() {
+		return visualRow(this.rowModel.item.index);
+	}
+	get col() {
+		return columnIdx(this.virtualColumn.index);
+	}
+	get column() {
+		return this.virtualColumn.column;
+	}
+	get address(): VisualCellAddress {
+		return { row: this.row, col: this.col };
+	}
+	get rawValue() {
+		return this.grid.getRawValue(this.row, this.col);
+	}
+	get formattedText() {
+		const projected = this.rowModel.displayValues;
+		const value = projected
+			? (projected[this.columnIndex] ?? null)
+			: this.grid.getDisplayValue(this.row, this.col);
+		const format = this.column.formatValue;
+		return format ? format(value, { row: this.row, col: this.col }) : defaultFormatCellValue(value);
+	}
+	get readOnly() {
+		return (this.grid.readOnly ?? false) || this.column.editable === false;
+	}
+	get isEditing() {
+		const editing = this.rowModel.editingAddress;
+		return editing?.row === this.row && editing.col === this.col;
+	}
+	get isSelected() {
+		const selection = this.rowModel.selection;
+		return selection !== null && selectionContains(selection, this.address);
+	}
+	get className() {
+		const row = this.row;
+		const column = this.virtualColumn;
+		const col = columnIdx(column.index);
+		const grid = this.grid;
+		const selection = this.rowModel.selection;
+		const focus = selection?.focus;
+		const editing = this.rowModel.editingAddress;
+		const current = grid.searchCurrentAddress;
+		let classes = "se-cell";
+		const rowClass = this.rowModel.className;
+		const cellClass = this.customization?.getCellClass?.(row, col);
+		if (rowClass) classes += ` ${rowClass}`;
+		if (cellClass) classes += ` ${cellClass}`;
+		if ((grid.pinnedLeftOffsets[column.index] ?? -1) >= 0) classes += " se-cell--pinned";
+		if (column.index === grid.lastPinnedIndex) classes += " se-cell--pinned-last";
+		if (grid.searchMatchSet.has(`${row},${col}`)) classes += " se-cell--search-match";
+		if (current !== null && toNumber(current.row) === toNumber(row) && current.col === col)
+			classes += " se-cell--search-current";
+		if (focus?.row === row) classes += " se-cell--active-row";
+		if (selection !== null && selectionContains(selection, { row, col }))
+			classes += " se-cell--range";
+		if (focus?.row === row && focus.col === col) classes += " se-cell--focus";
+		if (editing?.row === row && editing.col === col) classes += " se-cell--editing";
+		return classes;
+	}
+	get style() {
+		const layout = this.rowModel.getLayout(this.columnIndex);
+		const custom = this.customization?.getCellStyle?.(this.row, this.col);
+		// Host styles cannot override virtualized layout.
+		return custom ? { ...custom, ...layout.style } : layout.style;
+	}
+	get layoutCssText() {
+		return this.rowModel.getLayout(this.columnIndex).cssText;
+	}
+	renderContent() {
+		const render = this.column.renderCell;
+		if (!render) return <span class="se-cell__text" textContent={this.formattedText} />;
+		return render({
+			value: this.rawValue,
+			formattedText: this.formattedText,
+			row: this.row,
+			col: this.col,
+			readOnly: this.readOnly,
+			isEditing: this.isEditing,
+		} satisfies CellRenderContext);
+	}
+}
+
+function cellMouseDown(view: CellView, event: MouseEvent) {
+	view.grid.onCellMouseDown(view.address, event);
+}
+function cellMouseOver(view: CellView, event: MouseEvent) {
+	// Delegate the bubbling event while preserving mouseenter semantics.
+	if (
+		event.currentTarget instanceof Node &&
+		event.relatedTarget instanceof Node &&
+		event.currentTarget.contains(event.relatedTarget)
+	) {
+		return;
+	}
+	view.grid.onCellMouseEnter?.(view.address, event);
+}
+function cellDoubleClick(view: CellView) {
+	view.grid.onCellDblClick(view.address);
+}
+
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const isPinned = () => props.pinnedLeft != null && props.pinnedLeft >= 0;
-	const renderedContent = createMemo(() => {
-		const renderer = props.renderCell;
-		if (!renderer) return null;
-		return {
-			renderer,
-			context: {
-				value: props.rawValue,
-				formattedText: props.formattedText,
-				row: props.row,
-				col: props.colIndex,
-				readOnly: props.readOnly ?? false,
-				isEditing: props.isEditing ?? false,
-			} satisfies CellRenderContext,
-		};
-	});
-
+	const view = new CellView(props.row, props.columnIndex);
+	// Geometry changes flow through inherited CSS variables; this binding is static.
+	if (props.renderCustom === false && props.plainLayout === true) {
+		return (
+			<div
+				id={view.grid.getCellId(view.address)}
+				class={view.className}
+				role="gridcell"
+				aria-colindex={view.col + 1}
+				aria-selected={view.isSelected ? "true" : "false"}
+				aria-readonly={view.readOnly ? "true" : "false"}
+				title={resolveTitle(
+					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+					view.formattedText,
+				)}
+				style={/* @static */ view.layoutCssText}
+				onMouseDown={[cellMouseDown, view]}
+				onMouseOver={[cellMouseOver, view]}
+				onDblClick={[cellDoubleClick, view]}
+			>
+				<span class="se-cell__text" textContent={view.formattedText} />
+			</div>
+		);
+	}
+	// Keeping the default span in the root template lets Solid compile text and
+	// attributes into one computation, without a per-cell renderer branch.
+	if (props.renderCustom === false) {
+		return (
+			<div
+				id={view.grid.getCellId(view.address)}
+				class={view.className}
+				role="gridcell"
+				aria-colindex={view.col + 1}
+				aria-selected={view.isSelected ? "true" : "false"}
+				aria-readonly={view.readOnly ? "true" : "false"}
+				title={resolveTitle(
+					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+					view.formattedText,
+				)}
+				style={view.style}
+				onMouseDown={[cellMouseDown, view]}
+				onMouseOver={[cellMouseOver, view]}
+				onDblClick={[cellDoubleClick, view]}
+			>
+				<span class="se-cell__text" textContent={view.formattedText} />
+			</div>
+		);
+	}
 	return (
 		<div
-			id={props.id}
-			class={[
-				`se-cell${props.customClass ? ` ${props.customClass}` : ""}`,
-				{
-					"se-cell--pinned": isPinned(),
-					"se-cell--pinned-last": !!props.isLastPinned,
-					"se-cell--search-match": !!props.searchMatch,
-					"se-cell--search-current": !!props.searchCurrent,
-					"se-cell--active-row": !!props.isActiveRow,
-					"se-cell--range": !!props.isSelected,
-					"se-cell--focus": !!props.isFocused,
-					"se-cell--editing": !!props.isEditing,
-				},
-			]}
+			id={view.grid.getCellId(view.address)}
+			class={view.className}
 			role="gridcell"
-			aria-colindex={props.colIndex + 1}
-			aria-selected={props.isSelected ? "true" : "false"}
-			aria-readonly={props.readOnly ? "true" : "false"}
-			title={resolveTitle(props.title, props.formattedText)}
-			style={{
-				// Host-provided styles first so the grid's layout overrides win.
-				...(props.inlineStyle ?? {}),
-				width: `${props.width}px`,
-				height: `${props.height}px`,
-				"min-width": `${props.width}px`,
-				position: isPinned() ? undefined : props.layoutLeft === undefined ? undefined : "absolute",
-				left: isPinned()
-					? `${props.pinnedLeft}px`
-					: props.layoutLeft === undefined
-						? undefined
-						: `${props.layoutLeft}px`,
-			}}
-			onMouseDown={props.onMouseDown}
-			onMouseEnter={(event) => props.onMouseEnter?.(event)}
-			onDblClick={props.onDblClick}
+			aria-colindex={view.col + 1}
+			aria-selected={view.isSelected ? "true" : "false"}
+			aria-readonly={view.readOnly ? "true" : "false"}
+			title={resolveTitle(
+				view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
+				view.formattedText,
+			)}
+			style={view.style}
+			onMouseDown={[cellMouseDown, view]}
+			onMouseOver={[cellMouseOver, view]}
+			onDblClick={[cellDoubleClick, view]}
 		>
-			<Show
-				keyed
-				when={renderedContent()}
-				fallback={<span class="se-cell__text">{props.formattedText}</span>}
-			>
-				{(content) => content.renderer(content.context)}
-			</Show>
+			{view.renderContent()}
 		</div>
 	);
 }

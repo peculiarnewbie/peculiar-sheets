@@ -1,28 +1,29 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { Stagehand } from "@browserbasehq/stagehand";
-import {
-	closePage,
-	getPage,
-	getStagehand,
-	navigateTo,
-	newPage,
-	press,
-} from "./setup";
+import { closePage, getPage, getStagehand, navigateTo, newPage, press } from "./setup";
 
 const mainGrid = ".contract-theme";
 
 async function setSelection(row: number, col: number): Promise<void> {
-	await getPage().evaluate(({ row, col }: { row: number; col: number }) => {
-		window.__SHEET_CONTROLLER__?.setSelection([{
-			start: { row, col },
-			end: { row, col },
-		}]);
-		const grid = document.querySelector<HTMLElement>(".contract-theme");
-		grid?.focus();
-	}, { row, col });
+	await getPage().evaluate(
+		({ row, col }: { row: number; col: number }) => {
+			window.__SHEET_CONTROLLER__?.setSelection([
+				{
+					start: { row, col },
+					end: { row, col },
+				},
+			]);
+			const grid = document.querySelector<HTMLElement>(".contract-theme");
+			grid?.focus();
+		},
+		{ row, col },
+	);
 }
 
-async function selection(): Promise<{ anchor: { row: number; col: number }; focus: { row: number; col: number } } | null> {
+async function selection(): Promise<{
+	anchor: { row: number; col: number };
+	focus: { row: number; col: number };
+} | null> {
 	return getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getSelection() ?? null);
 }
 
@@ -62,6 +63,43 @@ describe("authoring grid contracts", () => {
 		});
 	});
 
+	it("aligns pinned and reference headers with cells while scrolling horizontally", async () => {
+		await getPage().evaluate(() => {
+			const grid = document.querySelector<HTMLElement>(".contract-theme");
+			const viewport = grid?.querySelector<HTMLElement>(".se-viewport");
+			if (!grid || !viewport) throw new Error("Contract grid missing");
+			grid.style.width = "400px";
+			viewport.scrollLeft = viewport.scrollWidth;
+			viewport.dispatchEvent(new Event("scroll"));
+		});
+		await getPage().waitForTimeout(200);
+		const deltas = await getPage().evaluate(() => {
+			const grid = document.querySelector<HTMLElement>(".contract-theme");
+			return [0, 3].map((index) => {
+				const header = grid?.querySelector<HTMLElement>(
+					`.se-header-cell[data-col-index="${index}"]`,
+				);
+				const reference = grid?.querySelector<HTMLElement>(
+					`.se-header-ref-cell[data-col-index="${index}"]`,
+				);
+				const cell = grid?.querySelector<HTMLElement>(
+					`.se-row[aria-rowindex="1"] .se-cell[aria-colindex="${index + 1}"]`,
+				);
+				if (!header || !reference || !cell) throw new Error("Scrolled column missing");
+				return {
+					header: Math.abs(header.getBoundingClientRect().left - cell.getBoundingClientRect().left),
+					reference: Math.abs(
+						reference.getBoundingClientRect().left - cell.getBoundingClientRect().left,
+					),
+				};
+			});
+		});
+		for (const delta of deltas) {
+			expect(delta.header).toBeLessThan(1);
+			expect(delta.reference).toBeLessThan(1);
+		}
+	});
+
 	it("keeps row classes aligned with view sorting, pinned cells, row IDs, and state", async () => {
 		await setSelection(0, 0);
 		const initial = await getPage().evaluate(() => {
@@ -69,7 +107,7 @@ describe("authoring grid contracts", () => {
 				'.contract-theme [role="row"][aria-rowindex="1"]',
 			);
 			const header = row?.querySelector<HTMLElement>('[role="rowheader"]');
-			const pinned = row?.querySelector<HTMLElement>('.se-cell--pinned');
+			const pinned = row?.querySelector<HTMLElement>(".se-cell--pinned");
 			return {
 				row: row?.className ?? "",
 				header: header?.className ?? "",
@@ -91,8 +129,10 @@ describe("authoring grid contracts", () => {
 
 		await press(sh, "ArrowDown");
 		const moved = await getPage().evaluate(() => ({
-			first: document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="1"]')?.className ?? "",
-			second: document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="2"]')?.className ?? "",
+			first:
+				document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="1"]')?.className ?? "",
+			second:
+				document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="2"]')?.className ?? "",
 		}));
 		expect(moved.first).not.toContain("row-has-focus");
 		expect(moved.second).toContain("row-id-contract-78");
@@ -112,8 +152,12 @@ describe("authoring grid contracts", () => {
 			const activeId = grid?.getAttribute("aria-activedescendant") ?? "";
 			const active = document.getElementById(activeId);
 			return {
-				firstRow: document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="1"]')?.className ?? "",
-				secondRow: document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="2"]')?.className ?? "",
+				firstRow:
+					document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="1"]')?.className ??
+					"",
+				secondRow:
+					document.querySelector<HTMLElement>('.contract-theme [aria-rowindex="2"]')?.className ??
+					"",
 				activeSelected: active?.getAttribute("aria-selected"),
 				activeOutline: active ? getComputedStyle(active).outlineStyle : "",
 			};
@@ -128,22 +172,36 @@ describe("authoring grid contracts", () => {
 	it("enters, cancels, replaces, and vertically commits edits", async () => {
 		await setSelection(0, 1);
 		await press(sh, "Enter");
-		expect(await getPage().evaluate(() => document.querySelector(".se-cell-editor")?.getAttribute("aria-label"))).toBe("Edit B1");
+		expect(
+			await getPage().evaluate(() =>
+				document.querySelector(".se-cell-editor")?.getAttribute("aria-label"),
+			),
+		).toBe("Edit B1");
 		await press(sh, "Escape");
-		expect(await getPage().evaluate(() => document.querySelector(".se-cell-editor") === null)).toBe(true);
+		expect(await getPage().evaluate(() => document.querySelector(".se-cell-editor") === null)).toBe(
+			true,
+		);
 
 		await press(sh, "F2");
-		expect(await getPage().evaluate(() => ({
-			row: document.querySelector(".row-has-editor") !== null,
-			cell: document.querySelector(".se-cell--editing") !== null,
-		}))).toEqual({ row: true, cell: true });
+		expect(
+			await getPage().evaluate(() => ({
+				row: document.querySelector(".row-has-editor") !== null,
+				cell: document.querySelector(".se-cell--editing") !== null,
+			})),
+		).toEqual({ row: true, cell: true });
 		await press(sh, "Escape");
 
 		await setSelection(0, 1);
 		await getPage().type("X");
-		expect(await getPage().evaluate(() => (document.querySelector(".se-cell-editor") as HTMLInputElement | null)?.value)).toBe("X");
+		expect(
+			await getPage().evaluate(
+				() => (document.querySelector(".se-cell-editor") as HTMLInputElement | null)?.value,
+			),
+		).toBe("X");
 		await press(sh, "Escape");
-		expect(await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getRawCellValue(0, 1))).toBe("Record 79");
+		expect(await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getRawCellValue(0, 1))).toBe(
+			"Record 79",
+		);
 
 		await press(sh, "F2");
 		await press(sh, "Enter");
@@ -164,7 +222,9 @@ describe("authoring grid contracts", () => {
 		await getPage().type("Q");
 		await press(sh, "Tab");
 		expect((await selection())?.anchor).toEqual({ row: 0, col: 1 });
-		expect(await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getRawCellValue(0, 0))).toBe("Q");
+		expect(await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getRawCellValue(0, 0))).toBe(
+			"Q",
+		);
 		await press(sh, "Shift+Tab");
 		expect((await selection())?.anchor).toEqual({ row: 0, col: 0 });
 
@@ -180,7 +240,9 @@ describe("authoring grid contracts", () => {
 
 	it("blocks every keyboard edit entry path for read-only cells", async () => {
 		await setSelection(0, 2);
-		const before = await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.getRawCellValue(0, 2));
+		const before = await getPage().evaluate(() =>
+			window.__SHEET_CONTROLLER__?.getRawCellValue(0, 2),
+		);
 		await press(sh, "F2");
 		await press(sh, "Z");
 		await getPage().evaluate(() => window.__SHEET_CONTROLLER__?.startEditing(0, 2));
@@ -244,7 +306,8 @@ describe("authoring grid contracts", () => {
 		const empty = await getPage().evaluate(() => ({
 			defaultText: document.querySelector(".default-empty .se-empty-state")?.textContent?.trim(),
 			customText: document.querySelector(".custom-empty .se-empty-state")?.textContent?.trim(),
-			customButton: document.querySelector(".custom-empty #create-first-row") instanceof HTMLButtonElement,
+			customButton:
+				document.querySelector(".custom-empty #create-first-row") instanceof HTMLButtonElement,
 		}));
 		expect(empty).toEqual({
 			defaultText: "No data",

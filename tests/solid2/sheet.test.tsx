@@ -1,19 +1,345 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, renderHook, fireEvent } from "@solidjs/testing-library";
-import { createEffect, createSignal, flush } from "solid-js";
-import { Sheet } from "../../packages/spreadsheets/src/Sheet";
-import { createSheetStore } from "../../packages/spreadsheets/src/core/state";
+import { cleanup, fireEvent, render, renderHook } from "@solidjs/testing-library";
 import {
-	rowId,
-	physicalRow,
-	visualRow,
+	createEffect,
+	createMemo,
+	createRoot,
+	createSignal,
+	createStore,
+	flush,
+	Loading,
+} from "solid-js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
 	columnIdx,
+	physicalRow,
+	rowId,
+	visualRow,
 } from "../../packages/spreadsheets/src/core/brands";
-import type { CellValue, SheetController } from "../../packages/spreadsheets/src/types";
+import { selectCell } from "../../packages/spreadsheets/src/core/selection";
+import { createSheetStore } from "../../packages/spreadsheets/src/core/state";
+import { SheetCustomizationContext } from "../../packages/spreadsheets/src/customization";
+import GridBody from "../../packages/spreadsheets/src/grid/GridBody";
+import GridCell, { type GridCellContext } from "../../packages/spreadsheets/src/grid/GridCell";
+import GridHeader from "../../packages/spreadsheets/src/grid/GridHeader";
+import { buildRowMetrics } from "../../packages/spreadsheets/src/grid/rowMetrics";
+import { Sheet } from "../../packages/spreadsheets/src/Sheet";
+import type {
+	CellStyle,
+	CellValue,
+	ColumnDef,
+	SheetController,
+	SheetCustomization,
+	VisualCellAddress,
+} from "../../packages/spreadsheets/src/types";
 
 afterEach(cleanup);
 
 describe("Solid 2 Sheet", () => {
+	it("keeps virtual headers aligned with global indices, pinned columns, sorting, and resizing", () => {
+		const columns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
+			id: `col${index}`,
+			header: `Column ${index}`,
+			...(index === 100 || index === 101 ? { groupId: "far", group: "Far columns" } : {}),
+		}));
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1]));
+		let clicked = -1;
+		let resized = "";
+		const view = render(() => (
+			<GridHeader
+				columns={columns}
+				virtualColumns={virtualColumns()}
+				columnWidths={new Map(columns.map((column) => [column.id, 100]))}
+				totalWidth={20040}
+				sortState={{ columnId: "col100", direction: "desc" }}
+				showReferenceHeaders={true}
+				rowGutterWidth={40}
+				pinnedLeftOffsets={[40]}
+				lastPinnedIndex={0}
+				activeResizeColumnId="col100"
+				onColumnHeaderMouseDown={(index) => {
+					clicked = index;
+				}}
+				onColumnResizeStart={(id) => {
+					resized = id;
+				}}
+			/>
+		));
+		flush();
+		expect(view.container.querySelectorAll(".se-header-cell")).toHaveLength(2);
+		setVirtualColumns(range([0, 100, 101]));
+		flush();
+		expect(view.container.querySelectorAll(".se-header-cell")).toHaveLength(3);
+		expect(view.container.querySelectorAll(".se-header-ref-cell")).toHaveLength(3);
+		const header = view.container.querySelector<HTMLElement>(
+			'.se-header-cell[data-col-index="100"]',
+		);
+		const pinned = view.container.querySelector<HTMLElement>('.se-header-cell[data-col-index="0"]');
+		const reference = view.container.querySelector<HTMLElement>(
+			'.se-header-ref-cell[data-col-index="100"]',
+		);
+		if (!header || !pinned || !reference) throw new Error("Virtual header missing");
+		expect(header.textContent).toContain("Column 100");
+		expect(header.getAttribute("aria-colindex")).toBe("101");
+		expect(header.getAttribute("aria-sort")).toBe("descending");
+		expect(header.classList.contains("se-header-cell--resizing")).toBe(true);
+		expect(header.style.left).toBe("10040px");
+		expect(reference.textContent).toBe("CW");
+		expect(reference.style.left).toBe(header.style.left);
+		expect(pinned.classList.contains("se-header-cell--pinned")).toBe(true);
+		expect(pinned.style.left).toBe("40px");
+		expect(view.getByText("Far columns")).toBeTruthy();
+		fireEvent.mouseDown(header);
+		expect(clicked).toBe(100);
+		const handle = header.querySelector(".se-resize-handle");
+		if (!handle) throw new Error("Resize handle missing");
+		fireEvent.mouseDown(handle);
+		expect(resized).toBe("col100");
+		setVirtualColumns(
+			virtualColumns().map((item) => (item.index === 100 ? { ...item, size: 130 } : item)),
+		);
+		flush();
+		expect(header.style.width).toBe("130px");
+		expect(reference.style.width).toBe("130px");
+	});
+	it("keeps virtual rows and recycled column slots current as ranges move, shrink, and grow", () => {
+		const formats = new Map<number, number>();
+		const formattedRows = new Set<number>();
+		const formattedColumns: ColumnDef[] = Array.from({ length: 200 }, (_, index) => ({
+			id: `col${index}`,
+			header: `Column ${index}`,
+			formatValue: (value, context) => {
+				formattedRows.add(context.row);
+				formats.set(index, (formats.get(index) ?? 0) + 1);
+				return String(value ?? "");
+			},
+		}));
+		const [columns, setColumns] = createSignal(formattedColumns);
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns()[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2]));
+		const [changed, setChanged] = createSignal(false);
+		const [height, setHeight] = createSignal(28);
+		const [rows, setRows] = createSignal([10, 11]);
+		const [selection, setSelection] = createSignal(
+			selectCell({ row: visualRow(10), col: columnIdx(0) }),
+		);
+		const [editing, setEditing] = createSignal<VisualCellAddress | null>(null);
+		let clicked: VisualCellAddress | null = null;
+		const view = render(() => (
+			<GridBody
+				columns={columns()}
+				rowMetrics={buildRowMetrics(1000, 28)}
+				virtualRows={rows().map((index) => ({ index, start: index * height(), size: height() }))}
+				virtualColumns={virtualColumns()}
+				totalHeight={1000 * height()}
+				rowGutterWidth={0}
+				showReferenceHeaders={false}
+				getRowHeaderIndex={(row) => row}
+				getRowId={(row) => rowId(`row-${row}`)}
+				getCellId={(address) => `cell-${address.row}-${address.col}`}
+				getRawValue={(row, col) => `R${row}C${col}`}
+				getDisplayValue={(row, col) => {
+					const modified = changed();
+					return modified && row === 10 && col === 100 ? "changed" : `R${row}C${col}`;
+				}}
+				editingAddress={editing()}
+				selection={selection()}
+				onCellMouseDown={(address) => {
+					clicked = address;
+				}}
+				onCellDblClick={() => {}}
+				pinnedLeftOffsets={[0]}
+				lastPinnedIndex={0}
+				searchMatchSet={new Set()}
+				searchCurrentAddress={null}
+			/>
+		));
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(6);
+		formattedRows.clear();
+		setSelection(selectCell({ row: visualRow(10), col: columnIdx(1) }));
+		flush();
+		expect([...formattedRows]).toEqual([10]);
+		expect(view.container.querySelector("#cell-10-1")?.getAttribute("aria-selected")).toBe("true");
+		expect(view.container.querySelector("#cell-11-1")?.getAttribute("aria-selected")).toBe("false");
+		formattedRows.clear();
+		setEditing({ row: visualRow(10), col: columnIdx(1) });
+		flush();
+		expect([...formattedRows]).toEqual([10]);
+		expect(view.container.querySelector("#cell-10-1")?.classList.contains("se-cell--editing")).toBe(
+			true,
+		);
+		setEditing(null);
+		setSelection(selectCell({ row: visualRow(10), col: columnIdx(0) }));
+		flush();
+		setVirtualColumns(range([100, 101]));
+		flush();
+		expect(view.getAllByRole("gridcell").map((cell) => cell.textContent)).toEqual([
+			"R10C100",
+			"R10C101",
+			"R11C100",
+			"R11C101",
+		]);
+		const cell = view.container.querySelector<HTMLElement>("#cell-10-100");
+		if (!cell) throw new Error("Recycled cell missing");
+		expect(getComputedStyle(cell).left).toBe("10000px");
+		expect(getComputedStyle(cell).height).toBe("28px");
+		setHeight(40);
+		flush();
+		expect(getComputedStyle(cell).height).toBe("40px");
+		fireEvent.mouseDown(cell);
+		expect(clicked).toEqual({ row: 10, col: 100 });
+		formats.clear();
+		setChanged(true);
+		flush();
+		expect(cell.textContent).toBe("changed");
+		expect(formats.get(100)).toBeGreaterThan(0);
+		expect(formats.get(101) ?? 0).toBe(0);
+		setColumns(formattedColumns.map(({ id, header }) => ({ id, header })));
+		flush();
+		setVirtualColumns(range([100, 101]));
+		setChanged(false);
+		flush();
+		expect(cell.textContent).toBe("R10C100");
+		formats.clear();
+		setColumns(formattedColumns);
+		flush();
+		setVirtualColumns(range([100, 101]));
+		setChanged(true);
+		flush();
+		expect(cell.textContent).toBe("changed");
+		expect(formats.get(100)).toBeGreaterThan(0);
+		setVirtualColumns(range([]));
+		flush();
+		expect(view.queryAllByRole("gridcell")).toHaveLength(0);
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(8);
+		expect(view.container.querySelector("#cell-10-0")?.classList.contains("se-cell--pinned")).toBe(
+			true,
+		);
+		expect(view.container.querySelector("#cell-11-197")?.textContent).toBe("R11C197");
+		setRows([500, 501]);
+		flush();
+		expect(view.container.querySelector("#cell-10-0")).toBeNull();
+		const moved = view.container.querySelector<HTMLElement>("#cell-500-197");
+		if (!moved) throw new Error("Recycled row missing");
+		expect(moved.textContent).toBe("R500C197");
+		fireEvent.mouseDown(moved);
+		expect(clicked).toEqual({ row: 500, col: 197 });
+		const overlapping = view.container.querySelector("#cell-501-197");
+		setRows([501, 502]);
+		flush();
+		expect(view.container.querySelector("#cell-501-197")).toBe(overlapping);
+		setRows([]);
+		flush();
+		expect(view.queryAllByRole("gridcell")).toHaveLength(0);
+		formats.clear();
+		setChanged(false);
+		flush();
+		expect(formats.size).toBe(0);
+		setRows([999]);
+		flush();
+		expect(view.getAllByRole("gridcell")).toHaveLength(4);
+		expect(view.container.querySelector("#cell-999-197")?.textContent).toBe("R999C197");
+		setColumns(
+			formattedColumns.map((column, index) =>
+				index === 0
+					? { ...column, renderCell: (context) => <b>{context.formattedText}</b> }
+					: column,
+			),
+		);
+		flush();
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.container.querySelector("#cell-999-0 b")?.textContent).toBe("R999C0");
+		setColumns(formattedColumns);
+		flush();
+		setVirtualColumns(range([0, 195, 196, 197]));
+		flush();
+		expect(view.container.querySelector("#cell-999-0 b")).toBeNull();
+		expect(view.container.querySelector("#cell-999-0 .se-cell__text")?.textContent).toBe("R999C0");
+	});
+	it("keeps cell geometry when custom style hooks are added and removed", () => {
+		const [columns, setColumns] = createSignal<ColumnDef[]>([{ id: "value", header: "Value" }]);
+		const column = () => {
+			const value = columns()[0];
+			if (!value) throw new Error("Column missing");
+			return value;
+		};
+		const [customization, setCustomization] = createStore<SheetCustomization>({});
+		const view = render(() => (
+			<SheetCustomizationContext value={customization}>
+				<GridBody
+					columns={columns()}
+					rowMetrics={buildRowMetrics(1, 28)}
+					virtualRows={[{ index: 0, start: 0, size: 28 }]}
+					virtualColumns={[{ index: 0, start: 0, size: 100, column: column() }]}
+					totalHeight={28}
+					rowGutterWidth={0}
+					showReferenceHeaders={false}
+					getRowHeaderIndex={(row) => row}
+					getRowId={() => rowId("row")}
+					getCellId={() => "styled-cell"}
+					getRawValue={() => "value"}
+					getDisplayValue={() => "value"}
+					editingAddress={null}
+					selection={selectCell({ row: visualRow(0), col: columnIdx(0) })}
+					onCellMouseDown={() => {}}
+					onCellDblClick={() => {}}
+					pinnedLeftOffsets={[]}
+					lastPinnedIndex={-1}
+					searchMatchSet={new Set()}
+					searchCurrentAddress={null}
+				/>
+			</SheetCustomizationContext>
+		));
+		flush();
+		expect(getComputedStyle(view.getByRole("gridcell")).width).toBe("100px");
+		setCustomization((draft) => {
+			draft.getCellStyle = () => ({ color: "red", width: "999px", height: "1px" });
+		});
+		flush();
+		const styled = getComputedStyle(view.getByRole("gridcell"));
+		expect(styled.color).toBe("red");
+		expect(styled.width).toBe("100px");
+		expect(styled.height).toBe("28px");
+		setCustomization((draft) => {
+			delete draft.getCellStyle;
+		});
+		flush();
+		const plain = getComputedStyle(view.getByRole("gridcell"));
+		expect(plain.color).not.toBe("red");
+		expect(plain.width).toBe("100px");
+		expect(plain.height).toBe("28px");
+		setColumns([{ id: "value", header: "Value", renderCell: () => <input value="value" /> }]);
+		flush();
+		const input = view.getByRole("textbox") as HTMLInputElement;
+		input.value = "draft";
+		setCustomization((draft) => {
+			draft.getCellStyle = () => ({ color: "blue" });
+		});
+		flush();
+		expect(view.getByRole("textbox")).toBe(input);
+		expect(input.value).toBe("draft");
+		setCustomization((draft) => {
+			delete draft.getCellStyle;
+		});
+		flush();
+		expect(view.getByRole("textbox")).toBe(input);
+		expect(input.value).toBe("draft");
+	});
+
 	it("composes row commands immediately and batches their render notifications", () => {
 		const frames: Array<{ rowCount: number; ids: readonly string[] }> = [];
 		const { result: store } = renderHook(() => {
@@ -93,6 +419,209 @@ describe("Solid 2 Sheet", () => {
 		flush();
 		expect(runs).toEqual([2, 1]);
 		expect(store.cells[0]?.[0]).toBe("a3");
+	});
+
+	it("batches revisions for distinct rows without waking an untouched row", () => {
+		const runs = [0, 0, 0];
+		const ids = [rowId("first"), rowId("second"), rowId("third")];
+		const { result: store } = renderHook(() => {
+			const store = createSheetStore([[1], [2], [3]], [{ id: "value", header: "Value" }], ids);
+			ids.forEach((id, index) =>
+				createEffect(
+					() => store.rowRevision(id),
+					() => {
+						runs[index] = (runs[index] ?? 0) + 1;
+					},
+				),
+			);
+			return store;
+		});
+		flush();
+		store.setCells([
+			{ row: physicalRow(0), col: 0, value: 10 },
+			{ row: physicalRow(0), col: 0, value: 11 },
+			{ row: physicalRow(2), col: 0, value: 30 },
+		]);
+		expect(runs).toEqual([1, 1, 1]);
+		flush();
+		expect(runs).toEqual([2, 1, 2]);
+		expect(ids.map(store.rowRevision)).toEqual([1, 0, 1]);
+		expect(store.cells).toEqual([[11], [2], [30]]);
+	});
+
+	it("lets Solid settle asynchronous host data and discards an older response", async () => {
+		let resolveOlder: (data: CellValue[][]) => void = () => {};
+		let resolveNewer: (data: CellValue[][]) => void = () => {};
+		const older = new Promise<CellValue[][]>((resolve) => {
+			resolveOlder = resolve;
+		});
+		const newer = new Promise<CellValue[][]>((resolve) => {
+			resolveNewer = resolve;
+		});
+		const [request, setRequest] = createSignal(0);
+		const { result: data } = renderHook(() =>
+			createMemo(() =>
+				request() === 0 ? ([["initial"]] as CellValue[][]) : request() === 1 ? older : newer,
+			),
+		);
+		let controller: SheetController | undefined;
+		const view = render(() => (
+			<Loading fallback={<span>Loading</span>}>
+				<Sheet
+					data={data()}
+					columns={[{ id: "value", header: "Value" }]}
+					ref={(value) => {
+						controller = value;
+					}}
+				/>
+			</Loading>
+		));
+		flush();
+		setRequest(1);
+		flush();
+		expect(controller?.getCellValue(0, 0)).toBe("initial");
+		setRequest(2);
+		flush();
+		resolveNewer([["newer"]]);
+		await newer;
+		await Promise.resolve();
+		flush();
+		expect(controller?.getCellValue(0, 0)).toBe("newer");
+		resolveOlder([["older"]]);
+		await older;
+		await Promise.resolve();
+		flush();
+		expect(controller?.getCellValue(0, 0)).toBe("newer");
+		expect(view.container.querySelector(".se-grid")).not.toBeNull();
+	});
+
+	it("preserves row revisions when observers leave and return, and resets deleted identities", () => {
+		const id = rowId("row");
+		const columns = [{ id: "value", header: "Value" }];
+		const { result: store } = renderHook(() => createSheetStore([[0]], columns, [id]));
+		const revisions: number[] = [];
+		const observe = () =>
+			createRoot((dispose) => {
+				createEffect(
+					() => store.rowRevision(id),
+					(revision) => {
+						revisions.push(revision);
+					},
+				);
+				return dispose;
+			});
+		const stop = observe();
+		flush();
+		store.setCell(physicalRow(0), 0, 1);
+		flush();
+		stop();
+		flush();
+		store.setCell(physicalRow(0), 0, 2);
+		flush();
+		const stopAgain = observe();
+		flush();
+		expect(revisions).toEqual([0, 1, 2]);
+		store.reconcileFromHost([], columns, []);
+		flush();
+		expect(revisions).toEqual([0, 1, 2, 0]);
+		store.reconcileFromHost([[3]], columns, [id]);
+		flush();
+		store.setCell(physicalRow(0), 0, 4);
+		flush();
+		expect(revisions).toEqual([0, 1, 2, 0, 1]);
+		stopAgain();
+	});
+
+	it("updates and removes cell content, tooltip, class, and style overrides", () => {
+		const entered: VisualCellAddress[] = [];
+		const baseColumn: ColumnDef = { id: "value", header: "Value" };
+		const [column, setColumn] = createSignal(baseColumn);
+		const [customClass, setCustomClass] = createSignal("");
+		const [style, setStyle] = createSignal<CellStyle>();
+		const [value, setValue] = createSignal("first");
+		const customization = { getCellClass: () => customClass(), getCellStyle: () => style() };
+		const grid: GridCellContext = {
+			get virtualColumns() {
+				return [{ index: 0, start: 0, size: 100, column: column() }];
+			},
+			rowGutterWidth: 0,
+			getCellId: () => "cell",
+			getRawValue: () => value(),
+			getDisplayValue: () => value(),
+			editingAddress: null,
+			selection: selectCell({ row: visualRow(0), col: columnIdx(0) }),
+			onCellMouseDown: () => {},
+			onCellMouseEnter: (address) => entered.push(address),
+			onCellDblClick: () => {},
+			pinnedLeftOffsets: [],
+			lastPinnedIndex: -1,
+			searchMatchSet: new Set(),
+			searchCurrentAddress: null,
+		};
+		const view = render(() => (
+			<SheetCustomizationContext value={customization}>
+				<GridCell
+					row={{
+						grid,
+						customization,
+						item: { index: 0, start: 0, size: 28 },
+						className: "",
+						get selection() {
+							return grid.selection;
+						},
+						get editingAddress() {
+							return grid.editingAddress;
+						},
+						getLayout: () => ({
+							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
+							cssText: "width:100px;height:28px;left:0px;position:absolute",
+						}),
+						get displayValues() {
+							return [value()];
+						},
+					}}
+					columnIndex={0}
+				/>
+			</SheetCustomizationContext>
+		));
+		flush();
+		const cell = view.getByRole("gridcell");
+		expect(cell.textContent).toBe("first");
+		const text = cell.querySelector(".se-cell__text");
+		if (!text) throw new Error("Cell text missing");
+		fireEvent.mouseOver(text, { relatedTarget: document.body });
+		expect(entered).toEqual([{ row: visualRow(0), col: columnIdx(0) }]);
+		fireEvent.mouseOver(cell, { relatedTarget: text });
+		expect(entered).toHaveLength(1);
+		expect(cell.getAttribute("title")).toBe("first");
+		setColumn({
+			...baseColumn,
+			getCellTitle: () => "",
+			renderCell: (context) => <strong>{context.formattedText}</strong>,
+		});
+		setCustomClass("highlight");
+		setStyle({ color: "red", width: "999px", height: "1px", left: "999px", position: "fixed" });
+		flush();
+		expect(cell.querySelector("strong")?.textContent).toBe("first");
+		expect(cell.hasAttribute("title")).toBe(false);
+		expect(cell.classList.contains("highlight")).toBe(true);
+		expect(cell.style.color).toBe("red");
+		expect(cell.style.width).toBe("100px");
+		expect(cell.style.height).toBe("28px");
+		expect(cell.style.left).toBe("0px");
+		expect(cell.style.position).toBe("absolute");
+		setValue("second");
+		flush();
+		expect(cell.querySelector("strong")?.textContent).toBe("second");
+		setColumn(baseColumn);
+		setCustomClass("");
+		setStyle(undefined);
+		flush();
+		expect(cell.querySelector("strong")).toBeNull();
+		expect(cell.querySelector(".se-cell__text")?.textContent).toBe("second");
+		expect(cell.getAttribute("title")).toBe("second");
+		expect(cell.classList.contains("highlight")).toBe(false);
+		expect(cell.style.color).toBe("");
 	});
 	it("renders, accepts controlled updates, edits through the controller and disposes", () => {
 		let controller: SheetController | undefined;

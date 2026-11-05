@@ -6,26 +6,55 @@ import type { BenchmarkAdapter, BenchmarkCellValue, BenchmarkController } from "
 export const adapter: BenchmarkAdapter = {
 	mount(container, dataset) {
 		container.classList.add("ht-theme-main");
+		// The theme's default 20px line + 8px padding + border imposes a 29px minimum.
+		container.style.setProperty("--ht-cell-vertical-padding", "3px");
 		const hot = new Handsontable(container, {
 			data: dataset.values,
 			rowHeaders: true,
 			colHeaders: Array.from({ length: dataset.columns }, (_, column) => `Col ${column}`),
 			colWidths: 100,
 			rowHeights: 28,
+			wordWrap: false,
+			autoRowSize: false,
 			width: "100%",
 			height: "100%",
 			licenseKey: "non-commercial-and-evaluation",
 		});
 
 		return {
+			ui: {
+				getVisibleCell() {
+					const row = hot.getFirstFullyVisibleRow();
+					const column = hot.getFirstFullyVisibleColumn();
+					return row < 0 || column < 0
+						? null
+						: { row: Math.min(dataset.rows - 1, row + 1), column };
+				},
+				focusCell: (row, column) => {
+					hot.selectCell(row, column);
+					hot.scrollViewportTo({ row, col: column });
+				},
+				getCellElement: (row, column) => hot.getCell(row, column),
+				getActiveCell() {
+					const cell = hot.getSelectedLast();
+					return cell ? { row: cell[0], column: cell[1] } : null;
+				},
+				selectRange: (rows, columns) => {
+					hot.selectCell(0, 0, rows - 1, columns - 1);
+				},
+			},
 			getScrollElement() {
 				const viewport = container.querySelector<HTMLElement>(".ht_master .wtHolder");
 				if (!viewport) throw new Error("Handsontable viewport was not rendered");
 				return viewport;
 			},
 			readCell: (row, column) => (hot.getDataAtCell(row, column) ?? null) as BenchmarkCellValue,
-			scrollToRow: (row) => { hot.scrollViewportTo({ row, col: 0, verticalSnap: "middle" }); },
-			writeCell: (row, column, value) => { hot.setDataAtCell(row, column, value, "benchmark"); },
+			scrollToRow: (row) => {
+				hot.scrollViewportTo({ row, col: 0, verticalSnap: "middle" });
+			},
+			writeCell: (row, column, value) => {
+				hot.setDataAtCell(row, column, value, "benchmark");
+			},
 			writeCells: (writes) => {
 				hot.setDataAtCell(
 					writes.map((write) => [write.row, write.column, write.value]),
@@ -33,7 +62,10 @@ export const adapter: BenchmarkAdapter = {
 				);
 			},
 			replaceDataset(nextDataset) {
-				hot.updateData(nextDataset.values.map((row) => [...row]), "benchmark-replace");
+				hot.updateData(
+					nextDataset.values.map((row) => [...row]),
+					"benchmark-replace",
+				);
 			},
 			destroy: () => hot.destroy(),
 		} satisfies BenchmarkController;
