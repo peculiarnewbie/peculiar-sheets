@@ -23,7 +23,7 @@
 		"e2e:formula-production": "bun run tests/e2e/run.ts --production --test=tests/e2e/formula-clean-mount.test.ts",
 		"e2e:formula-lazy-production": "bun run tests/e2e/run.ts --production --test=tests/e2e/formula-lazy-mount.test.ts",
 		"e2e:dev": "pnpm --filter @peculiarnewbie/e2e dev",
-		"benchmark": "tsx benchmarks/run.ts",
+		"benchmark": "tsx benchmarks/launch.ts",
 		"benchmark:report": "tsx benchmarks/report.ts",
 		"benchmark:test": "tsx --test benchmarks/*.test.ts",
 		"benchmark:typecheck": "tsc --noEmit -p benchmarks/tsconfig.json && pnpm --filter @peculiarnewbie/benchmarks typecheck"

@@ -132,6 +132,8 @@
 
 .se-viewport {
 	overflow: auto;
+	/* Prepare an accelerated scroll layer for native wheel input. */
+	will-change: scroll-position;
 	width: 100%;
 	flex: 1 1 0;
 	min-height: 0;
@@ -352,6 +354,18 @@
 	text-overflow: ellipsis;
 }
 
+/* Plain text shares the cell's inline formatting context. Custom content and
+ * style hooks retain flex layout; the documented inner text span is preserved. */
+.se-cell--text {
+	display: block;
+	align-content: center;
+	text-overflow: ellipsis;
+}
+
+.se-cell--text > .se-cell__text {
+	display: contents;
+}
+
 .se-cell--active-row {
 	background: var(--ps-active-row-background);
 }
@@ -393,7 +407,11 @@
 	background: var(--ps-selection-overlay-background);
 	box-sizing: border-box;
 	pointer-events: none;
-	transition: left 50ms ease-out, top 50ms ease-out, width 50ms ease-out, height 50ms ease-out;
+	transition:
+		left 50ms ease-out,
+		top 50ms ease-out,
+		width 50ms ease-out,
+		height 50ms ease-out;
 }
 
 .se-clipboard-rect {
@@ -429,7 +447,9 @@
 	pointer-events: auto;
 	cursor: crosshair;
 	border-radius: 1px;
-	transition: background-color 100ms ease, transform 100ms ease;
+	transition:
+		background-color 100ms ease,
+		transform 100ms ease;
 }
 
 .se-fill-handle:hover {
@@ -477,7 +497,9 @@
 .se-cell-editor:focus {
 	border-color: var(--ps-editor-focus);
 	box-shadow: 0 0 0 1px var(--ps-editor-focus-shadow);
-	transition: border-color 100ms ease, box-shadow 100ms ease;
+	transition:
+		border-color 100ms ease,
+		box-shadow 100ms ease;
 }
 
 /* ── Context Menu ──────────────────────────────────────────────────────── */

@@ -188,18 +188,33 @@ export interface BenchmarkDiagnosticSnapshot {
 	lifecycle: GridLifecycleCounts | null;
 }
 
+export const MEASUREMENT_PROTOCOL = "api-completion-v2-frame-aligned-v1";
+
+/**
+ * Reference-library loading configuration. Snapshots without it registered AG Grid's
+ * `AllCommunityModule` and the full Handsontable package. A change is a measurement change.
+ */
+export const COMPETITOR_CONFIG = "scenario-modules-v1";
+export const LEGACY_COMPETITOR_CONFIG = "legacy-full-bundles";
+
 export interface WriteMetrics {
 	distribution: "visible" | "offscreen";
 	mode: "independent" | "batch";
 	count: number;
 	/** Synchronous time spent submitting the mutations. */
 	durationMs: number;
-	/** Submission plus two animation frames for reactive/render work to settle. */
+	/** API calls and every returned promise; absent only in historical snapshots. */
+	completionDurationMs?: number;
+	/** Completion, integrity checking, and two animation frames (diagnostic only). */
 	settledDurationMs: number;
 	operationsPerSecond: number;
 }
 
 export interface ReplacementStepMetrics {
+	/** Start to rAF1 callback entry; absent in historical snapshots. */
+	firstFrameMs?: number;
+	/** rAF1 to rAF2 callback entry. */
+	secondFrameMs?: number;
 	name: string;
 	fromRows: number;
 	toRows: number;
@@ -208,6 +223,7 @@ export interface ReplacementStepMetrics {
 }
 
 export interface ReplacementMetrics {
+	timingProtocol?: "frame-aligned-v1";
 	mode: Extract<BenchmarkScenario, { kind: "replace" }>["replacement"];
 	steps: ReplacementStepMetrics[];
 	state?: {
@@ -262,6 +278,11 @@ export interface BenchmarkPoint {
 }
 
 interface BaseBenchmarkResult {
+	timingEnvironment?: {
+		crossOriginIsolated: boolean;
+		timerGranularityMs: number | null;
+		timerPositiveTicks: number;
+	};
 	implementation: ImplementationName;
 	scenario: ScenarioName;
 	rows: number;

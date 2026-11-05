@@ -1,3 +1,4 @@
+import { type Accessor, untrack } from "solid-js";
 import {
 	type ColumnIndex,
 	columnIdx,
@@ -24,6 +25,15 @@ export interface GridCellLayout {
 	cssText: string;
 }
 
+export interface GridCellColumn {
+	index: number;
+	start: number;
+	size: number;
+	column: ColumnDef;
+	slot: string;
+	layout: GridCellLayout;
+}
+
 export interface GridCellRow {
 	readonly grid: GridCellContext;
 	readonly customization: SheetCustomization | undefined;
@@ -31,8 +41,7 @@ export interface GridCellRow {
 	readonly className: string;
 	readonly selection: Selection | null;
 	readonly editingAddress: VisualCellAddress | null;
-	readonly displayValues: readonly CellValue[] | undefined;
-	getLayout(columnIndex: number): GridCellLayout;
+	getDisplayValue(column: ColumnIndex): CellValue;
 }
 
 export interface GridCellContext {
@@ -54,9 +63,9 @@ export interface GridCellContext {
 }
 
 interface GridCellProps {
-	/** Stable contexts and a fixed Repeat slot; updates flow through their getters. */
+	/** Stable row context and a column owner recycled by its viewport slot. */
 	row: GridCellRow;
-	columnIndex: number;
+	column: Accessor<GridCellColumn>;
 	/** The parent recreates the row owner when custom rendering is enabled or disabled. */
 	renderCustom?: boolean;
 	/** The parent recreates rows when custom style hooks are added or removed. */
@@ -74,7 +83,8 @@ function resolveTitle(title: string | undefined, formattedText: string): string 
 class CellView {
 	constructor(
 		readonly rowModel: GridCellRow,
-		readonly columnIndex: number,
+		readonly readColumn: Accessor<GridCellColumn>,
+		readonly plainText: boolean,
 	) {}
 	get grid() {
 		return this.rowModel.grid;
@@ -83,10 +93,7 @@ class CellView {
 		return this.rowModel.customization;
 	}
 	get virtualColumn() {
-		const column = this.grid.virtualColumns[this.columnIndex];
-		if (!column)
-			throw new Error(`Virtual column ${this.columnIndex} is outside the rendered range`);
-		return column;
+		return this.readColumn();
 	}
 	get row() {
 		return visualRow(this.rowModel.item.index);
@@ -104,10 +111,7 @@ class CellView {
 		return this.grid.getRawValue(this.row, this.col);
 	}
 	get formattedText() {
-		const projected = this.rowModel.displayValues;
-		const value = projected
-			? (projected[this.columnIndex] ?? null)
-			: this.grid.getDisplayValue(this.row, this.col);
+		const value = this.rowModel.getDisplayValue(this.col);
 		const format = this.column.formatValue;
 		return format ? format(value, { row: this.row, col: this.col }) : defaultFormatCellValue(value);
 	}
@@ -131,7 +135,7 @@ class CellView {
 		const focus = selection?.focus;
 		const editing = this.rowModel.editingAddress;
 		const current = grid.searchCurrentAddress;
-		let classes = "se-cell";
+		let classes = this.plainText ? "se-cell se-cell--text" : "se-cell";
 		const rowClass = this.rowModel.className;
 		const cellClass = this.customization?.getCellClass?.(row, col);
 		if (rowClass) classes += ` ${rowClass}`;
@@ -149,13 +153,13 @@ class CellView {
 		return classes;
 	}
 	get style() {
-		const layout = this.rowModel.getLayout(this.columnIndex);
+		const layout = this.virtualColumn.layout;
 		const custom = this.customization?.getCellStyle?.(this.row, this.col);
 		// Host styles cannot override virtualized layout.
 		return custom ? { ...custom, ...layout.style } : layout.style;
 	}
 	get layoutCssText() {
-		return this.rowModel.getLayout(this.columnIndex).cssText;
+		return this.virtualColumn.layout.cssText;
 	}
 	renderContent() {
 		const render = this.column.renderCell;
@@ -191,7 +195,11 @@ function cellDoubleClick(view: CellView) {
 
 export default function GridCell(props: GridCellProps) {
 	trackGridLifecycle("cell");
-	const view = new CellView(props.row, props.columnIndex);
+	const view = new CellView(
+		props.row,
+		props.column,
+		props.renderCustom === false && props.plainLayout === true,
+	);
 	// Geometry changes flow through inherited CSS variables; this binding is static.
 	if (props.renderCustom === false && props.plainLayout === true) {
 		return (
@@ -206,7 +214,7 @@ export default function GridCell(props: GridCellProps) {
 					view.column.getCellTitle?.(view.rawValue, { row: view.row, col: view.col }),
 					view.formattedText,
 				)}
-				style={/* @static */ view.layoutCssText}
+				style={/* @static */ untrack(() => view.layoutCssText)}
 				onMouseDown={[cellMouseDown, view]}
 				onMouseOver={[cellMouseOver, view]}
 				onDblClick={[cellDoubleClick, view]}

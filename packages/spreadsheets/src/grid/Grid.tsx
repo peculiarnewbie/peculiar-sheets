@@ -1,11 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import type { VirtualItem, VirtualizerOptions } from "@tanstack/virtual-core";
-import {
-	elementScroll,
-	observeElementOffset,
-	observeElementRect,
-	Virtualizer,
-} from "@tanstack/virtual-core";
+import { elementScroll, observeElementRect, Virtualizer } from "@tanstack/virtual-core";
 import {
 	createEffect,
 	createMemo,
@@ -30,6 +25,7 @@ import {
 	type VisualRowIndex,
 	visualRow,
 } from "../core/brands";
+import type { CellRowValues } from "../core/cellRows";
 import { parseTSV } from "../core/clipboard";
 import { applyMutations } from "../core/commands";
 import { mapKeyToCommand, shouldPreventDefault } from "../core/keys";
@@ -77,6 +73,7 @@ import type {
 	RowReorderMutation,
 	Selection,
 	SheetController,
+	SheetOperation,
 	SheetProps,
 	SortBehavior,
 	SortDirection,
@@ -94,12 +91,15 @@ import GridHeader from "./GridHeader";
 import {
 	coordinateBatchMutations,
 	coordinateHistoryCommand,
+	detachOperation,
 	type FormulaSyncPort,
 } from "./mutationCoordination";
-import { buildRowMetrics } from "./rowMetrics";
+import { createRowMetricsCache } from "./rowMetrics";
+import { getRowWindow } from "./rowWindow";
 import SearchBar from "./SearchBar";
 import SelectionOverlay from "./SelectionOverlay";
 import { buildIndexOrder, compareSortableEntries } from "./sort";
+import { createViewportOffsetObserver } from "./viewportOffset";
 
 const ROW_GUTTER_WIDTH = 48;
 
@@ -268,6 +268,7 @@ export default function Grid(props: GridProps) {
 
 	let gridRef: HTMLDivElement | undefined;
 	let viewportRef: HTMLDivElement | undefined;
+	let canvasRef: HTMLDivElement | undefined;
 	let cellEditorInputRef: HTMLInputElement | undefined;
 	let formulaBarInputRef: HTMLInputElement | undefined;
 	let dragViewportRect: DOMRect | null = null;
@@ -397,6 +398,7 @@ export default function Grid(props: GridProps) {
 		return nextOrder.map((entry) => entry.rowId);
 	});
 
+	const cachedRowMetrics = createRowMetricsCache();
 	const rowMetrics = createMemo(() => {
 		const heightOverrides = new Map<number, number>();
 		for (const [id, height] of committedRowHeights()) {
@@ -404,25 +406,20 @@ export default function Grid(props: GridProps) {
 			if (visual === null) continue;
 			heightOverrides.set(toNumber(visual), height);
 		}
-		return buildRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
+		return cachedRowMetrics(props.store.rowCount(), props.rowHeight, heightOverrides);
 	});
-	// Bridge framework-neutral TanStack measurements into Solid 2 signals.
+	// Rows use the shared sparse geometry; columns bridge TanStack into Solid.
 	const [virtualRows, setVirtualRows] = createSignal<VirtualItemSnapshot[]>([]);
 	const [virtualColumnItems, setVirtualColumnItems] = createSignal<VirtualItemSnapshot[]>([]);
-
-	function rowVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
-		return {
-			count: props.store.rowCount(),
-			getScrollElement: () => viewportRef ?? null,
-			estimateSize: (index) => untrack(rowMetrics).getRowHeight(visualRow(index)),
-			observeElementRect,
-			observeElementOffset,
-			scrollToFn: elementScroll,
-			overscan: 3,
-			onChange: (instance) => {
-				setVirtualRows((previous) => snapshotVirtualItems(instance, previous));
-			},
-		};
+	const observeViewportOffset = createViewportOffsetObserver();
+	let rowViewportHeight = 0;
+	let stopRowOffsetObservation: (() => void) | undefined;
+	function updateRowWindow(scrollTop: number): void {
+		const metrics = untrack(rowMetrics);
+		const count = untrack(() => props.store.rowCount());
+		setVirtualRows((previous) =>
+			getRowWindow(metrics, count, scrollTop, rowViewportHeight, previous),
+		);
 	}
 
 	function columnVirtualizerOptions(): VirtualizerOptions<HTMLDivElement, HTMLElement> {
@@ -431,10 +428,10 @@ export default function Grid(props: GridProps) {
 			getScrollElement: () => viewportRef ?? null,
 			estimateSize: (index) => untrack(columnWidths)[index] ?? DEFAULT_COL_WIDTH,
 			observeElementRect,
-			observeElementOffset,
+			observeElementOffset: observeViewportOffset,
 			scrollToFn: elementScroll,
 			horizontal: true,
-			overscan: 2,
+			overscan: 1,
 			onChange: (instance) => {
 				setVirtualColumnItems((previous) => snapshotVirtualItems(instance, previous));
 			},
@@ -442,22 +439,13 @@ export default function Grid(props: GridProps) {
 	}
 
 	// Observation belongs to the Grid owner and ends only when it is disposed.
-	const rowVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(
-		untrack(rowVirtualizerOptions),
-	);
 	const columnVirtualizer = new Virtualizer<HTMLDivElement, HTMLElement>(
 		untrack(columnVirtualizerOptions),
 	);
-	const disposeRowVirtualizer = rowVirtualizer._didMount();
 	const disposeColumnVirtualizer = columnVirtualizer._didMount();
 	let viewportObserver: ResizeObserver | null = null;
 	let virtualizerAttachTimer: ReturnType<typeof setTimeout> | undefined;
 
-	createEffect(rowVirtualizerOptions, (options) => {
-		rowVirtualizer.setOptions(options);
-		rowVirtualizer._willUpdate();
-		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
-	});
 	createEffect(columnVirtualizerOptions, (options) => {
 		columnVirtualizer.setOptions(options);
 		columnVirtualizer._willUpdate();
@@ -466,13 +454,11 @@ export default function Grid(props: GridProps) {
 
 	function attachVirtualizer(virtualizer: GridVirtualizer, viewport: HTMLDivElement): void {
 		const expectedWindow = viewport.ownerDocument.defaultView;
-		const viewportRect = viewport.getBoundingClientRect();
 		const staleAttachment =
 			virtualizer.scrollElement === viewport &&
 			(virtualizer.targetWindow !== expectedWindow ||
 				(!hasUsableRect(virtualizer.scrollRect) &&
-					viewportRect.width > 0 &&
-					viewportRect.height > 0));
+					hasUsableRect(viewport.getBoundingClientRect())));
 
 		if (staleAttachment) {
 			// _willUpdate only attaches when the element identity changes. Clear
@@ -484,11 +470,21 @@ export default function Grid(props: GridProps) {
 
 	function attachAndSnapshotVirtualizers(): void {
 		if (!viewportRef) return;
-		attachVirtualizer(rowVirtualizer, viewportRef);
+		rowViewportHeight = Math.round(viewportRef.getBoundingClientRect().height);
+		if (!stopRowOffsetObservation) {
+			stopRowOffsetObservation = observeViewportOffset(
+				{
+					scrollElement: viewportRef,
+					targetWindow: viewportRef.ownerDocument.defaultView,
+					options: { horizontal: false },
+				},
+				(offset) => updateRowWindow(offset),
+			);
+		}
 		attachVirtualizer(columnVirtualizer, viewportRef);
-		rowVirtualizer.measure();
-		columnVirtualizer.measure();
-		setVirtualRows((previous) => snapshotVirtualItems(rowVirtualizer, previous));
+		// Viewport observers update the visible range without invalidating item sizes.
+		// Row metrics and column width effects below own size-cache invalidation.
+		updateRowWindow(viewportRef.scrollTop);
 		setVirtualColumnItems((previous) => snapshotVirtualItems(columnVirtualizer, previous));
 	}
 
@@ -511,12 +507,12 @@ export default function Grid(props: GridProps) {
 			clearTimeout(virtualizerAttachTimer);
 		}
 		viewportObserver?.disconnect();
-		disposeRowVirtualizer();
+		stopRowOffsetObservation?.();
 		disposeColumnVirtualizer();
 	});
 
 	createEffect(rowMetrics, () => {
-		rowVirtualizer.measure();
+		if (viewportRef) updateRowWindow(viewportRef.scrollTop);
 	});
 	createEffect(columnWidths, () => {
 		columnVirtualizer.measure();
@@ -606,6 +602,12 @@ export default function Grid(props: GridProps) {
 			...rowSizingRecord(),
 			[id]: height,
 		});
+	}
+
+	// Read the callback at emission time so reactive host subscriptions stay current.
+	function emitOperation(operation: SheetOperation) {
+		const onOperation = props.onOperation;
+		if (onOperation) onOperation(detachOperation(operation));
 	}
 
 	function commitColumnResize(columnId: string, width: number) {
@@ -743,12 +745,12 @@ export default function Grid(props: GridProps) {
 		const widths = untrack(columnWidths);
 		const { row, col } = addr;
 
-		// Cell bounds within the scrollable canvas. Use rowMetrics so variable
-		// row heights (resized rows above `row`) are accounted for — otherwise
-		// the bottom edge is underestimated and the cell lands just off the
-		// viewport after arrow-down navigation.
+		// Convert variable-height row metrics into viewport scroll coordinates.
 		const metrics = rowMetrics();
-		const cellTop = metrics.getRowTop(row);
+		// The canvas follows the sticky header in normal flow. Include that
+		// origin (and its borders) when comparing rows with viewport offsets.
+		const stickyTop = canvasRef?.offsetTop ?? headerTotalHeight();
+		const cellTop = stickyTop + metrics.getRowTop(row);
 		const cellBottom = cellTop + metrics.getRowHeight(row);
 
 		let cellLeft = rowGutterWidth();
@@ -758,7 +760,6 @@ export default function Grid(props: GridProps) {
 		const cellRight = cellLeft + (widths[col] ?? DEFAULT_COL_WIDTH);
 
 		// Space covered by sticky overlays (header on top, gutter + pinned cols on left).
-		const stickyTop = headerTotalHeight();
 		let stickyLeft = rowGutterWidth();
 		for (let c = 0; c < props.columns.length; c++) {
 			if (props.columns[c]?.pinned === "left") {
@@ -796,6 +797,9 @@ export default function Grid(props: GridProps) {
 
 		if (nextTop !== scrollTop || nextLeft !== scrollLeft) {
 			viewport.scrollTo({ top: nextTop, left: nextLeft });
+			// Programmatic focus scrolling already knows the new viewport. Project
+			// its rows in this flush instead of waiting for the native scroll event.
+			updateRowWindow(viewport.scrollTop);
 		}
 	}
 
@@ -1042,7 +1046,7 @@ export default function Grid(props: GridProps) {
 		},
 	);
 
-	function getRawRowForPhysicalRow(row: PhysicalRowIndex): readonly CellValue[] | undefined {
+	function subscribeRawRow(row: PhysicalRowIndex): void {
 		// Subscribe to row/structural revisions instead of Solid deep-store cell paths.
 		// Tracked `cells[r][c]` reads permanently allocate store $NODE signals for every
 		// traversed cell (Solid store bookkeeping), which dominated scroll retention.
@@ -1051,11 +1055,16 @@ export default function Grid(props: GridProps) {
 			const id = untrack(() => props.store.getRowIdAtPhysicalRow(row));
 			if (id !== null) props.store.rowRevision(id);
 		}
-		return props.store.cells[toNumber(row)];
+	}
+
+	function getRawRowForPhysicalRow(row: PhysicalRowIndex): CellRowValues | undefined {
+		subscribeRawRow(row);
+		return props.store.getRowValues(row);
 	}
 
 	function getRawCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
-		return getRawRowForPhysicalRow(row)?.[toNumber(col)] ?? null;
+		subscribeRawRow(row);
+		return props.store.getCellValue(row, col) ?? null;
 	}
 
 	function getDisplayCellValueForPhysicalRow(row: PhysicalRowIndex, col: ColumnIndex): CellValue {
@@ -1072,6 +1081,11 @@ export default function Grid(props: GridProps) {
 
 	function getDisplayCellValue(row: VisualRowIndex, col: ColumnIndex): CellValue {
 		return getDisplayCellValueForPhysicalRow(getPhysicalRowForVisualRow(row), col);
+	}
+
+	function getRawRowValues(row: VisualRowIndex): CellRowValues | undefined {
+		if (props.formulaBridge) return undefined;
+		return getRawRowForPhysicalRow(getPhysicalRowForVisualRow(row));
 	}
 
 	function getRowDisplayValues(
@@ -1174,9 +1188,7 @@ export default function Grid(props: GridProps) {
 			beginTransition: () =>
 				direction === "undo" ? props.store.beginUndo() : props.store.beginRedo(),
 			getCells: () => props.store.cells,
-			emitOperation: (operation) => {
-				props.onOperation?.(operation);
-			},
+			emitOperation,
 			formula: getFormulaSyncPort(),
 			...(props.columnSizing === undefined
 				? {
@@ -1209,10 +1221,20 @@ export default function Grid(props: GridProps) {
 
 		if (oldValue === newValue) return null;
 
+		if (id != null) {
+			return {
+				address: { row: physical, col: viewAddress.col },
+				viewAddress,
+				rowId: id,
+				columnId: column.id,
+				oldValue,
+				newValue,
+				source,
+			};
+		}
 		return {
 			address: { row: physical, col: viewAddress.col },
 			viewAddress,
-			...(id != null ? { rowId: id } : {}),
 			columnId: column.id,
 			oldValue,
 			newValue,
@@ -1223,10 +1245,10 @@ export default function Grid(props: GridProps) {
 	function applyBatchMutations(mutations: CellMutation[]) {
 		coordinateBatchMutations(
 			{
-				applyMutations: (batch) => applyMutations(props.store, batch),
-				emitOperation: (operation) => {
-					props.onOperation?.(operation);
+				applyMutations: (batch) => {
+					applyMutations(props.store, batch);
 				},
+				emitOperation,
 				formula: getFormulaSyncPort(),
 			},
 			mutations,
@@ -1234,19 +1256,61 @@ export default function Grid(props: GridProps) {
 	}
 
 	function buildExternalBatchMutations(writes: readonly CellWrite[]): CellMutation[] {
-		const latestWrites = new Map<string, CellWrite>();
+		const width = props.columns.length;
+		const latestWrites = new Map<number | string, CellWrite>();
 		for (const write of writes) {
-			latestWrites.set(`${write.row},${write.col}`, write);
+			const key =
+				Number.isSafeInteger(write.row) &&
+				write.row >= 0 &&
+				Number.isInteger(write.col) &&
+				write.col >= 0 &&
+				write.col < width &&
+				Number.isSafeInteger(write.row * width + write.col)
+					? write.row * width + write.col
+					: `${write.row},${write.col}`;
+			latestWrites.set(key, write);
 		}
 
+		// Resolve the batch's addressing context once. No writes occur until all
+		// mutations are prepared, so duplicates compare against the original model.
+		const store = props.store;
+		const columns = props.columns;
+		const sortedIds = isViewSortActive() ? visualRowIds() : null;
+		const ids = store.rowIds();
 		const mutations: CellMutation[] = [];
+		const tracked = getObserver();
 		for (const write of latestWrites.values()) {
-			const mutation = buildCellMutation(
-				{ row: visualRow(write.row), col: columnIdx(write.col) },
-				write.value,
-				"external",
-			);
-			if (mutation) mutations.push(mutation);
+			const column = columns[write.col];
+			if (!column) continue;
+			const sortedId = sortedIds?.[write.row];
+			const physical =
+				sortedId === undefined
+					? (write.row as PhysicalRowIndex)
+					: (store.getPhysicalRowForRowId(sortedId) ?? (write.row as PhysicalRowIndex));
+			const id = sortedId ?? ids[physical];
+			if (tracked) subscribeRawRow(physical);
+			const oldValue = store.getCellValue(physical, write.col as ColumnIndex) ?? null;
+			if (oldValue === write.value) continue;
+			const mutation: CellMutation =
+				id !== undefined
+					? {
+							address: { row: physical, col: write.col as ColumnIndex },
+							viewAddress: { row: write.row as VisualRowIndex, col: write.col as ColumnIndex },
+							rowId: id,
+							columnId: column.id,
+							oldValue,
+							newValue: write.value,
+							source: "external",
+						}
+					: {
+							address: { row: physical, col: write.col as ColumnIndex },
+							viewAddress: { row: write.row as VisualRowIndex, col: write.col as ColumnIndex },
+							columnId: column.id,
+							oldValue,
+							newValue: write.value,
+							source: "external",
+						};
+			mutations.push(mutation);
 		}
 		return mutations;
 	}
@@ -1412,7 +1476,7 @@ export default function Grid(props: GridProps) {
 		if (!editMode) return;
 		const physicalRow = getPhysicalRowForVisualRow(editMode.address.row);
 		const colDef = props.columns[editMode.address.col];
-		const previousValue = props.store.cells[physicalRow]?.[editMode.address.col] ?? null;
+		const previousValue = props.store.getRowValues(physicalRow)?.[editMode.address.col] ?? null;
 		const nextValue = colDef?.parseValue
 			? colDef.parseValue(editorText(), {
 					previousValue,
@@ -1430,7 +1494,7 @@ export default function Grid(props: GridProps) {
 
 		if (mutation) {
 			applyMutations(props.store, [mutation]);
-			props.onOperation?.({ type: "cell-edit", mutation });
+			emitOperation({ type: "cell-edit", mutation });
 		}
 
 		if (options?.refocus !== false) {
@@ -1938,13 +2002,13 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.insertRows(sheetKey, physicalRow(atIndex), count);
 			if (didApplyResult(change)) {
-				props.onOperation?.({ type: "row-insert", atIndex, count });
+				emitOperation({ type: "row-insert", atIndex, count });
 			}
 			focusGrid();
 			return;
 		}
 		const selBefore = props.store.selection();
-		const cellsBefore = props.store.cells.map((row) => [...row]);
+		const cellsBefore = props.store.copyCells();
 		const rowIdsBefore = [...props.store.rowIds()];
 		props.store.insertRows(physicalRow(atIndex), count);
 		if (!syncAllToFormulaEngine()) {
@@ -1956,7 +2020,7 @@ export default function Grid(props: GridProps) {
 			selBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-insert", atIndex, count });
+		emitOperation({ type: "row-insert", atIndex, count });
 		focusGrid();
 	}
 
@@ -1971,13 +2035,13 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.deleteRows(sheetKey, physicalAtIndex, count);
 			if (didApplyResult(change)) {
-				props.onOperation?.({ type: "row-delete", atIndex: physicalAtIndex, count });
+				emitOperation({ type: "row-delete", atIndex: physicalAtIndex, count });
 			}
 			focusGrid();
 			return;
 		}
 		const selBefore = props.store.selection();
-		const previousCells = props.store.cells.map((row) => [...row]);
+		const previousCells = props.store.copyCells();
 		const rowIdsBefore = [...props.store.rowIds()];
 		const removedData = props.store.deleteRows(physicalAtIndex, count);
 		if (!syncAllToFormulaEngine()) {
@@ -1999,7 +2063,7 @@ export default function Grid(props: GridProps) {
 			selBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-delete", atIndex: physicalAtIndex, count });
+		emitOperation({ type: "row-delete", atIndex: physicalAtIndex, count });
 		focusGrid();
 	}
 
@@ -2118,7 +2182,7 @@ export default function Grid(props: GridProps) {
 			if (!coordinator) return;
 			const change = coordinator.setRowOrder(sheetKey, reorderEvent.indexOrder);
 			if (!didApplyResult(change)) return;
-			props.onOperation?.({ type: "row-reorder", mutation: reorderEvent });
+			emitOperation({ type: "row-reorder", mutation: reorderEvent });
 			return;
 		}
 
@@ -2149,7 +2213,7 @@ export default function Grid(props: GridProps) {
 			selectionBefore,
 			props.store.selection(),
 		);
-		props.onOperation?.({ type: "row-reorder", mutation: reorderEvent });
+		emitOperation({ type: "row-reorder", mutation: reorderEvent });
 	}
 
 	function applyMutationSort(sort: SortState | null, options?: { baseOrder?: RowId[] | null }) {
@@ -2707,10 +2771,18 @@ export default function Grid(props: GridProps) {
 					if (!mutation) return;
 					if (!syncMutationToFormulaEngine(mutation)) return;
 					applyMutations(props.store, [mutation]);
-					props.onOperation?.({ type: "cell-edit", mutation });
+					emitOperation({ type: "cell-edit", mutation });
 				},
 				setCellValues: (writes) => {
-					applyBatchMutations(buildExternalBatchMutations(writes));
+					// Formula batches retain their prepare → sync → commit barrier.
+					const committed =
+						!props.formulaBridge && !isViewSortActive() && !getObserver()
+							? props.store.trySetDistinctCells?.(writes, props.columns)
+							: undefined;
+					if (committed !== undefined) {
+						// The store already committed history and revisions, with no formula engine.
+						if (committed.length > 0) emitOperation({ type: "batch-edit", mutations: committed });
+					} else applyBatchMutations(buildExternalBatchMutations(writes));
 				},
 				getColumnMeta: (columnId) => props.columns.find((column) => column.id === columnId)?.meta,
 				undo: () => {
@@ -2821,6 +2893,7 @@ export default function Grid(props: GridProps) {
 				/>
 
 				<div
+					ref={canvasRef}
 					class="se-canvas"
 					style={{
 						width: `${totalWidth()}px`,
@@ -2853,6 +2926,7 @@ export default function Grid(props: GridProps) {
 							totalHeight={rowMetrics().getTotalHeight()}
 							getDisplayValue={getDisplayCellValue}
 							getRowDisplayValues={getRowDisplayValues}
+							getRawRowValues={getRawRowValues}
 							getRawValue={getRawCellValue}
 							editingAddress={props.store.editMode()?.address ?? null}
 							selection={props.store.selection()}

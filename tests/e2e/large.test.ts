@@ -129,4 +129,76 @@ describe("large dataset", () => {
 		expect(layout.headerWidth).toBe(layout.cellWidth);
 		expect(layout.text).toContain("Col 19");
 	});
+
+	it("updates both virtual ranges after viewport shrink and expansion", async () => {
+		await navigateTo(sh, "/large");
+		const page = getPage();
+		const before = await page.evaluate(() => {
+			const grid = document.querySelector<HTMLElement>(".se-grid");
+			const viewport = grid?.querySelector<HTMLElement>(".se-viewport");
+			if (!grid || !viewport) throw new Error("Large grid missing");
+			return {
+				style: grid.style.cssText,
+				width: viewport.clientWidth,
+				height: viewport.clientHeight,
+				rows: grid.querySelectorAll(".se-body .se-row").length,
+				columns: grid.querySelectorAll(".se-body .se-row:first-child .se-cell").length,
+			};
+		});
+		try {
+			await page.evaluate(async () => {
+				const grid = document.querySelector<HTMLElement>(".se-grid");
+				if (!grid) throw new Error("Large grid missing");
+				grid.style.width = "400px";
+				grid.style.height = "250px";
+				await new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				);
+			});
+			const shrunk = await page.evaluate(() => {
+				const viewport = document.querySelector<HTMLElement>(".se-viewport");
+				if (!viewport) throw new Error("Large viewport missing");
+				return {
+					width: viewport.clientWidth,
+					height: viewport.clientHeight,
+					rows: document.querySelectorAll(".se-body .se-row").length,
+					columns: document.querySelectorAll(".se-body .se-row:first-child .se-cell").length,
+				};
+			});
+			expect(shrunk.width).toBeLessThan(before.width);
+			expect(shrunk.height).toBeLessThan(before.height);
+			expect(shrunk.rows).toBeLessThan(before.rows);
+			expect(shrunk.columns).toBeLessThan(before.columns);
+
+			await page.evaluate(async (style: string) => {
+				const grid = document.querySelector<HTMLElement>(".se-grid");
+				if (!grid) throw new Error("Large grid missing");
+				grid.style.cssText = style;
+				await new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				);
+			}, before.style);
+			const expanded = await page.evaluate(() => ({
+				rows: document.querySelectorAll(".se-body .se-row").length,
+				columns: document.querySelectorAll(".se-body .se-row:first-child .se-cell").length,
+			}));
+			expect(expanded.rows).toBe(before.rows);
+			expect(expanded.columns).toBe(before.columns);
+
+			await withSheetCtrlMaybe((ctrl) => ctrl?.scrollToCell(9_999, 19));
+			await waitForRowInDom(9_999);
+			expect(
+				await page.evaluate(
+					() =>
+						document.querySelector('.se-row[aria-rowindex="10000"] .se-cell[aria-colindex="20"]')
+							?.textContent,
+				),
+			).toBe("199999");
+		} finally {
+			await page.evaluate((style: string) => {
+				const grid = document.querySelector<HTMLElement>(".se-grid");
+				if (grid) grid.style.cssText = style;
+			}, before.style);
+		}
+	});
 });

@@ -1,30 +1,48 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { buildCommandOptions } from "./command";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseArgs } from "node:util";
+import { browserProfileCleanupSummary, withBrowserProfile } from "./browser-profile";
 import { Stagehand } from "@browserbasehq/stagehand";
 import { Result, TaggedError } from "better-result";
 import { SCENARIOS as SCENARIO_CONFIG, scenarioSkip } from "../apps/benchmarks/src/scenarios";
-import type { PageLike } from "./browser-types";
-import { runBrowserWorkload } from "./browser-workloads";
-import { writeBenchmarkReport } from "./report";
 import {
 	IMPLEMENTATIONS as ALL_IMPLEMENTATIONS,
 	SCENARIO_NAMES as ALL_SCENARIOS,
 	type BenchmarkResult,
 	type BenchmarkSkip,
+	COMPETITOR_CONFIG,
 	type GridLifecycleCounts,
 	type ImplementationName,
+	MEASUREMENT_PROTOCOL,
 	type ScenarioName,
 	type ScrollMetrics,
 } from "../apps/benchmarks/src/types";
+import type { PageLike } from "./browser-types";
+import { runBrowserWorkload } from "./browser-workloads";
+import { timerMetadata } from "./timer-metadata";
+import { appendSampleCheckpoint } from "./checkpoint";
+import { writeBenchmarkReport } from "./report";
+import {
+	type AdaptiveHeadline,
+	describeSampling,
+	iterationsForScenario,
+	type SamplingMetadata,
+	sameSamplingPlan,
+	sampleOrder,
+	samplingMode,
+	samplingPlan,
+	validateSampling,
+} from "./sampling";
+import { evaluateHeadlines, stoppingDecision } from "./adaptive-sampling";
 
 const PORT = 4178;
 const BASE_URL = `http://localhost:${PORT}`;
 const WARMUPS = Number(process.env.BENCHMARK_WARMUPS ?? 0);
-const ITERATIONS = Number(process.env.BENCHMARK_ITERATIONS ?? 3);
-const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 1);
+const ITERATIONS = Number(process.env.BENCHMARK_ITERATIONS ?? 12);
+const RETRIES = Number(process.env.BENCHMARK_RETRIES ?? 0);
 const OVERRIDE_ROWS = process.env.BENCHMARK_ROWS;
 const OVERRIDE_COLUMNS = process.env.BENCHMARK_COLUMNS;
 const UPDATE_BASELINE = process.env.BENCHMARK_UPDATE_BASELINE === "1";
@@ -33,6 +51,10 @@ const OUTPUT_DIRECTORY = path.resolve(
 	process.env.BENCHMARK_OUTPUT_DIR ?? ".benchmark",
 );
 const RUN_STARTED_AT = new Date();
+const SAMPLE_JOURNAL_PATH = path.join(
+	OUTPUT_DIRECTORY,
+	`samples-${RUN_STARTED_AT.toISOString().replaceAll(":", "-")}.ndjson`,
+);
 const BASELINE_PATH = path.join(OUTPUT_DIRECTORY, "baseline.json");
 const LATEST_PATH = path.join(OUTPUT_DIRECTORY, "latest.json");
 const MEMORY_DIAGNOSTIC = process.env.BENCHMARK_MEMORY_DIAGNOSTIC === "1";
@@ -43,12 +65,15 @@ const BROWSER_ARGS = [
 ];
 const MEMORY_DIAGNOSTIC_PATH = path.join(OUTPUT_DIRECTORY, "vertical-memory-latest.json");
 
-interface BenchmarkSnapshot {
+interface BenchmarkSnapshot extends SamplingMetadata {
+	timerProtocol?: string;
+	measurementProtocol?: string;
+	competitorConfig?: string;
+	cpuAffinity?: string;
 	startedAt?: string;
 	elapsedMs?: number;
 	skipped?: BenchmarkSkip[];
 	generatedAt: string;
-	iterations: number;
 	warmups: number;
 	results: BenchmarkResult[];
 }
@@ -65,6 +90,7 @@ interface MemoryCheckpoint {
 }
 
 interface MemoryDiagnosticSample {
+	timingEnvironment: ReturnType<typeof timerMetadata>;
 	implementation: ImplementationName;
 	rows: number;
 	columns: number;
@@ -154,6 +180,8 @@ const SCENARIOS = parseSelection<ScenarioName>({
 	environmentName: "BENCHMARK_SCENARIOS",
 	available: ALL_SCENARIOS,
 });
+const SAMPLING: SamplingMetadata = samplingPlan(process.env, SCENARIOS);
+validateSampling(SAMPLING);
 
 const { values: options } = parseArgs({
 	options: {
@@ -216,6 +244,12 @@ if (options.list) {
 				implementationsForScenario(scenario).map((implementation) => ({
 					scenario,
 					implementation,
+					...(SAMPLING.adaptiveSampling
+						? {
+								minIterations: SAMPLING.adaptiveSampling.minIterations,
+								maxIterations: iterationsForScenario(SAMPLING, scenario),
+							}
+						: { iterations: iterationsForScenario(SAMPLING, scenario) }),
 				})),
 			),
 			null,
@@ -226,9 +260,11 @@ if (options.list) {
 }
 
 function command(commandName: string, args: string[]): Promise<void> {
-	const executable =
-		process.platform === "win32" && commandName === "pnpm" ? "pnpm.cmd" : commandName;
-	const child = spawn(executable, args, { cwd: process.cwd(), stdio: "inherit" });
+	const child = spawn(commandName, args, {
+		cwd: process.cwd(),
+		stdio: "inherit",
+		...buildCommandOptions(),
+	});
 	return new Promise((resolve, reject) => {
 		child.on("error", reject);
 		child.on("close", (code) =>
@@ -460,17 +496,19 @@ function printSummary(results: readonly BenchmarkResult[]): void {
 function primaryMetric(result: BenchmarkResult): number {
 	switch (result.kind) {
 		case "interaction":
-			return result.scenario.startsWith("scroll-")
+			return result.scenario === "streaming-updates" || result.scenario.startsWith("scroll-")
 				? result.interaction.frameP95Ms
-				: result.interaction.responseP95Ms;
+				: result.interaction.verifiedResponseSamples > 0
+					? result.interaction.verifiedResponseP95Ms
+					: result.interaction.responseP95Ms;
 		case "mount":
-			return result.mountMs;
+			return result.navigationToReadyMs;
 		case "scroll":
 			return result.scroll.p95FrameMs;
 		case "writes":
-			return result.writes.settledDurationMs;
+			return result.writes.completionDurationMs ?? result.writes.settledDurationMs;
 		case "replace":
-			return result.replacement.steps[0]?.settledMs ?? 0;
+			return result.replacement.steps.reduce((sum, step) => sum + step.settledMs, 0);
 	}
 }
 
@@ -478,6 +516,18 @@ function printBaselineComparison(
 	results: readonly BenchmarkResult[],
 	baseline: BenchmarkSnapshot,
 ): void {
+	if (
+		baseline.measurementProtocol !== MEASUREMENT_PROTOCOL ||
+		baseline.timerProtocol !== "cross-origin-isolated-v1" ||
+		baseline.competitorConfig !== COMPETITOR_CONFIG ||
+		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled") ||
+		!sameSamplingPlan(baseline, SAMPLING, SCENARIOS)
+	) {
+		console.log(
+			`Measurement protocol, competitor configuration, CPU placement, or sampling plan changed (baseline ${samplingMode(baseline)}, current ${samplingMode(SAMPLING)} sampling); historical timings are not a speed comparison. Establish a fresh baseline.`,
+		);
+		return;
+	}
 	console.log(`\nChange from ${path.relative(process.cwd(), BASELINE_PATH)} (negative is faster):`);
 	for (const scenario of SCENARIOS) {
 		for (const implementation of implementationsForScenario(scenario)) {
@@ -491,8 +541,11 @@ function printBaselineComparison(
 			const current = median(currentSamples.map(primaryMetric));
 			const previous = median(baselineSamples.map(primaryMetric));
 			const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+			const counts = SAMPLING.adaptiveSampling
+				? ` (n=${baselineSamples.length} → ${currentSamples.length})`
+				: "";
 			console.log(
-				`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+				`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%${counts}`,
 			);
 		}
 	}
@@ -512,8 +565,12 @@ async function saveResults(results: readonly BenchmarkResult[]): Promise<void> {
 		startedAt: RUN_STARTED_AT.toISOString(),
 		elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
 		skipped: SKIPPED,
+		measurementProtocol: MEASUREMENT_PROTOCOL,
+		timerProtocol: "cross-origin-isolated-v1",
+		competitorConfig: COMPETITOR_CONFIG,
+		cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
 		generatedAt: new Date().toISOString(),
-		iterations: ITERATIONS,
+		...SAMPLING,
 		warmups: WARMUPS,
 		results: [...results],
 	};
@@ -602,112 +659,122 @@ async function runMemoryDiagnosticSample(options: {
 	implementation: ImplementationName;
 	rows: number;
 }): Promise<MemoryDiagnosticSample> {
-	const browser = new Stagehand({
-		env: "LOCAL",
-		localBrowserLaunchOptions: {
-			headless: true,
-			args: BROWSER_ARGS,
-			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
-		},
-	});
-	try {
-		await browser.init();
-		const page = (await browser.context.newPage()) as PageLike;
-		const query = new URLSearchParams({
-			implementation: options.implementation,
-			scenario: "vertical-scroll",
-			lifecycle: "1",
-			rows: String(options.rows),
-			columns: String(DIAGNOSTIC_COLUMNS),
-			durationMs: String(DIAGNOSTIC_DURATION_MS),
-		});
-		await page.goto(`${BASE_URL}?${query}`);
-		await waitForReady(page);
-		const browserVersion = await page.sendCDP<{
-			product: string;
-			revision: string;
-			userAgent: string;
-			jsVersion: string;
-		}>("Browser.getVersion");
-		const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-		const startedAt = new Date().toISOString();
-		const checkpoints: MemoryCheckpoint[] = [];
-		const cycles: Array<ScrollMetrics & { cycle: number }> = [];
-		const heapSnapshots: Array<{ completedCycles: number; path: string }> = [];
-		const requestedCheckpoints = new Set([0, ...DIAGNOSTIC_CYCLES]);
-		checkpoints.push(
-			await collectMemoryCheckpoint({
-				page,
-				kind: "cycle",
-				completedCycles: 0,
-				idleMs: 0,
+	const measured = await withBrowserProfile({
+		create: (userDataDir) =>
+			new Stagehand({
+				env: "LOCAL",
+				localBrowserLaunchOptions: {
+					userDataDir,
+					headless: true,
+					args: BROWSER_ARGS,
+					...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+				},
 			}),
-		);
-		if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(0)) {
-			heapSnapshots.push({
-				completedCycles: 0,
-				path: await captureHeapSnapshot({
-					page,
-					implementation: options.implementation,
-					rows: options.rows,
-					completedCycles: 0,
-				}),
+		run: async (browser) => {
+			await browser.init();
+			const page = (await browser.context.newPage()) as PageLike;
+			const query = new URLSearchParams({
+				implementation: options.implementation,
+				scenario: "vertical-scroll",
+				lifecycle: "1",
+				rows: String(options.rows),
+				columns: String(DIAGNOSTIC_COLUMNS),
+				durationMs: String(DIAGNOSTIC_DURATION_MS),
 			});
-		}
-		const maximumCycles = Math.max(...requestedCheckpoints, ...DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES);
-		for (let cycle = 1; cycle <= maximumCycles; cycle++) {
-			const metrics = await page.evaluate(async () => {
-				if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
-				return window.__BENCHMARK__.runScrollCycle();
-			});
-			cycles.push({ cycle, ...metrics });
-			if (requestedCheckpoints.has(cycle)) {
-				checkpoints.push(
-					await collectMemoryCheckpoint({
-						page,
-						kind: "cycle",
-						completedCycles: cycle,
-						idleMs: 0,
-					}),
+			await page.goto(`${BASE_URL}?${query}`);
+			await waitForReady(page);
+			const timingEnvironment = await page.evaluate(timerMetadata);
+			if (!timingEnvironment.crossOriginIsolated)
+				throw new Error(
+					"Benchmark preview must be cross-origin isolated for high-resolution timing",
 				);
-			}
-			if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(cycle)) {
+			const browserVersion = await page.sendCDP<{
+				product: string;
+				revision: string;
+				userAgent: string;
+				jsVersion: string;
+			}>("Browser.getVersion");
+			const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+			const startedAt = new Date().toISOString();
+			const checkpoints: MemoryCheckpoint[] = [];
+			const cycles: Array<ScrollMetrics & { cycle: number }> = [];
+			const heapSnapshots: Array<{ completedCycles: number; path: string }> = [];
+			const requestedCheckpoints = new Set([0, ...DIAGNOSTIC_CYCLES]);
+			checkpoints.push(
+				await collectMemoryCheckpoint({
+					page,
+					kind: "cycle",
+					completedCycles: 0,
+					idleMs: 0,
+				}),
+			);
+			if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(0)) {
 				heapSnapshots.push({
-					completedCycles: cycle,
+					completedCycles: 0,
 					path: await captureHeapSnapshot({
 						page,
 						implementation: options.implementation,
 						rows: options.rows,
-						completedCycles: cycle,
+						completedCycles: 0,
 					}),
 				});
 			}
-		}
-		for (const idleMs of DIAGNOSTIC_IDLE_MS) {
-			checkpoints.push(
-				await collectMemoryCheckpoint({
-					page,
-					kind: "idle",
-					completedCycles: maximumCycles,
-					idleMs,
-				}),
-			);
-		}
-		return {
-			implementation: options.implementation,
-			rows: options.rows,
-			columns: DIAGNOSTIC_COLUMNS,
-			durationMs: DIAGNOSTIC_DURATION_MS,
-			viewport,
-			browser: browserVersion,
-			startedAt,
-			cycles,
-			checkpoints,
-			heapSnapshots,
-		};
-	} finally {
-		await browser.close();
-	}
+			const maximumCycles = Math.max(...requestedCheckpoints, ...DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES);
+			for (let cycle = 1; cycle <= maximumCycles; cycle++) {
+				const metrics = await page.evaluate(async () => {
+					if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
+					return window.__BENCHMARK__.runScrollCycle();
+				});
+				cycles.push({ cycle, ...metrics });
+				if (requestedCheckpoints.has(cycle)) {
+					checkpoints.push(
+						await collectMemoryCheckpoint({
+							page,
+							kind: "cycle",
+							completedCycles: cycle,
+							idleMs: 0,
+						}),
+					);
+				}
+				if (DIAGNOSTIC_HEAP_SNAPSHOT_CYCLES.includes(cycle)) {
+					heapSnapshots.push({
+						completedCycles: cycle,
+						path: await captureHeapSnapshot({
+							page,
+							implementation: options.implementation,
+							rows: options.rows,
+							completedCycles: cycle,
+						}),
+					});
+				}
+			}
+			for (const idleMs of DIAGNOSTIC_IDLE_MS) {
+				checkpoints.push(
+					await collectMemoryCheckpoint({
+						page,
+						kind: "idle",
+						completedCycles: maximumCycles,
+						idleMs,
+					}),
+				);
+			}
+			return {
+				implementation: options.implementation,
+				rows: options.rows,
+				columns: DIAGNOSTIC_COLUMNS,
+				durationMs: DIAGNOSTIC_DURATION_MS,
+				viewport,
+				browser: browserVersion,
+				timingEnvironment,
+				startedAt,
+				cycles,
+				checkpoints,
+				heapSnapshots,
+			};
+		},
+	});
+	if (measured.isErr()) throw measured.error;
+	return measured.value;
 }
 
 function printMemoryDiagnostic(samples: readonly MemoryDiagnosticSample[]): void {
@@ -781,42 +848,52 @@ async function runSample(options: {
 	implementation: ImplementationName;
 	scenario: ScenarioName;
 }): Promise<BenchmarkResult> {
-	const browser = new Stagehand({
-		env: "LOCAL",
-		localBrowserLaunchOptions: {
-			headless: true,
-			args: BROWSER_ARGS,
-			...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+	const measured = await withBrowserProfile({
+		create: (userDataDir) =>
+			new Stagehand({
+				env: "LOCAL",
+				localBrowserLaunchOptions: {
+					userDataDir,
+					headless: true,
+					args: BROWSER_ARGS,
+					...(CHROME_PATH ? { executablePath: CHROME_PATH } : {}),
+				},
+			}),
+		run: async (browser) => {
+			await browser.init();
+			const page = (await browser.context.newPage()) as PageLike;
+			const query = new URLSearchParams({
+				implementation: options.implementation,
+				scenario: options.scenario,
+				...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
+				...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
+			});
+			await page.goto(`${BASE_URL}?${query}`);
+			await waitForReady(page);
+			const timingEnvironment = await page.evaluate(timerMetadata);
+			if (!timingEnvironment.crossOriginIsolated)
+				throw new Error(
+					"Benchmark preview must be cross-origin isolated for high-resolution timing",
+				);
+			if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
+				const interaction = await runBrowserWorkload(page, options.scenario);
+				if (interaction.isErr()) throw interaction.error;
+			}
+			const result = await page.evaluate(async () => {
+				if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
+				return window.__BENCHMARK__.run();
+			});
+			await page.sendCDP("HeapProfiler.collectGarbage");
+			const heapBytes = await page.evaluate(() => {
+				const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } })
+					.memory;
+				return memory?.usedJSHeapSize ?? null;
+			});
+			return { ...result, heapBytes, timingEnvironment };
 		},
 	});
-	try {
-		await browser.init();
-		const page = (await browser.context.newPage()) as PageLike;
-		const query = new URLSearchParams({
-			implementation: options.implementation,
-			scenario: options.scenario,
-			...(OVERRIDE_ROWS ? { rows: OVERRIDE_ROWS } : {}),
-			...(OVERRIDE_COLUMNS ? { columns: OVERRIDE_COLUMNS } : {}),
-		});
-		await page.goto(`${BASE_URL}?${query}`);
-		await waitForReady(page);
-		if (SCENARIO_CONFIG[options.scenario].kind === "interaction") {
-			const interaction = await runBrowserWorkload(page, options.scenario);
-			if (interaction.isErr()) throw interaction.error;
-		}
-		const result = await page.evaluate(async () => {
-			if (!window.__BENCHMARK__) throw new Error("Benchmark API is missing");
-			return window.__BENCHMARK__.run();
-		});
-		await page.sendCDP("HeapProfiler.collectGarbage");
-		const heapBytes = await page.evaluate(() => {
-			const memory = (performance as Performance & { memory?: { usedJSHeapSize: number } }).memory;
-			return memory?.usedJSHeapSize ?? null;
-		});
-		return { ...result, heapBytes };
-	} finally {
-		await browser.close();
-	}
+	if (measured.isErr()) throw measured.error;
+	return measured.value;
 }
 
 async function runSampleWithRetry(options: {
@@ -850,6 +927,10 @@ function formatResult(result: BenchmarkResult): string {
 		case "replace":
 			return `mount ${result.mountMs.toFixed(1)}ms, replace sync ${result.replacement.steps[0]?.synchronousMs.toFixed(1) ?? "n/a"}ms, settled ${result.replacement.steps[0]?.settledMs.toFixed(1) ?? "n/a"}ms`;
 	}
+}
+
+function formatHeadline(headline: AdaptiveHeadline): string {
+	return `${headline.category} ${headline.ratio.toFixed(2)}x [${headline.lower.toFixed(2)}, ${headline.upper.toFixed(2)}] ${headline.verdict}`;
 }
 
 class BenchmarkCheckpointError extends TaggedError("BenchmarkCheckpointError")<{
@@ -903,21 +984,79 @@ try {
 		await runMemoryDiagnostic();
 	} else {
 		const results = measuredResults;
+		console.log(`Benchmark sampling: ${describeSampling(SAMPLING, SCENARIOS)} per library.`);
+		const adaptive = SAMPLING.adaptiveSampling;
 		for (const scenario of SCENARIOS) {
+			const iterations = iterationsForScenario(SAMPLING, scenario);
+			const implementations = implementationsForScenario(scenario);
 			for (const skipped of SKIPPED.filter((skip) => skip.scenario === scenario))
 				console.log(
 					`[skip] ${scenario} / ${skipped.implementation} (${skipped.category}: ${skipped.reason})`,
 				);
-			for (let iteration = -WARMUPS; iteration < ITERATIONS; iteration++) {
-				for (const implementation of implementationsForScenario(scenario)) {
-					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${ITERATIONS}]`;
+			// Each round measures every library once, rotating the order, before the stopping check.
+			for (let iteration = -WARMUPS; iteration < iterations; iteration++) {
+				for (const implementation of sampleOrder(implementations, iteration)) {
+					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${iterations}]`;
 					console.log(`${prefix} starting ${scenario} / ${implementation}…`);
 					const result = await runSampleWithRetry({ implementation, scenario });
 					if (iteration >= 0) {
 						results.push(result);
+						const checkpoint = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
+							measurementProtocol: MEASUREMENT_PROTOCOL,
+							timerProtocol: "cross-origin-isolated-v1",
+							competitorConfig: COMPETITOR_CONFIG,
+							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
+							samplingMode: samplingMode(SAMPLING),
+							startedAt: RUN_STARTED_AT.toISOString(),
+							iteration,
+							iterations,
+							result,
+						});
+						if (Result.isError(checkpoint)) throw checkpoint.error;
 						console.log(`${prefix} ${scenario} / ${implementation}: ${formatResult(result)}`);
 					}
 				}
+				if (!adaptive || iteration < 0 || iteration + 1 < adaptive.minIterations) continue;
+				const headlines = evaluateHeadlines(scenario, results, {
+					...adaptive,
+					measurementProtocol: MEASUREMENT_PROTOCOL,
+				});
+				const decision = stoppingDecision({
+					rounds: iteration + 1,
+					minimum: adaptive.minIterations,
+					maximum: iterations,
+					headlines,
+				});
+				console.log(
+					`[adaptive] ${scenario} after ${iteration + 1}: ${headlines.map(formatHeadline).join("; ") || "no headline"}`,
+				);
+				if (!decision.stop) continue;
+				adaptive.headlines.push(...headlines);
+				adaptive.cells.push(
+					...implementations.map((implementation) => ({
+						scenario,
+						implementation,
+						samples: iteration + 1,
+						stopReason: decision.reason,
+					})),
+				);
+				const record = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
+					measurementProtocol: MEASUREMENT_PROTOCOL,
+					competitorConfig: COMPETITOR_CONFIG,
+					samplingMode: "adaptive",
+					startedAt: RUN_STARTED_AT.toISOString(),
+					samplingDecision: {
+						scenario,
+						rounds: iteration + 1,
+						stopReason: decision.reason,
+						headlines,
+					},
+				});
+				if (Result.isError(record)) throw record.error;
+				console.log(
+					`[adaptive] ${scenario} stopped after ${iteration + 1} of ${iterations} (${decision.reason})`,
+				);
+				break;
 			}
 		}
 		printSummary(results);
@@ -940,7 +1079,11 @@ try {
 							generatedAt: new Date().toISOString(),
 							startedAt: RUN_STARTED_AT.toISOString(),
 							elapsedMs: Date.now() - RUN_STARTED_AT.getTime(),
-							iterations: ITERATIONS,
+							measurementProtocol: MEASUREMENT_PROTOCOL,
+							timerProtocol: "cross-origin-isolated-v1",
+							competitorConfig: COMPETITOR_CONFIG,
+							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
+							...SAMPLING,
 							warmups: WARMUPS,
 							skipped: SKIPPED,
 							incomplete: true,
@@ -968,4 +1111,11 @@ try {
 	process.exitCode = 1;
 } finally {
 	preview?.kill("SIGTERM");
+	const profiles = browserProfileCleanupSummary();
+	if (profiles.leakedDirectories.length) {
+		console.error("benchmark.browser.profiles.leaked", profiles);
+		process.exitCode = 1;
+	} else {
+		console.log("Browser profile cleanup:", JSON.stringify(profiles));
+	}
 }

@@ -42,7 +42,9 @@ describe("formula-enabled lazy route production mount", () => {
 		expect(state.buildMode).toBe(expectedBuildMode);
 		expect(state.viewport?.width ?? 0).toBeGreaterThan(0);
 		expect(state.viewport?.height ?? 0).toBeGreaterThan(0);
-		expect(state.virtualizers).toHaveLength(2);
+		// Rows now use the shared sparse geometry; only columns need TanStack.
+		expect(state.virtualizers).toHaveLength(1);
+		expect(state.virtualizers[0]?.horizontal).toBe(true);
 		for (const virtualizer of state.virtualizers) {
 			expect(virtualizer.width).toBeGreaterThan(0);
 			expect(virtualizer.height).toBeGreaterThan(0);
@@ -95,5 +97,17 @@ describe("formula-enabled lazy route production mount", () => {
 			expect(virtualizer.hasTargetWindow).toBe(true);
 		}
 		expect(recovered.cells).toBeGreaterThan(0);
+
+		// The native row subscription must survive the same Loading transition
+		// and the separate column-observer repair above.
+		await getPage().evaluate(() => {
+			const viewport = document.querySelector<HTMLElement>(".se-viewport");
+			if (!viewport) throw new Error("Missing grid viewport");
+			viewport.scrollTop = viewport.scrollHeight;
+		});
+		await getPage().waitForSelector('.se-row[aria-rowindex="50"]');
+		expect(
+			await getPage().evaluate(() => document.querySelector('.se-row[aria-rowindex="1"]') === null),
+		).toBe(true);
 	});
 });

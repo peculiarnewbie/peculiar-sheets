@@ -28,6 +28,7 @@ import type {
 	CellValue,
 	ColumnDef,
 	SheetController,
+	SheetOperation,
 	SheetCustomization,
 	VisualCellAddress,
 } from "../../packages/spreadsheets/src/types";
@@ -447,6 +448,24 @@ describe("Solid 2 Sheet", () => {
 		expect(runs).toEqual([2, 1, 2]);
 		expect(ids.map(store.rowRevision)).toEqual([1, 0, 1]);
 		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.trySetDistinctCells?.(
+			[
+				{ row: 0, col: 0, value: 12 },
+				{ row: 2, col: 0, value: 31 },
+			],
+			[{ id: "value", header: "Value" }],
+		);
+		flush();
+		expect(runs).toEqual([3, 1, 3]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
+		store.undo();
+		flush();
+		expect(runs).toEqual([4, 1, 4]);
+		expect(store.cells).toEqual([[11], [2], [30]]);
+		store.redo();
+		flush();
+		expect(runs).toEqual([5, 1, 5]);
+		expect(store.cells).toEqual([[12], [2], [31]]);
 	});
 
 	it("lets Solid settle asynchronous host data and discards an older response", async () => {
@@ -493,6 +512,103 @@ describe("Solid 2 Sheet", () => {
 		flush();
 		expect(controller?.getCellValue(0, 0)).toBe("newer");
 		expect(view.container.querySelector(".se-grid")).not.toBeNull();
+	});
+
+	it("retains overlapping columns, pinned cells, and owned-row updates as the window moves", () => {
+		const columns: ColumnDef[] = Array.from({ length: 10 }, (_, index) => ({
+			id: `c${index}`,
+			header: String(index),
+			...(index === 1 ? { pinned: "left" as const } : {}),
+		}));
+		const { result: store } = renderHook(() =>
+			createSheetStore(
+				[
+					Array.from({ length: 10 }, (_, index) => index),
+					Array.from({ length: 10 }, (_, index) => index + 100),
+				],
+				columns,
+			),
+		);
+		const range = (indices: number[]) =>
+			indices.map((index) => {
+				const column = columns[index];
+				if (!column) throw new Error("Test column missing");
+				return { index, start: index * 100, size: 100, column };
+			});
+		const [virtualColumns, setVirtualColumns] = createSignal(range([0, 1, 2, 3]));
+		let clicked: VisualCellAddress | null = null;
+		const view = render(() => (
+			<GridBody
+				columns={columns}
+				rowMetrics={buildRowMetrics(2, 28)}
+				virtualRows={[
+					{ index: 0, start: 0, size: 28 },
+					{ index: 1, start: 28, size: 28 },
+				]}
+				virtualColumns={virtualColumns()}
+				totalHeight={56}
+				rowGutterWidth={0}
+				showReferenceHeaders={false}
+				getRowHeaderIndex={(row) => row}
+				getRowId={(row) => rowId(`r${row}`)}
+				getCellId={({ row, col }) => `owned-${row}-${col}`}
+				getRawValue={(row, col) => store.cells[row]?.[col] ?? null}
+				getDisplayValue={(row, col) => store.cells[row]?.[col] ?? null}
+				getRawRowValues={(row) => {
+					store.structuralRevision();
+					const id = store.getRowIdAtPhysicalRow(physicalRow(row));
+					if (id !== null) store.rowRevision(id);
+					return store.cells[row];
+				}}
+				editingAddress={null}
+				selection={selectCell({ row: visualRow(0), col: columnIdx(2) })}
+				onCellMouseDown={(address) => {
+					clicked = address;
+				}}
+				onCellDblClick={() => {}}
+				pinnedLeftOffsets={[-1, 0]}
+				lastPinnedIndex={1}
+				searchMatchSet={new Set()}
+				searchCurrentAddress={null}
+			/>
+		));
+		flush();
+		const pinned = view.container.querySelector("#owned-0-1");
+		const overlapping = view.container.querySelector("#owned-0-2");
+		const departing = view.container.querySelector("#owned-0-0");
+		setVirtualColumns(range([1, 2, 3, 4]));
+		flush();
+		expect(view.container.querySelector("#owned-0-1")).toBe(pinned);
+		expect(view.container.querySelector("#owned-0-2")).toBe(overlapping);
+		expect(view.container.querySelector("#owned-0-4")).toBe(departing);
+		expect(view.getAllByRole("row")[0]?.querySelectorAll(".se-cell")).toHaveLength(4);
+		expect(
+			Array.from(view.getAllByRole("row")[0]?.querySelectorAll(".se-cell") ?? [], (cell) =>
+				cell.getAttribute("aria-colindex"),
+			),
+		).toEqual(["2", "3", "4", "5"]);
+		store.setCell(physicalRow(0), 2, 777);
+		flush();
+		expect(overlapping?.textContent).toBe("777");
+		expect(view.container.querySelector("#owned-1-2")?.textContent).toBe("102");
+		if (!departing) throw new Error("Recycled cell missing");
+		fireEvent.mouseDown(departing);
+		expect(clicked).toEqual({ row: 0, col: 4 });
+		setVirtualColumns(range([1, 6, 7, 8]));
+		flush();
+		const last = view.container.querySelector<HTMLElement>("#owned-0-7");
+		if (!last) throw new Error("Jumped column missing");
+		expect(last.textContent).toBe("7");
+		expect(getComputedStyle(last).left).toBe("700px");
+		setVirtualColumns(range([1, 7]));
+		flush();
+		expect(view.container.querySelector("#owned-0-7")).toBe(last);
+		setVirtualColumns(range([0, 1, 2, 3, 4, 5, 6, 7, 8]));
+		flush();
+		expect(view.container.querySelector("#owned-0-1")).toBe(pinned);
+		expect(view.container.querySelector("#owned-0-7")).toBe(last);
+		expect(view.getAllByRole("gridcell")).toHaveLength(18);
+		expect(view.container.querySelector("#owned-0-2")?.textContent).toBe("777");
 	});
 
 	it("preserves row revisions when observers leave and return, and resets deleted identities", () => {
@@ -572,15 +688,21 @@ describe("Solid 2 Sheet", () => {
 						get editingAddress() {
 							return grid.editingAddress;
 						},
-						getLayout: () => ({
-							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
-							cssText: "width:100px;height:28px;left:0px;position:absolute",
-						}),
-						get displayValues() {
-							return [value()];
+						getDisplayValue() {
+							return value();
 						},
 					}}
-					columnIndex={0}
+					column={() => ({
+						index: 0,
+						start: 0,
+						size: 100,
+						column: column(),
+						slot: "v0",
+						layout: {
+							style: { width: "100px", height: "28px", left: "0px", position: "absolute" },
+							cssText: "width:100px;height:28px;left:0px;position:absolute",
+						},
+					})}
 				/>
 			</SheetCustomizationContext>
 		));
@@ -682,6 +804,244 @@ describe("Solid 2 Sheet", () => {
 		controller.undo();
 		expect(controller.getCellValue(1, 0)).toBe("next");
 		flush();
+	});
+
+	it("normalizes sorted public batches before committing history and notifying", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		const snapshots: CellValue[][] = [];
+		render(() => (
+			<Sheet
+				data={[
+					[2, "second"],
+					[1, "first"],
+				]}
+				rowIds={[rowId("two"), rowId("one")]}
+				columns={[
+					{ id: "key", header: "Key" },
+					{ id: "value", header: "Value" },
+				]}
+				defaultSortState={{ columnId: "key", direction: "asc" }}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+					snapshots.push([
+						controller?.getRawCellValue(0, 1) ?? null,
+						controller?.getRawCellValue(1, 1) ?? null,
+					]);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const selection = controller.getSelection();
+		controller.setCellValues([
+			{ row: 0, col: 1, value: "discarded" },
+			{ row: 1, col: 1, value: "temporary" },
+			{ row: 0, col: 1, value: "final" },
+			{ row: 1, col: 1, value: "second" },
+		]);
+		expect(snapshots).toEqual([["final", "second"]]);
+		const operation = operations[0];
+		if (operation?.type !== "batch-edit") throw new Error("Batch notification missing");
+		expect(operation.mutations).toEqual([
+			{
+				address: { row: 1, col: 1 },
+				viewAddress: { row: 0, col: 1 },
+				rowId: "one",
+				columnId: "value",
+				oldValue: "first",
+				newValue: "final",
+				source: "external",
+			},
+		]);
+		expect(controller.getSelection()).toEqual(selection);
+		controller.undo();
+		expect(snapshots[1]).toEqual(["first", "second"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse notification missing");
+		expect(inverse.mutations).toEqual([
+			{ ...operation.mutations[0], oldValue: "final", newValue: "first" },
+		]);
+		controller.redo();
+		expect(snapshots[2]).toEqual(["final", "second"]);
+		controller.setCellValues([{ row: 0, col: 1, value: "final" }]);
+		expect(operations).toHaveLength(3);
+		expect(controller.getSelection()).toEqual(selection);
+	});
+
+	it("keeps undo and redo independent of mutated operation payloads", () => {
+		let controller: SheetController | undefined;
+		const delivered: CellValue[] = [];
+		render(() => (
+			<Sheet
+				data={[["old", "other"]]}
+				columns={[
+					{ id: "a", header: "A" },
+					{ id: "b", header: "B" },
+				]}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					// A host drains and rewrites the delivered records.
+					const mutations =
+						operation.type === "batch-edit"
+							? operation.mutations.splice(0)
+							: operation.type === "cell-edit"
+								? [operation.mutation]
+								: [];
+					for (const mutation of mutations) {
+						delivered.push(mutation.newValue);
+						mutation.oldValue = "corrupted";
+						mutation.newValue = "corrupted";
+					}
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		controller.setCellValues([{ row: 0, col: 0, value: "new" }]);
+		controller.setCellValue(0, 1, "edited");
+		expect(delivered).toEqual(["new", "edited"]);
+		controller.undo();
+		controller.undo();
+		expect([controller.getRawCellValue(0, 0), controller.getRawCellValue(0, 1)]).toEqual([
+			"old",
+			"other",
+		]);
+		controller.redo();
+		controller.redo();
+		expect([controller.getRawCellValue(0, 0), controller.getRawCellValue(0, 1)]).toEqual([
+			"new",
+			"edited",
+		]);
+	});
+
+	it("uses the current batch listener and permits synchronous reentrant writes", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		const data = [["a"], ["b"]];
+		const columns = [{ id: "value", header: "Value" }];
+		const [listener, setListener] = createSignal<
+			((operation: SheetOperation) => void) | undefined
+		>();
+		const operationProps = createMemo(() => {
+			const current = listener();
+			return current ? { onOperation: current } : {};
+		});
+		render(() => (
+			<Sheet
+				data={data}
+				columns={columns}
+				{...operationProps()}
+				ref={(value) => {
+					controller = value;
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const sheet = controller;
+		sheet.setCellValues([{ row: 0, col: 0, value: "a" }]);
+		setListener(() => (operation: SheetOperation) => {
+			operations.push(operation);
+			if (operation.type === "batch-edit" && operation.mutations[0]?.newValue === "B") {
+				expect(sheet.getRawCellValue(1, 0)).toBe("B");
+				expect(sheet.canUndo()).toBe(true);
+				sheet.setCellValue(0, 0, "nested");
+			}
+		});
+		flush();
+		sheet.setCellValues([{ row: 1, col: 0, value: "B" }]);
+		expect(operations.map((operation) => operation.type)).toEqual(["batch-edit", "cell-edit"]);
+		sheet.undo();
+		expect(sheet.getRawCellValue(0, 0)).toBe("a");
+		sheet.undo();
+		expect(sheet.getRawCellValue(1, 0)).toBe("b");
+		setListener(undefined);
+		flush();
+		const count = operations.length;
+		sheet.setCellValues([{ row: 1, col: 0, value: "quiet" }]);
+		expect(operations).toHaveLength(count);
+	});
+
+	it("normalizes multi-row batches and their complete undo/redo payloads", () => {
+		let controller: SheetController | undefined;
+		const operations: SheetOperation[] = [];
+		render(() => (
+			<Sheet
+				data={[
+					["a", "b"],
+					["c", "d"],
+				]}
+				columns={[
+					{ id: "left", header: "Left" },
+					{ id: "right", header: "Right" },
+				]}
+				ref={(value) => {
+					controller = value;
+				}}
+				onOperation={(operation) => {
+					operations.push(operation);
+				}}
+			/>
+		));
+		flush();
+		if (!controller) throw new Error("Controller missing");
+		const sheet = controller;
+		const values = () => [
+			sheet.getRawCellValue(0, 0),
+			sheet.getRawCellValue(0, 1),
+			sheet.getRawCellValue(1, 0),
+			sheet.getRawCellValue(1, 1),
+		];
+		controller.setCellValues([
+			{ row: 1, col: 1, value: "D" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 0, col: 1, value: "B" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		const forward = operations[0];
+		if (forward?.type !== "batch-edit") throw new Error("Batch missing");
+		expect(
+			forward.mutations.map((m) => [m.address.row, m.address.col, m.oldValue, m.newValue]),
+		).toEqual([
+			[1, 1, "d", "D"],
+			[0, 0, "a", "A"],
+			[0, 1, "b", "B"],
+		]);
+		controller.undo();
+		flush();
+		expect(values()).toEqual(["a", "b", "c", "d"]);
+		expect(controller.canUndo()).toBe(false);
+		const inverse = operations[1];
+		if (inverse?.type !== "batch-edit") throw new Error("Inverse missing");
+		expect(inverse.mutations).toEqual(
+			forward.mutations.map((m) => ({ ...m, oldValue: m.newValue, newValue: m.oldValue })),
+		);
+		controller.redo();
+		flush();
+		expect(values()).toEqual(["A", "B", "c", "D"]);
+		controller.setCellValues([
+			{ row: 0, col: 0, value: "temporary" },
+			{ row: 1, col: 0, value: "C" },
+			{ row: 0, col: 1, value: "last" },
+			{ row: 0, col: 0, value: "A" },
+			{ row: 1, col: 0, value: "final" },
+		]);
+		flush();
+		expect(values()).toEqual(["A", "last", "final", "D"]);
+		const normalized = operations[3];
+		if (normalized?.type !== "batch-edit") throw new Error("Normalized batch missing");
+		expect(normalized.mutations.map((m) => [m.address.row, m.address.col, m.newValue])).toEqual([
+			[1, 0, "final"],
+			[0, 1, "last"],
+		]);
 	});
 
 	it("cancels a queued editor focus when unmounted in the same turn", () => {

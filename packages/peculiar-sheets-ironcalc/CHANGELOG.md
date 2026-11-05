@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 - 2026-11-05
+
+- Admit core `0.17.x`, compiled for Solid `2.0.0-rc.20`, alongside existing
+  supported core versions. The adapter itself is unchanged.
+
 ## 0.16.0 - 2026-11-02
 
 - Admit core `0.16.x`, compiled for Solid `2.0.0-rc.20`, alongside existing

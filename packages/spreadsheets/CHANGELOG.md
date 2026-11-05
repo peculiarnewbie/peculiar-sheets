@@ -5,6 +5,35 @@ All notable changes to `peculiar-sheets` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-11-05
+
+### Changed
+
+- Rework rendering for speed and memory: reuse viewport row owners and column
+  slots, virtualize headers with the body, share cell geometry through CSS
+  variables, observe row revisions lazily, and keep unchanged row geometry
+  across controlled data replacements. Owned rows store long blank tails and
+  integer rows compactly; snapshots and history still expose complete data.
+- Commit distinct batch writes in one fused pass. Undo history retains forward
+  mutation records and derives inverses when undoing.
+- Promote `.se-viewport` to an accelerated scroll layer
+  (`will-change: scroll-position`) for smoother native wheel scrolling.
+- Default plain-text cells add the `se-cell--text` class and use block layout.
+  The `.se-cell__text` span is still rendered but uses `display: contents`, so
+  box styles on it (padding, border, background) no longer apply; style
+  `.se-cell` or `.se-cell--text` instead. Custom renderers and style hooks keep
+  the previous flex layout.
+- `onOperation` listeners receive detached copies of mutation records and may
+  mutate them without affecting undo or redo.
+
+The component, controller, and stylesheet import APIs are unchanged.
+
+### Fixed
+
+- Accept CRLF line endings when pasting tab-separated clipboard data.
+- Include the sticky header's offset when revealing the focused row, so the
+  focused last row stays visible when insertions grow the scroll area.
+
 ## [0.16.0] - 2026-11-02
 
 ### Changed

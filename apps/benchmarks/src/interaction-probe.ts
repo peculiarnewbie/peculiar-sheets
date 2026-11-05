@@ -99,7 +99,7 @@ export function createInteractionProbe(controller: BenchmarkController, dataset:
 					for (let batch = 0; batch < 50; batch++) {
 						const delay = start + batch * 100 - performance.now();
 						if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-						if (performance.now() - start >= 5_000) break;
+						// Complete all 50 batches, including backlog after the nominal five seconds.
 						const writes = Array.from({ length: 100 }, (_, index) => ({
 							row: 100 + ((batch * 137 + index * 97) % (dataset.rows - 100)),
 							column: 1 + (index % (dataset.columns - 1)),

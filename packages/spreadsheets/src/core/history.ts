@@ -39,7 +39,6 @@ export type HistoryEntry =
 	| {
 			type: "cell-mutations";
 			forward: CellMutation[];
-			inverse: CellMutation[];
 			selectionBefore: Selection;
 			selectionAfter: Selection;
 	  }
@@ -93,12 +92,21 @@ function pushEntry(history: HistoryStack, entry: HistoryEntry): HistoryStack {
 	return { undoStack, redoStack: [] };
 }
 
-function mutationHistoryEntry(
-	forward: CellMutation[],
-	selectionBefore: Selection,
-	selectionAfter: Selection,
-): HistoryEntry {
-	const inverse = forward.map<CellMutation>((m) => ({
+function invertCellMutation(m: CellMutation): CellMutation {
+	// Grid edits normally carry both identities. Construct that shape directly
+	// instead of allocating temporary objects for optional-property spreads.
+	if (m.viewAddress && m.rowId !== undefined) {
+		return {
+			address: m.address,
+			viewAddress: m.viewAddress,
+			rowId: m.rowId,
+			columnId: m.columnId,
+			oldValue: m.newValue,
+			newValue: m.oldValue,
+			source: m.source,
+		};
+	}
+	return {
 		address: m.address,
 		...(m.viewAddress ? { viewAddress: m.viewAddress } : {}),
 		...(m.rowId !== undefined ? { rowId: m.rowId } : {}),
@@ -106,12 +114,17 @@ function mutationHistoryEntry(
 		oldValue: m.newValue,
 		newValue: m.oldValue,
 		source: m.source,
-	}));
+	};
+}
 
+function mutationHistoryEntry(
+	forward: CellMutation[],
+	selectionBefore: Selection,
+	selectionAfter: Selection,
+): HistoryEntry {
 	return {
 		type: "cell-mutations",
 		forward,
-		inverse,
 		selectionBefore,
 		selectionAfter,
 	};
@@ -253,7 +266,7 @@ export function undo(history: HistoryStack): UndoResult | null {
 		case "cell-mutations":
 			return {
 				history: nextHistory,
-				mutations: entry.inverse,
+				mutations: entry.forward.map(invertCellMutation),
 				selection: entry.selectionBefore,
 			};
 

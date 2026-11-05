@@ -3,3 +3,4 @@ dist
 .benchmark/
 .DS_Store
 .env
+benchmarks/evidence/

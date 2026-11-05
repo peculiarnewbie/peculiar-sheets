@@ -1,7 +1,4 @@
-import type {
-	HistoryTransitionTransaction,
-	UndoRedoResult,
-} from "../core/state";
+import type { HistoryTransitionTransaction, UndoRedoResult } from "../core/state";
 import { toNumber, type RowId } from "../core/brands";
 import type { FormulaBridgeOperationResult } from "../formula/bridge";
 import {
@@ -14,12 +11,7 @@ import {
 	type ResultLike,
 } from "../internal/result";
 import type { FormulaBridgeError } from "../internal/errors";
-import type {
-	CellMutation,
-	CellValue,
-	RowReorderMutation,
-	SheetOperation,
-} from "../types";
+import type { CellMutation, CellValue, RowReorderMutation, SheetOperation } from "../types";
 
 export type MutationCoordinationNoopReason =
 	| "empty-mutations"
@@ -51,6 +43,24 @@ export interface HistoryCommandCoordinationDeps {
 	formula: FormulaSyncPort | null;
 	onColumnResize?: (columnId: string, width: number) => void;
 	onRowResize?: (rowId: RowId, height: number) => void;
+}
+
+/**
+ * History derives undo inverses from its retained forward mutation records, so
+ * hosts receive detached copies they may mutate or drain freely.
+ */
+export function detachOperation(operation: SheetOperation): SheetOperation {
+	switch (operation.type) {
+		case "cell-edit":
+			return { type: "cell-edit", mutation: { ...operation.mutation } };
+		case "batch-edit":
+			return {
+				type: "batch-edit",
+				mutations: operation.mutations.map((mutation) => ({ ...mutation })),
+			};
+		default:
+			return operation;
+	}
 }
 
 /**
@@ -105,9 +115,7 @@ export function coordinateBatchMutations(
 		return Result.ok(noop("empty-mutations"));
 	}
 
-	const syncResult = tryFormulaSync(deps.formula, (formula) =>
-		formula.setCells(mutations),
-	);
+	const syncResult = tryFormulaSync(deps.formula, (formula) => formula.setCells(mutations));
 	if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 		return syncResult;
 	}
@@ -154,9 +162,7 @@ function syncHistoryTransitionStages(
 	}
 
 	if (result.rowChange) {
-		const syncResult = tryFormulaSync(deps.formula, (formula) =>
-			formula.syncAll(deps.getCells()),
-		);
+		const syncResult = tryFormulaSync(deps.formula, (formula) => formula.syncAll(deps.getCells()));
 		if (Result.isError(syncResult) || isNoop(syncResult.value)) {
 			return syncResult;
 		}
@@ -176,10 +182,7 @@ function syncHistoryTransitionStages(
 }
 
 function emitHistoryTransition(
-	deps: Pick<
-		HistoryCommandCoordinationDeps,
-		"emitOperation" | "onColumnResize" | "onRowResize"
-	>,
+	deps: Pick<HistoryCommandCoordinationDeps, "emitOperation" | "onColumnResize" | "onRowResize">,
 	result: UndoRedoResult,
 ): boolean {
 	let didWork = false;

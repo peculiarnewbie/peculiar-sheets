@@ -1,3 +1,8 @@
+import { Result, TaggedError } from "better-result";
+import { createDataset, createReplacementDataset } from "./datasets";
+import { createInteractionProbe } from "./interaction-probe";
+import { measureFrameAlignedReplacement } from "./replacement-timing";
+import { SCENARIOS } from "./scenarios";
 import type {
 	BenchmarkAdapter,
 	BenchmarkController,
@@ -5,16 +10,12 @@ import type {
 	BenchmarkResult,
 	BenchmarkScenario,
 	ImplementationName,
-	ScrollMetrics,
-	WriteMetrics,
 	ReplacementMetrics,
 	ReplacementStepMetrics,
+	ScrollMetrics,
 } from "./types";
 import { IMPLEMENTATIONS, SCENARIO_NAMES } from "./types";
-import { Result, TaggedError } from "better-result";
-import { SCENARIOS } from "./scenarios";
-import { createDataset, createReplacementDataset } from "./datasets";
-import { createInteractionProbe } from "./interaction-probe";
+import { measureWrites } from "./write-probe";
 import "./styles.css";
 
 function parseQuery(): { implementation: ImplementationName; scenario: BenchmarkScenario } {
@@ -225,62 +226,6 @@ async function measureScroll(
 	};
 }
 
-function writeTarget(
-	index: number,
-	scenario: Extract<BenchmarkScenario, { kind: "writes" }>,
-): { row: number; column: number } {
-	if (scenario.distribution === "visible") {
-		return { row: index % 20, column: Math.floor(index / 20) % scenario.columns };
-	}
-	return { row: (index * 97) % scenario.rows, column: index % scenario.columns };
-}
-
-async function measureWrites(
-	controller: BenchmarkController,
-	scenario: Extract<BenchmarkScenario, { kind: "writes" }>,
-): Promise<WriteMetrics> {
-	await controller.scrollToRow(0);
-	await nextFrame();
-	const writes = Array.from({ length: scenario.count }, (_, index) => {
-		const target = writeTarget(index, scenario);
-		return { ...target, value: `value-${index}` };
-	});
-	const start = performance.now();
-	const pending: Promise<void>[] = [];
-	if (scenario.mode === "batch") {
-		const completion = controller.writeCells(writes);
-		if (completion) pending.push(completion);
-	} else {
-		for (const write of writes) {
-			const completion = controller.writeCell(write.row, write.column, write.value);
-			if (completion) pending.push(completion);
-		}
-	}
-	const durationMs = performance.now() - start;
-	if (pending.length > 0) await Promise.all(pending);
-	await nextFrame();
-	await nextFrame();
-	const settledDurationMs = performance.now() - start;
-	const expectedCells = new Map<string, (typeof writes)[number]>();
-	for (const write of writes) expectedCells.set(`${write.row}:${write.column}`, write);
-	for (const write of expectedCells.values()) {
-		const actual = controller.readCell(write.row, write.column);
-		if (actual !== write.value) {
-			throw new Error(
-				`Write workload failed its data-integrity check at ${write.row},${write.column}: expected ${JSON.stringify(write.value)}, received ${JSON.stringify(actual)}`,
-			);
-		}
-	}
-	return {
-		distribution: scenario.distribution,
-		mode: scenario.mode,
-		count: scenario.count,
-		durationMs,
-		settledDurationMs,
-		operationsPerSecond: (scenario.count / durationMs) * 1_000,
-	};
-}
-
 async function measureReplacement(
 	controller: BenchmarkController,
 	scenario: Extract<BenchmarkScenario, { kind: "replace" }>,
@@ -313,13 +258,12 @@ async function measureReplacement(
 	const replacement = createReplacementDataset(scenario, initial);
 	const steps: ReplacementStepMetrics[] = [];
 	const measureStep = async (name: string, from: BenchmarkDataset, to: BenchmarkDataset) => {
-		const start = performance.now();
-		controller.replaceDataset?.(to);
-		const synchronousMs = performance.now() - start;
-		await nextFrame();
-		const firstFrameMs = performance.now() - start;
-		await nextFrame();
-		const settledMs = performance.now() - start;
+		const measured = await measureFrameAlignedReplacement(() => controller.replaceDataset?.(to));
+		measured.tapError((error) =>
+			console.debug("benchmark.replacement.failed", { name, cause: error.cause }),
+		);
+		if (measured.isErr()) throw measured.error;
+		const { synchronousMs, firstFrameMs, secondFrameMs, settledMs } = measured.value;
 		const diagnostics = window.__PECULIAR_SHEETS_RECONCILIATION__;
 		if (diagnostics) {
 			diagnostics.durations["virtualizer.firstFrame"] =
@@ -335,7 +279,15 @@ async function measureReplacement(
 			}
 		}
 
-		steps.push({ name, fromRows: from.rows, toRows: to.rows, synchronousMs, settledMs });
+		steps.push({
+			name,
+			fromRows: from.rows,
+			toRows: to.rows,
+			synchronousMs,
+			firstFrameMs,
+			secondFrameMs,
+			settledMs,
+		});
 	};
 	await measureStep("replace", initial, replacement);
 	if (scenario.replacement === "filter-roundtrip" || scenario.replacement === "insert-delete") {
@@ -348,6 +300,7 @@ async function measureReplacement(
 	const profile = window.__PECULIAR_SHEETS_RECONCILIATION__;
 	delete window.__PECULIAR_SHEETS_RECONCILIATION__;
 	const metrics: ReplacementMetrics = {
+		timingProtocol: "frame-aligned-v1",
 		mode: scenario.replacement,
 		steps,
 		...(profile ? { profile } : {}),
@@ -542,8 +495,12 @@ async function main(): Promise<void> {
 					return { ...snapshot(), kind: "scroll", scroll };
 				}
 				case "writes": {
-					const writes = await measureWrites(controller, scenario);
-					return { ...snapshot(), kind: "writes", writes };
+					const measured = await measureWrites(controller, scenario);
+					if (Result.isError(measured)) {
+						console.debug("benchmark.writes.failed", { cause: measured.error.cause });
+						throw measured.error;
+					}
+					return { ...snapshot(), kind: "writes", writes: measured.value };
 				}
 				case "replace": {
 					const replacement = await measureReplacement(controller, scenario, dataset);

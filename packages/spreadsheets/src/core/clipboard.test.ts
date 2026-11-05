@@ -39,6 +39,14 @@ describe("clipboard", () => {
 			]);
 		});
 
+		it("should parse CRLF line endings", () => {
+			const result = parseTSV("a\tb\r\nc\td");
+			expect(result).toEqual([
+				["a", "b"],
+				["c", "d"],
+			]);
+		});
+
 		it("should handle empty string", () => {
 			expect(parseTSV("")).toEqual([]);
 		});
