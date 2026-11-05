@@ -22,6 +22,21 @@ exact Solid `2.0.0-rc.20` peers. The IronCalc adapter is unchanged apart from
 admitting core `0.17.x`. The workspace HyperFormula adapter is private and is not
 published.
 
+## Validation
+
+On Windows from a clean checkout of `66419ee`: frozen install, workspace build,
+257 unit tests, 21 Solid component tests, all workspace and Solid typechecks,
+both package gates, the isolated packed-consumer install, and 108 production
+browser tests passed. `npm publish --dry-run` accepted both tarballs with public
+access and the `latest` tag. The package gates extract tarballs with `tar`; run
+them where `tar` resolves to Windows' `tar.exe`, because Git Bash's GNU `tar`
+treats `C:` paths as remote hosts.
+
+| Package | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `peculiar-sheets@0.17.0` | 83742 | `123523b49b188907943fef1fafd7041c54e2b771ce1e564ecba3e0e28944e9ae` |
+| `peculiar-sheets-ironcalc@0.17.0` | 5852 | `1a99ef35f81f7baaf3190a10a11f66f8d8c81b9f12dabe3d844e7a65a4b12644` |
+
 ## Artifacts
 
 The git-ignored `dist/releases/` directory contains:
