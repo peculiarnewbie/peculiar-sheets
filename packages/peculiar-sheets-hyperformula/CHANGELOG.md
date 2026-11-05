@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 - 2026-11-05
+
+- Align the private workspace adapter with `peculiar-sheets@0.17.0`. The core
+  workspace peer packs as `^0.17.0`. The package remains private.
+
 ## 0.15.0 - 2026-10-01
 
 - Align the private workspace adapter with `peculiar-sheets@0.15.0` and the exact
