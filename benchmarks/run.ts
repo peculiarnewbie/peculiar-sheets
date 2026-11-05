@@ -26,14 +26,17 @@ import { timerMetadata } from "./timer-metadata";
 import { appendSampleCheckpoint } from "./checkpoint";
 import { writeBenchmarkReport } from "./report";
 import {
-	defaultScenarioIterations,
+	type AdaptiveHeadline,
 	describeSampling,
 	iterationsForScenario,
 	type SamplingMetadata,
-	sameSamplingCounts,
+	sameSamplingPlan,
 	sampleOrder,
+	samplingMode,
+	samplingPlan,
 	validateSampling,
 } from "./sampling";
+import { evaluateHeadlines, stoppingDecision } from "./adaptive-sampling";
 
 const PORT = 4178;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -177,14 +180,7 @@ const SCENARIOS = parseSelection<ScenarioName>({
 	environmentName: "BENCHMARK_SCENARIOS",
 	available: ALL_SCENARIOS,
 });
-const scenarioIterations = defaultScenarioIterations(
-	SCENARIOS,
-	process.env.BENCHMARK_ITERATIONS !== undefined,
-);
-const SAMPLING: SamplingMetadata = {
-	iterations: ITERATIONS,
-	...(Object.keys(scenarioIterations).length ? { scenarioIterations } : {}),
-};
+const SAMPLING: SamplingMetadata = samplingPlan(process.env, SCENARIOS);
 validateSampling(SAMPLING);
 
 const { values: options } = parseArgs({
@@ -248,7 +244,12 @@ if (options.list) {
 				implementationsForScenario(scenario).map((implementation) => ({
 					scenario,
 					implementation,
-					iterations: iterationsForScenario(SAMPLING, scenario),
+					...(SAMPLING.adaptiveSampling
+						? {
+								minIterations: SAMPLING.adaptiveSampling.minIterations,
+								maxIterations: iterationsForScenario(SAMPLING, scenario),
+							}
+						: { iterations: iterationsForScenario(SAMPLING, scenario) }),
 				})),
 			),
 			null,
@@ -520,10 +521,10 @@ function printBaselineComparison(
 		baseline.timerProtocol !== "cross-origin-isolated-v1" ||
 		baseline.competitorConfig !== COMPETITOR_CONFIG ||
 		baseline.cpuAffinity !== (process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled") ||
-		!sameSamplingCounts(baseline, SAMPLING, SCENARIOS)
+		!sameSamplingPlan(baseline, SAMPLING, SCENARIOS)
 	) {
 		console.log(
-			"Measurement protocol, competitor configuration, CPU placement, or sample counts changed; historical timings are not a speed comparison. Establish a fresh baseline.",
+			`Measurement protocol, competitor configuration, CPU placement, or sampling plan changed (baseline ${samplingMode(baseline)}, current ${samplingMode(SAMPLING)} sampling); historical timings are not a speed comparison. Establish a fresh baseline.`,
 		);
 		return;
 	}
@@ -540,8 +541,11 @@ function printBaselineComparison(
 			const current = median(currentSamples.map(primaryMetric));
 			const previous = median(baselineSamples.map(primaryMetric));
 			const change = previous === 0 ? 0 : ((current - previous) / previous) * 100;
+			const counts = SAMPLING.adaptiveSampling
+				? ` (n=${baselineSamples.length} → ${currentSamples.length})`
+				: "";
 			console.log(
-				`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%`,
+				`${scenario.padEnd(20)} ${implementation.padEnd(20)} ${change >= 0 ? "+" : ""}${change.toFixed(1)}%${counts}`,
 			);
 		}
 	}
@@ -925,6 +929,10 @@ function formatResult(result: BenchmarkResult): string {
 	}
 }
 
+function formatHeadline(headline: AdaptiveHeadline): string {
+	return `${headline.category} ${headline.ratio.toFixed(2)}x [${headline.lower.toFixed(2)}, ${headline.upper.toFixed(2)}] ${headline.verdict}`;
+}
+
 class BenchmarkCheckpointError extends TaggedError("BenchmarkCheckpointError")<{
 	message: string;
 	cause: unknown;
@@ -977,14 +985,17 @@ try {
 	} else {
 		const results = measuredResults;
 		console.log(`Benchmark sampling: ${describeSampling(SAMPLING, SCENARIOS)} per library.`);
+		const adaptive = SAMPLING.adaptiveSampling;
 		for (const scenario of SCENARIOS) {
 			const iterations = iterationsForScenario(SAMPLING, scenario);
+			const implementations = implementationsForScenario(scenario);
 			for (const skipped of SKIPPED.filter((skip) => skip.scenario === scenario))
 				console.log(
 					`[skip] ${scenario} / ${skipped.implementation} (${skipped.category}: ${skipped.reason})`,
 				);
+			// Each round measures every library once, rotating the order, before the stopping check.
 			for (let iteration = -WARMUPS; iteration < iterations; iteration++) {
-				for (const implementation of sampleOrder(implementationsForScenario(scenario), iteration)) {
+				for (const implementation of sampleOrder(implementations, iteration)) {
 					const prefix = iteration < 0 ? "[warmup]" : `[${iteration + 1}/${iterations}]`;
 					console.log(`${prefix} starting ${scenario} / ${implementation}…`);
 					const result = await runSampleWithRetry({ implementation, scenario });
@@ -995,6 +1006,7 @@ try {
 							timerProtocol: "cross-origin-isolated-v1",
 							competitorConfig: COMPETITOR_CONFIG,
 							cpuAffinity: process.env.BENCHMARK_EFFECTIVE_CPUSET ?? "uncontrolled",
+							samplingMode: samplingMode(SAMPLING),
 							startedAt: RUN_STARTED_AT.toISOString(),
 							iteration,
 							iterations,
@@ -1004,6 +1016,47 @@ try {
 						console.log(`${prefix} ${scenario} / ${implementation}: ${formatResult(result)}`);
 					}
 				}
+				if (!adaptive || iteration < 0 || iteration + 1 < adaptive.minIterations) continue;
+				const headlines = evaluateHeadlines(scenario, results, {
+					...adaptive,
+					measurementProtocol: MEASUREMENT_PROTOCOL,
+				});
+				const decision = stoppingDecision({
+					rounds: iteration + 1,
+					minimum: adaptive.minIterations,
+					maximum: iterations,
+					headlines,
+				});
+				console.log(
+					`[adaptive] ${scenario} after ${iteration + 1}: ${headlines.map(formatHeadline).join("; ") || "no headline"}`,
+				);
+				if (!decision.stop) continue;
+				adaptive.headlines.push(...headlines);
+				adaptive.cells.push(
+					...implementations.map((implementation) => ({
+						scenario,
+						implementation,
+						samples: iteration + 1,
+						stopReason: decision.reason,
+					})),
+				);
+				const record = await appendSampleCheckpoint(SAMPLE_JOURNAL_PATH, {
+					measurementProtocol: MEASUREMENT_PROTOCOL,
+					competitorConfig: COMPETITOR_CONFIG,
+					samplingMode: "adaptive",
+					startedAt: RUN_STARTED_AT.toISOString(),
+					samplingDecision: {
+						scenario,
+						rounds: iteration + 1,
+						stopReason: decision.reason,
+						headlines,
+					},
+				});
+				if (Result.isError(record)) throw record.error;
+				console.log(
+					`[adaptive] ${scenario} stopped after ${iteration + 1} of ${iterations} (${decision.reason})`,
+				);
+				break;
 			}
 		}
 		printSummary(results);

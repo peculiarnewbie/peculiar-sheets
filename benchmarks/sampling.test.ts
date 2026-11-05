@@ -5,7 +5,10 @@ import {
 	describeSampling,
 	iterationsForScenario,
 	sameSamplingCounts,
+	sameSamplingPlan,
 	sampleOrder,
+	samplingPlan,
+	validateSampling,
 } from "./sampling";
 
 test("default sample counts balance every run position for two, three, and four libraries", () => {
@@ -59,4 +62,117 @@ test("baseline speed comparisons require equal counts for every selected case", 
 	assert.equal(sameSamplingCounts(old, current, ["replace-large-disjoint"]), false);
 	assert.equal(sameSamplingCounts({ iterations: 96 }, current, ["replace-large-disjoint"]), true);
 	assert.equal(sameSamplingCounts({ iterations: 3 }, current, ["mount-small"]), false);
+});
+
+test("adaptive is the default and an explicit iteration count keeps the fixed plan", () => {
+	const scenarios = ["mount-small", "replace-large-disjoint"] as const;
+	const adaptive = samplingPlan({}, scenarios);
+	assert.equal(adaptive.samplingMode, "adaptive");
+	assert.equal(adaptive.iterations, 12);
+	assert.equal(iterationsForScenario(adaptive, "replace-large-disjoint"), 96);
+	assert.deepEqual(
+		[
+			adaptive.adaptiveSampling?.minIterations,
+			adaptive.adaptiveSampling?.confidence,
+			adaptive.adaptiveSampling?.threshold,
+		],
+		[4, 0.95, 1.2],
+	);
+	assert.match(describeSampling(adaptive, scenarios), /adaptive median of 4–96 runs per case/);
+	assert.deepEqual(samplingPlan({ BENCHMARK_ITERATIONS: "5" }, scenarios), {
+		samplingMode: "fixed",
+		iterations: 5,
+	});
+	assert.deepEqual(samplingPlan({ BENCHMARK_SAMPLING: "fixed" }, scenarios), {
+		samplingMode: "fixed",
+		iterations: 12,
+		scenarioIterations: { "replace-large-disjoint": 96 },
+	});
+	const tuned = samplingPlan(
+		{
+			BENCHMARK_MIN_ITERATIONS: "3",
+			BENCHMARK_MAX_ITERATIONS: "8",
+			BENCHMARK_CONFIDENCE: "0.9",
+			BENCHMARK_RATIO_THRESHOLD: "1.1",
+		},
+		scenarios,
+	);
+	assert.equal(iterationsForScenario(tuned, "replace-large-disjoint"), 8);
+	assert.deepEqual(
+		[
+			tuned.adaptiveSampling?.minIterations,
+			tuned.adaptiveSampling?.confidence,
+			tuned.adaptiveSampling?.threshold,
+		],
+		[3, 0.9, 1.1],
+	);
+	assert.equal(
+		samplingPlan({ BENCHMARK_MAX_ITERATIONS: "3" }, scenarios).adaptiveSampling?.minIterations,
+		3,
+	);
+	assert.throws(
+		() => samplingPlan({ BENCHMARK_SAMPLING: "adaptive", BENCHMARK_ITERATIONS: "5" }, scenarios),
+		/BENCHMARK_MAX_ITERATIONS/,
+	);
+	assert.throws(
+		() => samplingPlan({ BENCHMARK_ITERATIONS: "5", BENCHMARK_MIN_ITERATIONS: "2" }, scenarios),
+		/only apply to adaptive sampling/,
+	);
+	assert.throws(() => samplingPlan({ BENCHMARK_SAMPLING: "sometimes" }, scenarios), /fixed or/);
+	for (const environment of [
+		{ BENCHMARK_MAX_ITERATIONS: "1" },
+		{ BENCHMARK_MIN_ITERATIONS: "13" },
+		{ BENCHMARK_CONFIDENCE: "1" },
+		{ BENCHMARK_RATIO_THRESHOLD: "0" },
+	])
+		assert.throws(() => validateSampling(samplingPlan(environment, scenarios)));
+});
+
+test("baseline comparisons never mix fixed and adaptive plans", () => {
+	const scenarios = ["mount-small"] as const;
+	const fixed = samplingPlan({ BENCHMARK_SAMPLING: "fixed" }, scenarios);
+	const adaptive = samplingPlan({}, scenarios);
+	const settings = adaptive.adaptiveSampling;
+	if (!settings) throw new Error("Expected adaptive settings");
+	const decided = {
+		...adaptive,
+		adaptiveSampling: {
+			...settings,
+			cells: [
+				{
+					scenario: "mount-small" as const,
+					implementation: "ag-grid" as const,
+					samples: 5,
+					stopReason: "decided" as const,
+				},
+			],
+		},
+	};
+	assert.equal(sameSamplingPlan(fixed, adaptive, scenarios), false);
+	assert.equal(sameSamplingPlan({ iterations: 12 }, adaptive, scenarios), false);
+	assert.equal(sameSamplingPlan({ iterations: 12 }, fixed, scenarios), true);
+	assert.equal(sameSamplingPlan(adaptive, decided, scenarios), true);
+	assert.equal(
+		sameSamplingPlan(
+			adaptive,
+			{ ...adaptive, adaptiveSampling: { ...settings, confidence: 0.9 } },
+			scenarios,
+		),
+		false,
+	);
+	assert.throws(
+		() => validateSampling({ ...fixed, adaptiveSampling: settings }),
+		/requires its stopping-rule metadata/,
+	);
+	assert.throws(
+		() =>
+			validateSampling({
+				...decided,
+				adaptiveSampling: {
+					...decided.adaptiveSampling,
+					cells: [{ ...decided.adaptiveSampling.cells[0], samples: 13 }],
+				},
+			}),
+		/Invalid sample count/,
+	);
 });
