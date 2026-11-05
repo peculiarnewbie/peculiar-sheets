@@ -230,10 +230,7 @@ interval. Frame alignment controls this source of phase bias uniformly across
 libraries; it does not eliminate scheduler noise or prove repeatability.
 
 
-The [Windows validation report](FRAME_ALIGNED_FINDINGS.md) records two complete
-12-iteration focused passes, all four library medians, exact headline ratios and
-per-step frame diagnostics. Ratios met 1.2 in both passes; absolute timing
-repeatability remains limited.
+Final results are summarized in [RESULTS.md](RESULTS.md).
 
 ## Competitor configuration: scenario modules v1
 

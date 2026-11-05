@@ -1,4 +1,0 @@
-
-> @ typecheck:solid2 C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-12cde028
-> tsc --noEmit -p tests/solid2/tsconfig.json
-

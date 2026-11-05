@@ -1,4 +1,0 @@
-
-> @ format:check C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-90b238c4
-> bun scripts/check-changed.ts format
-

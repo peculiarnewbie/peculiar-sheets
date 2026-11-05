@@ -1,8 +1,0 @@
-
-> @ benchmark:typecheck C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-90b238c4
-> tsc --noEmit -p benchmarks/tsconfig.json && pnpm --filter @peculiarnewbie/benchmarks typecheck
-
-
-> @peculiarnewbie/benchmarks@ typecheck C:\Users\Ryzen\.t3\worktrees\peculiar-sheets\t3-90b238c4\apps\benchmarks
-> tsc --noEmit
-

@@ -1,8 +1,0 @@
-{
-	"phases": [
-		{ "name": "r3.preflight", "duration": 0.07500001788139343 },
-		{ "name": "r3.fused", "duration": 0.13999998569488525 },
-		{ "name": "r3.revisions", "duration": 0.0949999988079071 },
-		{ "name": "r3.history", "duration": 0.02000001072883606 }
-	]
-}
